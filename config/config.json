@@ -1,0 +1,8 @@
+{
+  "bar": { "height": 40, "edge": "top", "monitor": "primary", "theme": "dark" },
+  "plugins": [
+    { "id": "launcher", "position": "left",  "order": 0, "config": { "items": [{"name":"Terminal","program":"wt.exe"},{"name":"Notepad","program":"notepad.exe"}] } },
+    { "id": "netstat",  "position": "right", "order": 0, "config": { "intervalMs": 1000 } },
+    { "id": "clock",    "position": "right", "order": 1, "config": { "format": "HH:mm:ss" } }
+  ]
+}

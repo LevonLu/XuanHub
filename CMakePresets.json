@@ -1,0 +1,26 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "MSVC 2022 x64 + Qt 6.9.3 (VS 17 generator)",
+      "description": "Qt 安装路径默认 C:/Qt/6.9.3/msvc2022_64；若你的安装位置不同，请修改下方 CMAKE_PREFIX_PATH 或复制为 CMakeUserPresets.json 覆盖。",
+      "generator": "Visual Studio 17 2022",
+      "architecture": { "value": "x64", "strategy": "set" },
+      "binaryDir": "${sourceDir}/build/default",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "C:/Qt/6.9.3/msvc2022_64",
+        "CMAKE_CXX_STANDARD": "17"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "default",       "configurePreset": "default", "configuration": "Release" },
+    { "name": "default-debug", "configurePreset": "default", "configuration": "Debug" }
+  ]
+}
