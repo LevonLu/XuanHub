@@ -5,6 +5,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QLibrary>
 #include <QDebug>
 
 PluginManager::PluginManager(xuanhub::EventBus* bus, const QString& configDir, QObject* parent)
@@ -12,10 +13,11 @@ PluginManager::PluginManager(xuanhub::EventBus* bus, const QString& configDir, Q
 
 PluginManager::~PluginManager() {
     shutdownAll();
-    qDeleteAll(m_loaders);
 }
 
 void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfigEntry>& enabled) {
+    m_shut = false;   // 复位闩锁，支持 shutdownAll() → loadFrom() 热重载周期
+
     QHash<QString, const PluginConfigEntry*> enabledMap;
     for (const auto& e : enabled) enabledMap.insert(e.id, &e);
 
@@ -31,6 +33,9 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
         for (const QString& dllName : dlls) {
             const QString path = d.absoluteFilePath(dllName);
             auto* loader = new QPluginLoader(path);
+            // 清掉 Qt 默认的 PreventUnloadHint，使 unload() 真正卸载 DLL
+            //（热重载/插件升级的前提；代价是必须严格先 shutdown 再 unload）
+            loader->setLoadHints(QLibrary::ResolveAllSymbolsHint);
 
             // IID 校验
             const QString iid = loader->metaData().value(QStringLiteral("IID")).toString();
@@ -54,6 +59,13 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
             }
 
             const auto meta = plugin->metadata();
+            // 按 id 去重：同名插件（多目录/多 DLL 副本）只加载第一份
+            if (m_loadedIds.contains(meta.id)) {
+                qWarning() << "[Plugin] duplicate id, skip:" << meta.id << "->" << path;
+                loader->unload();
+                delete loader;
+                continue;
+            }
             const PluginConfigEntry* entry = enabledMap.value(meta.id, nullptr);
             if (!entry) {
                 qDebug() << "[Plugin] not enabled in config, skip:" << meta.id;
@@ -73,6 +85,18 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
                 continue;
             }
 
+            // position 校验：空默认 right；非法值告警并回落 right
+            //（否则三个 FilterModel 都不接受，插件加载成功却静默不显示）
+            QString pos = entry->position;
+            if (pos.isEmpty()) {
+                pos = QStringLiteral("right");
+            } else if (pos != QStringLiteral("left") && pos != QStringLiteral("center")
+                       && pos != QStringLiteral("right")) {
+                qWarning() << "[Plugin] invalid position" << entry->position
+                           << "for" << meta.id << "-> right";
+                pos = QStringLiteral("right");
+            }
+
             // qmlUrl：插件返回相对 DLL 目录的文件名，拼成绝对 file URL
             const QUrl rel = plugin->qmlUrl();
             const QString qmlPath = rel.isRelative()
@@ -80,7 +104,7 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
                 : rel.path();
             LoadedPlugin lp;
             lp.id = meta.id;
-            lp.position = entry->position.isEmpty() ? QStringLiteral("right") : entry->position;
+            lp.position = pos;
             lp.order = entry->order;
             lp.viewModel = plugin->viewModel();
             lp.qmlUrl = QUrl::fromLocalFile(qmlPath);
@@ -88,6 +112,7 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
 
             m_loaders.append(loader);
             m_loaded.append(lp);
+            m_loadedIds.insert(meta.id);
             qDebug() << "[Plugin] loaded:" << meta.id
                      << "pos=" << lp.position << "qml=" << qmlPath;
         }
@@ -97,8 +122,16 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
 void PluginManager::shutdownAll() {
     if (m_shut) return;
     m_shut = true;
+    // 顺序铁律：先让各插件 shutdown（删光各自 DLL 出身的 QObject），
+    // 再 unload —— 根实例由 unload() 删除，随后 FreeLibrary
     for (const auto& lp : m_loaded) {
         if (lp.iface) lp.iface->shutdown();
     }
-    for (auto* loader : m_loaders) loader->unload();
+    for (auto* loader : m_loaders) {
+        loader->unload();
+        delete loader;
+    }
+    m_loaders.clear();
+    m_loaded.clear();
+    m_loadedIds.clear();
 }

@@ -22,8 +22,9 @@ class ConfigService : public QObject {
 public:
     explicit ConfigService(QObject* parent = nullptr);
 
-    // 优先 exe 同目录 config.json，否则用内置默认。返回是否读到外部配置。
-    bool load(const QString& exeDir);
+    // 解析顺序：exeDir/config.json（便携/开发优先）→ configDir/config.json；
+    // 都不存在则把内置默认配置落地到 configDir 后读取。返回是否读到外部配置。
+    bool load(const QString& exeDir, const QString& configDir);
 
     int barHeight() const { return m_barHeight; }      // 逻辑像素
     QString barEdge() const { return m_barEdge; }      // "top"/"bottom"

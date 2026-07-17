@@ -10,9 +10,11 @@
 #include <QPointer>
 #include <QByteArray>
 
+#include "barplugin/barplugin_export.h"
+
 namespace xuanhub {
 
-class EventBus : public QObject {
+class BARPLUGIN_EXPORT EventBus : public QObject {
     Q_OBJECT
 public:
     explicit EventBus(QObject* parent = nullptr);

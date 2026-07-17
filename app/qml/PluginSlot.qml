@@ -5,12 +5,18 @@ import QtQuick
 
 Item {
     id: wrapper
-    height: 40
-    width: slot.item ? slot.item.width : 0
+    // 高度跟随所属 ListView（即 bar 实际高度），与 config.barHeight 联动；
+    // 脱离 ListView 使用时的回退值 40
+    height: ListView.view ? ListView.view.height : 40
+    width: slot.item ? slot.item.width
+                     : (slot.status === Loader.Error ? errorBadge.width : 0)
 
     Loader {
         id: slot
-        anchors.verticalCenter: parent.verticalCenter
+        // 锚定上下边：item 高度被调整为槽高（插件 QML 里写的 height 仅作回退）；
+        // 宽度不显式指定，Loader 自动跟随 item 内容宽度
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
         source: model.qmlUrl
 
         onLoaded: {
@@ -21,7 +27,26 @@ Item {
         }
         onStatusChanged: {
             if (status === Loader.Error)
-                console.warn("[PluginSlot] load failed:", source)
+                console.warn("[PluginSlot] load failed:", source,
+                             "(真实错误见 xuanhub.log 中 QML 引擎的 qWarning 输出)")
+        }
+    }
+
+    // 加载失败占位符（plan §11 承诺项）
+    Rectangle {
+        id: errorBadge
+        visible: slot.status === Loader.Error
+        width: badgeText.implicitWidth + 12
+        height: wrapper.height
+        color: "#40f38ba8"
+        radius: 4
+
+        Text {
+            id: badgeText
+            anchors.centerIn: parent
+            text: "⚠ " + model.id
+            color: "#f38ba8"
+            font.pixelSize: 12
         }
     }
 }

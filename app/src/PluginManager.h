@@ -1,9 +1,13 @@
 // PluginManager.h — 插件扫描/加载/生命周期
 // 扫描 plugins/<id>/ 下的 *.dll，校验 IID 后 qobject_cast<IBarPlugin*>，
 // 按 config 启用列表 init，收集 viewModel + qmlUrl 供渲染层使用。
+// 生命周期约定：shutdownAll() 先调各插件 shutdown()（删光 DLL 出身的对象），
+// 再 unload()；load hints 已清 PreventUnload，unload 会删除根实例并真正卸载 DLL。
+// 支持 shutdownAll() → loadFrom() 的热重载周期（调用方需先重置 QML 模型）。
 #pragma once
 #include <QObject>
 #include <QVector>
+#include <QSet>
 #include <QUrl>
 #include <QPluginLoader>
 
@@ -37,5 +41,6 @@ private:
     QString m_configDir;
     QVector<LoadedPlugin> m_loaded;
     QVector<QPluginLoader*> m_loaders;
+    QSet<QString> m_loadedIds;   // 按 metadata.id 去重
     bool m_shut = false;
 };

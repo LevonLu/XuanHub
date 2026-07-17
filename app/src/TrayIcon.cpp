@@ -8,6 +8,7 @@
 #include <QAction>
 #include <QSystemTrayIcon>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QCoreApplication>
 #include <QDir>
 
@@ -34,6 +35,13 @@ TrayIcon::TrayIcon(ThemeManager* theme, QObject* parent)
     m_autoStartAction = m_menu->addAction(QStringLiteral("Auto Start"));
     m_autoStartAction->setCheckable(true);
     connect(m_autoStartAction, &QAction::toggled, this, &TrayIcon::setAutoStartEnabled);
+    // 勾选状态与注册表现状对齐（阻断信号，避免初始化时回写一遍）
+    {
+        QSettings ro(QStringLiteral("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"),
+                     QSettings::NativeFormat);
+        QSignalBlocker blocker(m_autoStartAction);
+        m_autoStartAction->setChecked(ro.contains(QStringLiteral("XuanHub")));
+    }
 
     QAction* toggleTheme = m_menu->addAction(QStringLiteral("Toggle Theme"));
     connect(toggleTheme, &QAction::triggered, [this]() {
@@ -61,8 +69,10 @@ void TrayIcon::setAutoStartEnabled(bool on) {
     QSettings s(QStringLiteral("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"),
                 QSettings::NativeFormat);
     if (on)
+        // 路径加引号：装到含空格目录（如 Program Files）后自启仍能解析
         s.setValue(QStringLiteral("XuanHub"),
-                   QDir::toNativeSeparators(QCoreApplication::applicationFilePath()));
+                   QStringLiteral("\"%1\"").arg(
+                       QDir::toNativeSeparators(QCoreApplication::applicationFilePath())));
     else
         s.remove(QStringLiteral("XuanHub"));
 }

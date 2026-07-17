@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QTextStream>
 #include <QDateTime>
+#include <QLockFile>
 #include <QAbstractNativeEventFilter>
 #include <QAbstractEventDispatcher>
 #include <QPointer>
@@ -69,20 +70,38 @@ int main(int argc, char* argv[]) {
     app.setOrganizationName(QStringLiteral("XuanHub"));
 
     const QString exeDir = QCoreApplication::applicationDirPath();
-    g_logFile.setFileName(QDir(exeDir).absoluteFilePath(QStringLiteral("xuanhub.log")));
+
+    // 配置目录：%APPDATA%/XuanHub（plan §2 决策）；不可用时退回 exeDir
+    QString configDir;
+    const QString appData = qEnvironmentVariable("APPDATA");
+    if (!appData.isEmpty())
+        configDir = QDir(appData).absoluteFilePath(QStringLiteral("XuanHub"));
+    if (configDir.isEmpty() || !QDir().mkpath(configDir))
+        configDir = exeDir;
+
+    // 单实例守卫：必须在日志初始化之前——
+    // 失败实例不能以 Truncate 方式截断正在运行实例的日志
+    QLockFile instLock(QDir::temp().absoluteFilePath(QStringLiteral("XuanHub.lock")));
+    if (!instLock.tryLock(100)) {
+        OutputDebugStringW(L"[XuanHub] another instance is already running, exit\n");
+        return 0;
+    }
+
+    // 日志写到可写的配置目录（exeDir 在 Program Files 安装场景下不可写）
+    g_logFile.setFileName(QDir(configDir).absoluteFilePath(QStringLiteral("xuanhub.log")));
     g_logFile.open(QIODevice::WriteOnly | QIODevice::Truncate);
     qInstallMessageHandler(logToFile);
 
-    qDebug() << "=== XuanHub start ===";
+    qDebug() << "=== XuanHub start ===" << "configDir =" << configDir;
 
     // 栈顺序保证析构安全
     xuanhub::EventBus bus;
     ConfigService config;
-    config.load(exeDir);
+    config.load(exeDir, configDir);
 
     ThemeManager theme(&bus, config.theme());
 
-    PluginManager pm(&bus, exeDir);
+    PluginManager pm(&bus, configDir);
     pm.loadFrom(QDir(exeDir).absoluteFilePath(QStringLiteral("plugins")),
                 config.pluginEntries());
 
