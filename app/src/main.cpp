@@ -13,9 +13,11 @@
 #include <windows.h>
 
 #include "BarWindow.h"
+#include "ConfigHotReloader.h"
 #include "ConfigService.h"
 #include "PluginManager.h"
 #include "PluginListModel.h"
+#include "SettingsController.h"
 #include "ThemeManager.h"
 #include "TrayIcon.h"
 #include "barplugin/EventBus.h"
@@ -116,6 +118,16 @@ int main(int argc, char* argv[]) {
     // 托盘
     TrayIcon tray(&theme);
     tray.show();
+
+    // 配置热重载（M7）：文件监听自动触发 + 托盘 "Reload Config" 手动触发
+    ConfigHotReloader reloader(&config, &theme, &pm, &model, &window, exeDir, configDir);
+    QObject::connect(&tray, &TrayIcon::reloadRequested,
+                     &reloader, &ConfigHotReloader::reload);
+
+    // 设置窗口（M8）：托盘 "Settings..." 打开（懒建，关闭=隐藏不销毁）
+    SettingsController settingsCtl(&config, &theme, exeDir);
+    QObject::connect(&tray, &TrayIcon::settingsRequested,
+                     &settingsCtl, &SettingsController::open);
 
     auto* monitor = new TaskbarMonitor(&tray);
     QAbstractEventDispatcher::instance()->installNativeEventFilter(monitor);

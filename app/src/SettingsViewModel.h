@@ -1,0 +1,60 @@
+// SettingsViewModel.h — 设置窗口后端（M8）
+// 属性 = 编辑中的草稿；apply() 校验后经 ConfigService::save 写回 config.json，
+// 生效由 M7 ConfigHotReloader 的文件监听自动完成（本类不直接触发 reload，
+// 避免与 watcher 双重重载）。
+#pragma once
+#include <QObject>
+#include <QString>
+
+class QAbstractItemModel;
+class ConfigService;
+class SettingsPluginModel;
+
+class SettingsViewModel : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(int barHeight READ barHeight WRITE setBarHeight NOTIFY barHeightChanged)
+    Q_PROPERTY(QString barEdge READ barEdge WRITE setBarEdge NOTIFY barEdgeChanged)
+    Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
+    Q_PROPERTY(bool autoStart READ autoStart WRITE setAutoStart NOTIFY autoStartChanged)
+    Q_PROPERTY(QAbstractItemModel* pluginModel READ pluginModel CONSTANT)
+    Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
+
+public:
+    SettingsViewModel(ConfigService* config, QString exeDir, QObject* parent = nullptr);
+
+    int barHeight() const { return m_barHeight; }
+    QString barEdge() const { return m_barEdge; }
+    QString theme() const { return m_theme; }
+    bool autoStart() const { return m_autoStart; }
+    QAbstractItemModel* pluginModel() const;   // 实现在 .cpp（头里 SettingsPluginModel 是不完整类型）
+    QString errorMessage() const { return m_errorMessage; }
+
+    void setBarHeight(int v);
+    void setBarEdge(const QString& v);
+    void setTheme(const QString& v);
+    void setAutoStart(bool v);
+
+    // 从 ConfigService 现值 + 磁盘发现重建草稿（每次打开窗口时调用）
+    Q_INVOKABLE void reloadFromConfig();
+    // 校验 → 组装 JSON（保留未知键）→ ConfigService::save；失败置 errorMessage 返回 false
+    Q_INVOKABLE bool apply();
+
+signals:
+    void barHeightChanged();
+    void barEdgeChanged();
+    void themeChanged();
+    void autoStartChanged();
+    void errorMessageChanged();
+
+private:
+    void setErrorMessage(const QString& m);
+
+    ConfigService* m_config;
+    QString m_exeDir;
+    SettingsPluginModel* m_pluginModel;
+    int m_barHeight = 40;
+    QString m_barEdge = QStringLiteral("top");
+    QString m_theme = QStringLiteral("dark");
+    bool m_autoStart = false;
+    QString m_errorMessage;
+};

@@ -16,7 +16,7 @@ if(MSVC)
     add_compile_options(/Zc:__cplusplus /permissive- /utf-8 /W3)
 endif()
 
-find_package(Qt6 6.9 REQUIRED COMPONENTS Quick Widgets Network)
+find_package(Qt6 6.9 REQUIRED COMPONENTS Quick Widgets Network QuickControls2)
 qt_standard_project_setup()
 
 # 统一运行时输出根：build/default/dist/<CONFIG>/（exe 与 plugins 同根）

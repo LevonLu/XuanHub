@@ -15,6 +15,10 @@ public:
     void show();
     void recreate();               // Explorer 重启后重建托盘图标
 
+signals:
+    void settingsRequested();    // 菜单 "Settings..." 触发（M8 设置窗口）
+    void reloadRequested();      // 菜单 "Reload Config" 触发（M7 热重载）
+
 private slots:
     void setAutoStartEnabled(bool on);
 

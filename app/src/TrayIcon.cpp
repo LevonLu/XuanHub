@@ -1,16 +1,14 @@
 // TrayIcon.cpp
 #include "TrayIcon.h"
 #include "ThemeManager.h"
+#include "AutoStart.h"
 
 #include <QPainter>
 #include <QPixmap>
 #include <QMenu>
 #include <QAction>
 #include <QSystemTrayIcon>
-#include <QSettings>
 #include <QSignalBlocker>
-#include <QCoreApplication>
-#include <QDir>
 
 TrayIcon::TrayIcon(ThemeManager* theme, QObject* parent)
     : QObject(parent), m_theme(theme), m_menu(nullptr), m_autoStartAction(nullptr) {
@@ -32,16 +30,23 @@ TrayIcon::TrayIcon(ThemeManager* theme, QObject* parent)
 
     m_menu = new QMenu();
 
+    // 设置窗口（M8）
+    QAction* settings = m_menu->addAction(QStringLiteral("Settings..."));
+    connect(settings, &QAction::triggered, this, &TrayIcon::settingsRequested);
+
     m_autoStartAction = m_menu->addAction(QStringLiteral("Auto Start"));
     m_autoStartAction->setCheckable(true);
     connect(m_autoStartAction, &QAction::toggled, this, &TrayIcon::setAutoStartEnabled);
-    // 勾选状态与注册表现状对齐（阻断信号，避免初始化时回写一遍）
+    // 勾选状态与注册表现状对齐（阻断信号，避免初始化时回写一遍）；
+    // 菜单每次弹出前再对齐一次 —— 设置窗口也可能改同一注册表键
     {
-        QSettings ro(QStringLiteral("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"),
-                     QSettings::NativeFormat);
         QSignalBlocker blocker(m_autoStartAction);
-        m_autoStartAction->setChecked(ro.contains(QStringLiteral("XuanHub")));
+        m_autoStartAction->setChecked(autostart::isEnabled());
     }
+    connect(m_menu, &QMenu::aboutToShow, this, [this]() {
+        QSignalBlocker blocker(m_autoStartAction);
+        m_autoStartAction->setChecked(autostart::isEnabled());
+    });
 
     QAction* toggleTheme = m_menu->addAction(QStringLiteral("Toggle Theme"));
     connect(toggleTheme, &QAction::triggered, [this]() {
@@ -49,6 +54,10 @@ TrayIcon::TrayIcon(ThemeManager* theme, QObject* parent)
                               ? QStringLiteral("light") : QStringLiteral("dark");
         m_theme->switchTheme(t);
     });
+
+    // 配置热重载（M7）：手动触发入口，与文件监听同一个 reload()
+    QAction* reload = m_menu->addAction(QStringLiteral("Reload Config"));
+    connect(reload, &QAction::triggered, this, &TrayIcon::reloadRequested);
 
     m_menu->addSeparator();
     QAction* quit = m_menu->addAction(QStringLiteral("Quit"));
@@ -66,13 +75,5 @@ void TrayIcon::recreate() {
 }
 
 void TrayIcon::setAutoStartEnabled(bool on) {
-    QSettings s(QStringLiteral("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"),
-                QSettings::NativeFormat);
-    if (on)
-        // 路径加引号：装到含空格目录（如 Program Files）后自启仍能解析
-        s.setValue(QStringLiteral("XuanHub"),
-                   QStringLiteral("\"%1\"").arg(
-                       QDir::toNativeSeparators(QCoreApplication::applicationFilePath())));
-    else
-        s.remove(QStringLiteral("XuanHub"));
+    autostart::setEnabled(on);   // 逻辑收编到 AutoStart.h（设置窗口共用）
 }

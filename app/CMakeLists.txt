@@ -14,6 +14,20 @@ qt_add_executable(XuanHub WIN32
     src/ConfigService.h
     src/ConfigService.cpp
 
+    src/ConfigHotReloader.h
+    src/ConfigHotReloader.cpp
+
+    src/AutoStart.h
+
+    src/SettingsViewModel.h
+    src/SettingsViewModel.cpp
+
+    src/SettingsPluginModel.h
+    src/SettingsPluginModel.cpp
+
+    src/SettingsController.h
+    src/SettingsController.cpp
+
     src/PluginManager.h
     src/PluginManager.cpp
 
@@ -40,12 +54,14 @@ qt_add_qml_module(XuanHub
         qml/main.qml
         qml/Bar.qml
         qml/PluginSlot.qml
+        qml/SettingsWindow.qml
     RESOURCES
         resources/default_config.json
 )
 
 target_link_libraries(XuanHub PRIVATE
     Qt6::Quick
+    Qt6::QuickControls2   # 设置窗口（M8）的表单控件
     Qt6::Gui
     Qt6::Widgets
     barplugin            # 插件接口库
