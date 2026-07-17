@@ -2,11 +2,26 @@
 #include "PluginManager.h"
 #include "ConfigService.h"
 #include "barplugin/EventBus.h"
+#include "barplugin/IBarPluginHost.h"
 
 #include <QDir>
 #include <QFileInfo>
 #include <QLibrary>
 #include <QDebug>
+
+namespace {
+// position 校验：空默认 right；非法值告警并回落 right
+//（否则三个 FilterModel 都不接受，插件加载成功却静默不显示）
+QString sanitizePosition(QString pos, const QString& id) {
+    if (pos.isEmpty()) return QStringLiteral("right");
+    if (pos != QStringLiteral("left") && pos != QStringLiteral("center")
+        && pos != QStringLiteral("right")) {
+        qWarning() << "[Plugin] invalid position" << pos << "for" << id << "-> right";
+        return QStringLiteral("right");
+    }
+    return pos;
+}
+} // namespace
 
 PluginManager::PluginManager(xuanhub::EventBus* bus, const QString& configDir, QObject* parent)
     : QObject(parent), m_bus(bus), m_configDir(configDir) {}
@@ -85,17 +100,47 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
                 continue;
             }
 
-            // position 校验：空默认 right；非法值告警并回落 right
-            //（否则三个 FilterModel 都不接受，插件加载成功却静默不显示）
-            QString pos = entry->position;
-            if (pos.isEmpty()) {
-                pos = QStringLiteral("right");
-            } else if (pos != QStringLiteral("left") && pos != QStringLiteral("center")
-                       && pos != QStringLiteral("right")) {
-                qWarning() << "[Plugin] invalid position" << entry->position
-                           << "for" << meta.id << "-> right";
-                pos = QStringLiteral("right");
+            // host 插件（如 pybridge）：自身不进可见列表；
+            // 先枚举子插件 id，核心按 config 过滤/去重后再让 host 实例化
+            if (auto* host = qobject_cast<xuanhub::IBarPluginHost*>(obj)) {
+                m_loaders.append(loader);
+                m_loadedIds.insert(meta.id);
+                m_hosts.append(plugin);
+                qDebug() << "[Plugin] loaded host:" << meta.id;
+                const QStringList subIds = host->subPluginIds();
+                if (subIds.isEmpty())
+                    qDebug() << "[Plugin] host" << meta.id << "found no sub-plugins";
+                for (const QString& sid : subIds) {
+                    if (m_loadedIds.contains(sid)) {
+                        qWarning() << "[Plugin] duplicate id (sub-plugin), skip:" << sid;
+                        continue;
+                    }
+                    const PluginConfigEntry* se = enabledMap.value(sid, nullptr);
+                    if (!se) {
+                        qDebug() << "[Plugin] sub-plugin not enabled in config, skip:" << sid;
+                        continue;
+                    }
+                    const auto sp = host->createSubPlugin(sid, se->config);
+                    if (!sp.viewModel) {
+                        qWarning() << "[Plugin] host createSubPlugin failed:" << sid;
+                        continue;
+                    }
+                    LoadedPlugin lp;
+                    lp.id = sid;
+                    lp.position = sanitizePosition(se->position, sid);
+                    lp.order = se->order;
+                    lp.viewModel = sp.viewModel;
+                    lp.qmlUrl = QUrl::fromLocalFile(QDir(sp.dirPath).absoluteFilePath(sp.qmlFilePath));
+                    lp.iface = nullptr;   // 生命周期归 host，shutdownAll 由 host 统一 shutdown
+                    m_loaded.append(lp);
+                    m_loadedIds.insert(sid);
+                    qDebug() << "[Plugin] loaded:" << sid << "pos=" << lp.position
+                             << "qml=" << lp.qmlUrl.toLocalFile() << "(via host" << meta.id << ")";
+                }
+                continue;
             }
+
+            const QString pos = sanitizePosition(entry->position, meta.id);
 
             // qmlUrl：插件返回相对 DLL 目录的文件名，拼成绝对 file URL
             const QUrl rel = plugin->qmlUrl();
@@ -127,6 +172,11 @@ void PluginManager::shutdownAll() {
     for (const auto& lp : m_loaded) {
         if (lp.iface) lp.iface->shutdown();
     }
+    // host 最后 shutdown：其子插件 VM 依赖 host 持有的运行时（如 CPython 解释器）
+    for (auto* h : m_hosts) {
+        h->shutdown();
+    }
+    m_hosts.clear();
     for (auto* loader : m_loaders) {
         loader->unload();
         delete loader;

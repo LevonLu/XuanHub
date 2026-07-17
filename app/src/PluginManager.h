@@ -41,6 +41,9 @@ private:
     QString m_configDir;
     QVector<LoadedPlugin> m_loaded;
     QVector<QPluginLoader*> m_loaders;
+    // host 插件（IBarPluginHost，如 pybridge）：shutdownAll 时最后 shutdown，
+    // 其子插件 VM 依赖 host 持有的运行时（如 CPython 解释器）
+    QVector<xuanhub::IBarPlugin*> m_hosts;
     QSet<QString> m_loadedIds;   // 按 metadata.id 去重
     bool m_shut = false;
 };
