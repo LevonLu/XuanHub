@@ -20,6 +20,8 @@ BarWindow::BarWindow(ConfigService* config, PluginListModel* model,
     setFlag(Qt::FramelessWindowHint);
     setFlag(Qt::WindowStaysOnTopHint);
     setFlag(Qt::Tool);  // 不进任务栏 / Alt+Tab
+    // 点击 bar 不抢占当前应用焦点（WS_EX_NOACTIVATE 语义，鼠标事件照常投递）
+    setFlag(Qt::WindowDoesNotAcceptFocus);
 
     setResizeMode(QQuickView::SizeRootObjectToView);
     setColor(QColor(0, 0, 0, 0));  // 透明，让 QML 自绘底色

@@ -23,15 +23,25 @@ void EventBus::unsubscribe(const QString& topic, QObject* receiver) {
 void EventBus::publish(const QString& topic, const QVariantMap& payload) {
     auto it = m_subs.find(topic);
     if (it != m_subs.end()) {
-        it->removeIf([](const Sub& s) { return !s.receiver; });
-        for (const auto& sub : *it) {
+        // 快照后再投递：订阅者槽函数是同步执行的，其间可能
+        // subscribe/unsubscribe/publish，直接迭代会因 QHash rehash
+        // 或 QVector 变更导致迭代器失效（与 Qt 信号发射的快照语义一致：
+        // 本次发射期间新增的订阅者不接收本次事件）
+        const QVector<Sub> snapshot = it.value();
+        for (const auto& sub : snapshot) {
+            if (!sub.receiver) continue;   // 快照后接收者可能已被销毁
             QMetaObject::invokeMethod(
                 sub.receiver.data(),
                 sub.member.constData(),
                 Qt::AutoConnection,
                 Q_ARG(QVariantMap, payload));
         }
-        if (it->isEmpty()) m_subs.erase(it);
+        // 迭代外顺手清理悬空订阅（重新 find，哈希可能已 rehash）
+        it = m_subs.find(topic);
+        if (it != m_subs.end()) {
+            it->removeIf([](const Sub& s) { return !s.receiver; });
+            if (it->isEmpty()) m_subs.erase(it);
+        }
     }
     emit dispatched(topic, payload);
 }

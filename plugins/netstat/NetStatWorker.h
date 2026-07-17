@@ -3,6 +3,7 @@
 #pragma once
 #include <QObject>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <cstdint>
 
 class NetStatWorker : public QObject {
@@ -21,6 +22,7 @@ private:
     void tick();
 
     QTimer* m_timer = nullptr;
+    QElapsedTimer m_elapsed;   // 真实间隔计时（速率按秒归一用）
     quint64 m_lastIn = 0;
     quint64 m_lastOut = 0;
     bool m_first = true;

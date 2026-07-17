@@ -14,15 +14,14 @@ Item {
         source: model.qmlUrl
 
         onLoaded: {
-            if (slot.item) {
+            if (slot.item)
                 slot.item.plugin = model.viewModel
-                wrapper.width = slot.item.width
-            }
+            // 注意：不要在这里给 wrapper.width 赋值——命令式赋值会销毁
+            // 上面的声明式绑定，item 宽度后续变化将无法跟踪
         }
         onStatusChanged: {
             if (status === Loader.Error)
-                console.warn("[PluginSlot] load failed:", source,
-                              "itemError=" + (status === Loader.Error ? slot.itemErrorString : ""))
+                console.warn("[PluginSlot] load failed:", source)
         }
     }
 }
