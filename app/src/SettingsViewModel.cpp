@@ -6,6 +6,7 @@
 #include "ThemeRegistry.h"
 
 #include <QDebug>
+#include <QDir>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QSet>
@@ -68,7 +69,9 @@ void SettingsViewModel::setAutoStart(bool v) {
 }
 
 void SettingsViewModel::reloadThemePacks() {
-    // 重扫后 QML 侧经 NOTIFY themePacksReloaded 重新读取 names/ids
+    // 真正扫盘（用户可能新装/卸载了主题包），再发 NOTIFY 让 QML 重新读取 names/ids
+    if (m_registry)
+        m_registry->reload(QDir(m_exeDir).absoluteFilePath(QStringLiteral("themes")));
     emit themePacksReloaded();
 }
 

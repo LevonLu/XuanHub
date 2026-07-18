@@ -48,7 +48,7 @@ themes/
 | `border` | 边框 | 分隔线、弱边框 |
 | `onAccent` | accent 背景上的文字色 | 今日白/黑字（取决于 accent 明度） |
 
-字段值必须是合法 CSS 颜色字符串（`#RRGGBB` / `#RGB` / `#RRGGBBAA`）。不支持 `rgb()`/命名色。
+字段值必须是 QColor 可解析的颜色字符串（`#RGB` / `#RRGGBB` / `#RRGGBBAA` 等 hex 形态、SVG 命名色），不支持 `rgb()` 函数式。非法色值视为该字段**缺失**（日志记 `[Theme] ... invalid color value ... -> treated as missing`）：必填字段非法 → 整包拒载；其余字段非法 → 走内置默认主题 fallback。
 
 ## 4. QML 如何取色
 
@@ -75,3 +75,4 @@ color: themeManager ? themeManager.colors.accent : "#89b4fa"
 - 日志：`%APPDATA%/XuanHub/xuanhub.log`，`[Theme]` 前缀记录加载/切换/fallback。
 - 改 `theme.json` 保存后，触发任意一次配置热重载（如改 config.json 或托盘 "Reload Config"）即重新扫描 `themes/`——新装的主题包立刻出现在设置窗口。
 - 主题包加载失败不会影响其他主题包，也不会让程序崩溃（回落到内置默认）。
+- 维护提醒：默认色板在代码内有多处硬编码兜底（`ThemeRegistry` 内置默认、`TrayIcon` 取色兜底、各 QML 防御默认值），调整 `xuanhub-default` 配色时需同步检查这些位置。

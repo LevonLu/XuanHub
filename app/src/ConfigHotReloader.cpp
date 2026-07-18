@@ -56,6 +56,9 @@ void ConfigHotReloader::reload() {
     if (m_theme->themeId() != m_config->themeId()
         || m_theme->mode() != m_config->theme()) {
         m_theme->applyTheme(m_config->themeId(), m_config->theme());
+    } else {
+        // id/mode 没变也可能只改了当前主题包的 theme.json（registry 刚重扫）→ 重解析色板
+        m_theme->refresh();
     }
 
     // 高度/边缘：重新协商 AppBar 并定位窗口（幂等；值没变也无副作用）

@@ -38,9 +38,10 @@ Item {
         visible: slot.status === Loader.Error
         width: badgeText.implicitWidth + 12
         height: wrapper.height
+        // colors 里的值是字符串：先经 color 属性隐式转换再拆通道（字符串无 .r/.g/.b）
+        property color dangerColor: themeManager.colors.danger
         // danger 配 25% alpha 当底色（淡红告警感，不打扰）
-        color: Qt.rgba(themeManager.colors.danger.r, themeManager.colors.danger.g,
-                       themeManager.colors.danger.b, 0.25)
+        color: Qt.rgba(dangerColor.r, dangerColor.g, dangerColor.b, 0.25)
         radius: 4
 
         Text {

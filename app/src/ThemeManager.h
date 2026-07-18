@@ -15,8 +15,6 @@ class ThemeManager : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString themeId READ themeId NOTIFY themeChanged)
     Q_PROPERTY(QString mode READ mode NOTIFY themeChanged)
-    // currentTheme 兼容旧 QML（等同 mode），过渡期保留
-    Q_PROPERTY(QString currentTheme READ mode NOTIFY themeChanged)
     Q_PROPERTY(QVariantMap colors READ colors NOTIFY themeChanged)
 
 public:
@@ -32,8 +30,9 @@ public:
     Q_INVOKABLE void switchMode(const QString& mode);
     // 同时切主题包 + 模式（热重载/设置窗口用）
     Q_INVOKABLE void applyTheme(const QString& themeId, const QString& mode);
-    // 兼容别名：等价 switchMode（旧调用点 TrayIcon 用）
-    Q_INVOKABLE void switchTheme(const QString& mode);
+    // registry 重扫后重解析当前色板（themeId/mode 未变但主题包内容可能改了）；
+    // 色板无变化则静默返回
+    void refresh();
 
 signals:
     void themeChanged();

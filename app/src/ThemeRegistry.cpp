@@ -1,6 +1,7 @@
 // ThemeRegistry.cpp
 #include "ThemeRegistry.h"
 
+#include <QColor>
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
@@ -21,18 +22,27 @@ const QStringList kRequiredFields = {
     QStringLiteral("bg"), QStringLiteral("fg"), QStringLiteral("accent")
 };
 
-// 解析单个模式（"dark"/"light"）的色板对象。返回是否通过必填校验。
-bool parseMode(const QJsonObject& modeObj, const QString& modeName,
+// 解析单个模式（"dark"/"light"）的色板对象。
+// 色值必须是 QColor 可解析的字符串，否则视为缺失（记告警）；
+// 必填字段缺失/非法追加进 missingRequired（调用方据此拒载整包）。
+void parseMode(const QJsonObject& modeObj, const QString& modeName,
+               const QString& jsonPath,
                QVariantMap* out, QStringList* missingRequired) {
     QVariantMap m;
     for (const QString& f : kColorFields) {
-        if (modeObj.contains(f)) m.insert(f, modeObj.value(f).toVariant());
+        if (!modeObj.contains(f)) continue;
+        const QJsonValue v = modeObj.value(f);
+        if (!v.isString() || !QColor::isValidColorName(v.toString())) {
+            qWarning() << "[Theme]" << jsonPath << "invalid color value:"
+                       << modeName + "." + f << "-> treated as missing";
+            continue;
+        }
+        m.insert(f, v.toVariant());
     }
     *out = m;
     for (const QString& req : kRequiredFields) {
         if (!m.contains(req)) missingRequired->append(modeName + "." + req);
     }
-    return missingRequired->isEmpty();
 }
 } // namespace
 
@@ -107,8 +117,10 @@ void ThemeRegistry::reload(const QString& themesDir) {
         }
         // 校验 dark/light 必填字段
         QStringList missing;
-        parseMode(root.value(QStringLiteral("dark")).toObject(),  QStringLiteral("dark"),  &pack.dark,  &missing);
-        parseMode(root.value(QStringLiteral("light")).toObject(), QStringLiteral("light"), &pack.light, &missing);
+        parseMode(root.value(QStringLiteral("dark")).toObject(),  QStringLiteral("dark"),
+                  jsonPath, &pack.dark,  &missing);
+        parseMode(root.value(QStringLiteral("light")).toObject(), QStringLiteral("light"),
+                  jsonPath, &pack.light, &missing);
         if (!missing.isEmpty()) {
             qWarning() << "[Theme]" << jsonPath << "missing required fields:" << missing
                        << "-> skip";

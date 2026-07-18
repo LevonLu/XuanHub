@@ -51,10 +51,6 @@ void ThemeManager::switchMode(const QString& mode) {
     applyTheme(m_themeId, mode);
 }
 
-void ThemeManager::switchTheme(const QString& mode) {
-    switchMode(mode);
-}
-
 void ThemeManager::applyTheme(const QString& themeId, const QString& mode) {
     const QString normMode = (mode == QStringLiteral("light")) ? QStringLiteral("light")
                                                                 : QStringLiteral("dark");
@@ -63,6 +59,19 @@ void ThemeManager::applyTheme(const QString& themeId, const QString& mode) {
     m_mode = normMode;
     m_colors = resolveColors(m_themeId, m_mode);
     qDebug() << "[Theme] applied" << m_themeId << m_mode;
+    emit themeChanged();
+    if (m_bus) m_bus->publish(QStringLiteral("theme.changed"),
+                              {{QStringLiteral("themeId"), m_themeId},
+                               {QStringLiteral("mode"),    m_mode}});
+}
+
+void ThemeManager::refresh() {
+    // 主题包内容（而非 themeId/mode）可能已变化：重新解析色板，
+    // 有变化才通知（QML 绑定刷新 + EventBus），避免无谓刷新
+    const QVariantMap c = resolveColors(m_themeId, m_mode);
+    if (c == m_colors) return;
+    m_colors = c;
+    qDebug() << "[Theme] refreshed" << m_themeId << m_mode;
     emit themeChanged();
     if (m_bus) m_bus->publish(QStringLiteral("theme.changed"),
                               {{QStringLiteral("themeId"), m_themeId},
