@@ -2,7 +2,7 @@
   "bar": { "height": 40, "edge": "top", "monitor": "primary", "opacity": 1.0, "themeId": "xuanhub-default", "theme": "dark" },
   "plugins": [
     { "id": "launcher", "position": "left",  "order": 0, "config": { "items": [{"name":"Terminal","program":"wt.exe"},{"name":"Notepad","program":"notepad.exe"}] } },
-    { "id": "netstat",  "position": "right", "order": 0, "config": { "intervalMs": 1000 } },
+    { "id": "netstat",  "position": "right", "order": 0, "config": { "intervalMs": 1000, "downPrefix": "↓ ", "upPrefix": "↑ ", "downColor": "", "upColor": "" } },
     { "id": "clock",    "position": "right", "order": 1, "config": { "format": "HH:mm:ss" } },
     { "id": "pybridge", "position": "right", "order": 9, "config": {} },
     { "id": "py_hello", "position": "right", "order": 2, "config": { "intervalMs": 1000, "prefix": "Py" } }

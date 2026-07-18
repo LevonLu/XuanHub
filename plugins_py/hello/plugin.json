@@ -2,5 +2,12 @@
     "id": "py_hello",
     "name": "PyHello",
     "version": "0.1.0",
-    "author": "XuanHub"
+    "author": "XuanHub",
+    "settings": [
+        { "group": "通用", "fields": [
+            { "key": "intervalMs", "type": "int", "label": "刷新间隔 (ms)",
+              "default": 1000, "min": 100, "max": 60000, "step": 100 },
+            { "key": "prefix", "type": "string", "label": "前缀", "default": "Py" }
+        ]}
+    ]
 }

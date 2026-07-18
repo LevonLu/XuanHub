@@ -1,8 +1,13 @@
 // NetStatViewModel.cpp
 #include "NetStatViewModel.h"
 
-NetStatViewModel::NetStatViewModel(QObject* parent)
-    : QObject(parent), m_upRate(QStringLiteral("---")), m_downRate(QStringLiteral("---")) {}
+NetStatViewModel::NetStatViewModel(const QString& downPrefix, const QString& upPrefix,
+                                   const QString& downColor, const QString& upColor,
+                                   QObject* parent)
+    : QObject(parent),
+      m_downPrefix(downPrefix), m_upPrefix(upPrefix),
+      m_downColor(downColor), m_upColor(upColor),
+      m_upRate(QStringLiteral("---")), m_downRate(QStringLiteral("---")) {}
 
 void NetStatViewModel::onRatesChanged(quint64 upBps, quint64 downBps) {
     const QString u = formatRate(upBps);

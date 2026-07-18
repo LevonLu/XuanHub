@@ -35,6 +35,40 @@ plugins_py/
 
 - 另需保留 `{ "id": "pybridge", ... }` 条目作为总开关；删掉它则所有 Python 子插件都不加载。
 
+### 设置项声明（settings / settingsQml，M10）
+
+`plugin.json` 还可声明该插件在设置窗口里的设置区（均可选，C++ 插件的
+`metadata.json` 契约相同）：
+
+```json
+{
+    "id": "py_hello",
+    "name": "PyHello",
+    "settings": [
+        { "group": "通用", "fields": [
+            { "key": "intervalMs", "type": "int", "label": "刷新间隔 (ms)",
+              "default": 1000, "min": 100, "max": 60000, "step": 100 },
+            { "key": "prefix", "type": "string", "label": "前缀", "default": "Py" }
+        ]}
+    ]
+}
+```
+
+- `settings`：分组 → 字段两级，设置窗口渲染为可折叠树。字段属性：`key`（config 段
+  键名，必填）、`type`（必填，见下）、`label`（显示名，缺省=key）、`default`（config
+  无此键时的初值）、`description`（控件旁小字提示）。
+- 类型 → 控件：`bool`→CheckBox；`int`→SpinBox（`min`/`max`/`step`）；`double`→
+  TextField+校验（`min`/`max`）；`string`→TextField（`placeholder`）；`color`→
+  TextField+色块预览（**空串 = 插件内默认**，非空须 QColor 可解析）；`enum`→ComboBox
+  （`options` 字符串数组，必填）；`json`→多行编辑器（复杂结构兜底，保存前 JSON 校验）。
+- 编辑结果写入 config.json 的本插件 config 段（即 `init(config)` 收到的 dict），
+  保存后热重载生效；schema 未声明的 config 键保存时原样保留。
+- `settingsQml`：声明自绘设置页（如 `"settingsQml": "Settings.qml"`，相对本目录），
+  适合列表/表格等复杂设置；与 `settings` 并存时**自绘优先**。页面契约：根 `Item`
+  声明 `property var plugin`——但注入的是 **config 草稿桥**（不是运行中的代理 VM）：
+  `plugin.value(key)` 读草稿、`plugin.setValue(key, v)` 写草稿（值须可 JSON 序列化）。
+  自绘页只碰草稿，应用/保存/取消由设置窗口统一，热重载后才真正生效。
+
 ## main.py 模块级约定
 
 ```python

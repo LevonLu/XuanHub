@@ -25,6 +25,12 @@ qt_add_executable(XuanHub WIN32
     src/SettingsPluginModel.h
     src/SettingsPluginModel.cpp
 
+    src/SettingsPluginSortModel.h
+    src/SettingsPluginSortModel.cpp
+
+    src/SettingsPluginProxy.h
+    src/SettingsPluginProxy.cpp
+
     src/SettingsController.h
     src/SettingsController.cpp
 
@@ -67,6 +73,7 @@ target_link_libraries(XuanHub PRIVATE
     Qt6::QuickControls2   # 设置窗口（M8）的表单控件
     Qt6::Gui
     Qt6::Widgets
+    Qt6::Test             # --uitest 调试钩子用 QTest 注入鼠标/键盘（devUiEvent）
     barplugin            # 插件接口库
     shell32              # SHAppBarMessage
     user32               # SetWindowPos / 工作区

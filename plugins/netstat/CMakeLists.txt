@@ -5,7 +5,7 @@ add_library(netstat MODULE
     NetStatViewModel.h NetStatViewModel.cpp
 )
 set_target_properties(netstat PROPERTIES AUTOMOC ON)
-target_link_libraries(netstat PRIVATE barplugin Qt6::Core iphlpapi ws2_32)
+target_link_libraries(netstat PRIVATE barplugin Qt6::Core Qt6::Gui iphlpapi ws2_32)
 target_include_directories(netstat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 set_target_properties(netstat PROPERTIES

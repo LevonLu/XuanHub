@@ -2,5 +2,11 @@
     "id": "clock",
     "name": "Clock",
     "version": "0.1.0",
-    "author": "XuanHub"
+    "author": "XuanHub",
+    "settings": [
+        { "group": "显示", "fields": [
+            { "key": "format", "type": "string", "label": "时间格式", "default": "HH:mm:ss",
+              "description": "Qt 时间格式串，如 HH:mm:ss、hh:mm AP" }
+        ]}
+    ]
 }

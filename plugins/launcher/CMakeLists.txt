@@ -23,4 +23,7 @@ add_custom_command(TARGET launcher POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/metadata.json"
         "${XUANHUB_BIN_DIR}/plugins/launcher/metadata.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/LauncherSettings.qml"
+        "${XUANHUB_BIN_DIR}/plugins/launcher/LauncherSettings.qml"
 )

@@ -3,6 +3,8 @@
 #include "AutoStart.h"
 #include "ConfigService.h"
 #include "SettingsPluginModel.h"
+#include "SettingsPluginProxy.h"
+#include "SettingsPluginSortModel.h"
 #include "ThemeRegistry.h"
 
 #include <QDebug>
@@ -14,9 +16,16 @@
 SettingsViewModel::SettingsViewModel(ConfigService* config, ThemeRegistry* registry,
                                      QString exeDir, QObject* parent)
     : QObject(parent), m_config(config), m_registry(registry), m_exeDir(std::move(exeDir)),
-      m_pluginModel(new SettingsPluginModel(this)) {}
+      m_pluginModel(new SettingsPluginModel(this)),
+      m_sortModel(new SettingsPluginSortModel(this)),
+      m_pluginProxy(new SettingsPluginProxy(m_pluginModel, this)) {
+    m_sortModel->setSourceModel(m_pluginModel);
+    m_sortModel->sort(0);   // sortColumn 置 0 启用排序；dynamicSortFilter 后续自动维持
+}
 
-QAbstractItemModel* SettingsViewModel::pluginModel() const { return m_pluginModel; }
+QAbstractItemModel* SettingsViewModel::pluginModel() const { return m_sortModel; }
+
+QObject* SettingsViewModel::pluginProxy() const { return m_pluginProxy; }
 
 QStringList SettingsViewModel::themePackNames() const {
     return m_registry ? m_registry->packNames() : QStringList{};

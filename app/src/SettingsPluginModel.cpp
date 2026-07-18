@@ -1,6 +1,7 @@
 // SettingsPluginModel.cpp
 #include "SettingsPluginModel.h"
 
+#include <QColor>
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
@@ -10,6 +11,54 @@ QJsonObject readJsonFile(const QString& path) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return {};
     return QJsonDocument::fromJson(f.readAll()).object();
+}
+
+// 导出时的 schema 字段校验（双保险；QML 控件是第一道）。失败原因写入 why。
+bool validateField(const QJsonObject& f, const QVariant& v, QString* why) {
+    const QString type = f.value(QStringLiteral("type")).toString();
+    if (type == QStringLiteral("int")) {
+        bool ok = false;
+        const int n = v.toInt(&ok);
+        const int lo = f.value(QStringLiteral("min")).toInt(INT_MIN);
+        const int hi = f.value(QStringLiteral("max")).toInt(INT_MAX);
+        if (!ok || n < lo || n > hi) {
+            *why = QStringLiteral("应为 %1-%2 的整数").arg(lo).arg(hi);
+            return false;
+        }
+    } else if (type == QStringLiteral("double")) {
+        bool ok = false;
+        const double d = v.toDouble(&ok);
+        const double lo = f.value(QStringLiteral("min")).toDouble(-1e300);
+        const double hi = f.value(QStringLiteral("max")).toDouble(1e300);
+        if (!ok || d < lo || d > hi) {
+            *why = QStringLiteral("应为 %1-%2 的数字").arg(lo).arg(hi);
+            return false;
+        }
+    } else if (type == QStringLiteral("bool")) {
+        if (v.metaType().id() != QMetaType::Bool) {
+            *why = QStringLiteral("应为布尔值");
+            return false;
+        }
+    } else if (type == QStringLiteral("color")) {
+        const QString s = v.toString();
+        if (!s.isEmpty() && !QColor::isValidColorName(s)) {   // 空串合法（= 插件内默认）
+            *why = QStringLiteral("不是合法颜色");
+            return false;
+        }
+    } else if (type == QStringLiteral("enum")) {
+        const QString s = v.toString();
+        const auto opts = f.value(QStringLiteral("options")).toArray();
+        bool found = false;
+        for (const auto& o : opts) {
+            if (o.toString() == s) { found = true; break; }
+        }
+        if (!found) {
+            *why = QStringLiteral("不在可选值内");
+            return false;
+        }
+    }
+    // string/json：任意结构化值皆可
+    return true;
 }
 } // namespace
 
@@ -32,7 +81,10 @@ QVariant SettingsPluginModel::data(const QModelIndex& index, int role) const {
         case EnabledRole:    return r.enabled;
         case PositionRole:   return r.position;
         case OrderRole:      return r.order;
-        case ConfigJsonRole: return r.configJson;
+        case ConfigRole:     return r.config;
+        case SchemaRole:     return r.schema.toVariantList();
+        case SettingsQmlRole:
+            return r.settingsQml.isEmpty() ? QVariant() : QVariant(r.settingsQml);
         case DiscoveredRole: return r.discovered;
     }
     return {};
@@ -46,7 +98,14 @@ bool SettingsPluginModel::setData(const QModelIndex& index, const QVariant& valu
         case EnabledRole:    r.enabled = value.toBool(); break;
         case PositionRole:   r.position = value.toString(); break;
         case OrderRole:      r.order = value.toInt(); break;
-        case ConfigJsonRole: r.configJson = value.toString(); break;
+        case SetConfigValueRole: {
+            // value 形如 {key: "...", value: ...}，写 config 草稿单字段
+            const QVariantMap m = value.toMap();
+            r.config.insert(m.value(QStringLiteral("key")).toString(),
+                            m.value(QStringLiteral("value")));
+            emit dataChanged(index, index, {ConfigRole});
+            return true;
+        }
         default: return false;
     }
     emit dataChanged(index, index, {role});
@@ -60,11 +119,14 @@ Qt::ItemFlags SettingsPluginModel::flags(const QModelIndex& index) const {
 
 QHash<int, QByteArray> SettingsPluginModel::roleNames() const {
     return {
-        { IdRole, "id" },               { NameRole, "name" },
-        { VersionRole, "version" },     { AuthorRole, "author" },
-        { KindRole, "kind" },           { EnabledRole, "enabled" },
-        { PositionRole, "position" },   { OrderRole, "order" },
-        { ConfigJsonRole, "configJson" }, { DiscoveredRole, "discovered" },
+        { IdRole, "id" },                 { NameRole, "name" },
+        { VersionRole, "version" },       { AuthorRole, "author" },
+        { KindRole, "kind" },             { EnabledRole, "enabled" },
+        { PositionRole, "position" },     { OrderRole, "order" },
+        { ConfigRole, "config" },         { SchemaRole, "schema" },
+        { SettingsQmlRole, "settingsQml" },
+        { SetConfigValueRole, "setConfigValue" },
+        { DiscoveredRole, "discovered" },
     };
 }
 
@@ -80,8 +142,7 @@ void SettingsPluginModel::reload(const QList<PluginConfigEntry>& entries, const 
         r.enabled = true;
         r.position = e.position.isEmpty() ? QStringLiteral("right") : e.position;
         r.order = e.order;
-        r.configJson = QString::fromUtf8(
-            QJsonDocument(QJsonObject::fromVariantMap(e.config)).toJson(QJsonDocument::Compact));
+        r.config = e.config;   // 结构化草稿直接入行（未知键随之保留）
         // kind 先按 id 前缀猜，磁盘发现命中后会被纠正
         r.kind = e.id.startsWith(QStringLiteral("py_")) ? QStringLiteral("python")
                                                         : QStringLiteral("dll");
@@ -92,18 +153,27 @@ void SettingsPluginModel::reload(const QList<PluginConfigEntry>& entries, const 
     const QDir dllDir(QDir(exeDir).absoluteFilePath(QStringLiteral("plugins")));
     for (const QString& sub : dllDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot))
         mergeDiscovered(readJsonFile(dllDir.filePath(sub + QStringLiteral("/metadata.json"))),
-                        QStringLiteral("dll"));
+                        QStringLiteral("dll"), dllDir.absoluteFilePath(sub));
     const QDir pyDir(QDir(exeDir).absoluteFilePath(QStringLiteral("plugins_py")));
     for (const QString& sub : pyDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot))
         mergeDiscovered(readJsonFile(pyDir.filePath(sub + QStringLiteral("/plugin.json"))),
-                        QStringLiteral("python"));
+                        QStringLiteral("python"), pyDir.absoluteFilePath(sub));
 
     endResetModel();
 }
 
-void SettingsPluginModel::mergeDiscovered(const QJsonObject& meta, const QString& kind) {
+void SettingsPluginModel::mergeDiscovered(const QJsonObject& meta, const QString& kind,
+                                          const QString& dir) {
     const QString id = meta.value(QStringLiteral("id")).toString();
     if (id.isEmpty() || id == QStringLiteral("pybridge")) return;
+
+    // sidecar 声明的设置 schema 与自绘设置页（均可空）
+    const QJsonArray schema = meta.value(QStringLiteral("settings")).toArray();
+    QUrl settingsQml;
+    const QString rel = meta.value(QStringLiteral("settingsQml")).toString();
+    if (!rel.isEmpty())
+        settingsQml = QUrl::fromLocalFile(QDir(dir).absoluteFilePath(rel));
+
     for (auto& r : m_rows) {
         if (r.id == id) {   // config 已有：回填元数据，标记磁盘存在
             r.discovered = true;
@@ -111,6 +181,8 @@ void SettingsPluginModel::mergeDiscovered(const QJsonObject& meta, const QString
             r.name = meta.value(QStringLiteral("name")).toString();
             r.version = meta.value(QStringLiteral("version")).toString();
             r.author = meta.value(QStringLiteral("author")).toString();
+            r.schema = schema;
+            r.settingsQml = settingsQml;
             return;
         }
     }
@@ -121,7 +193,28 @@ void SettingsPluginModel::mergeDiscovered(const QJsonObject& meta, const QString
     r.name = meta.value(QStringLiteral("name")).toString();
     r.version = meta.value(QStringLiteral("version")).toString();
     r.author = meta.value(QStringLiteral("author")).toString();
+    r.schema = schema;
+    r.settingsQml = settingsQml;
     m_rows.append(r);
+}
+
+QVariant SettingsPluginModel::configValue(const QString& id, const QString& key) const {
+    for (const auto& r : m_rows) {
+        if (r.id == id) return r.config.value(key);
+    }
+    return {};
+}
+
+bool SettingsPluginModel::setConfigValue(const QString& id, const QString& key,
+                                         const QVariant& value) {
+    for (int i = 0; i < m_rows.size(); ++i) {
+        if (m_rows[i].id != id) continue;
+        m_rows[i].config.insert(key, value);
+        const QModelIndex mi = index(i);
+        emit dataChanged(mi, mi, {ConfigRole});
+        return true;
+    }
+    return false;
 }
 
 bool SettingsPluginModel::toPluginEntriesJson(QJsonArray* out, QString* err) const {
@@ -138,18 +231,27 @@ bool SettingsPluginModel::toPluginEntriesJson(QJsonArray* out, QString* err) con
             *err = r.id + QStringLiteral("：order 不能为负");
             return false;
         }
-        QJsonParseError perr{};
-        const auto doc = QJsonDocument::fromJson(r.configJson.toUtf8(), &perr);
-        if (perr.error != QJsonParseError::NoError || !doc.isObject()) {
-            *err = r.id + QStringLiteral("：config 不是合法 JSON 对象（")
-                   + perr.errorString() + QStringLiteral("）");
-            return false;
+        // schema 声明字段的导出校验（双保险；QML 控件是第一道）
+        for (const auto& gv : r.schema) {
+            const auto fields = gv.toObject().value(QStringLiteral("fields")).toArray();
+            for (const auto& fv : fields) {
+                const auto f = fv.toObject();
+                const QString key = f.value(QStringLiteral("key")).toString();
+                if (key.isEmpty() || !r.config.contains(key)) continue;
+                QString why;
+                if (!validateField(f, r.config.value(key), &why)) {
+                    *err = r.id + QStringLiteral("：")
+                           + f.value(QStringLiteral("label")).toString(key)
+                           + QStringLiteral(" ") + why;
+                    return false;
+                }
+            }
         }
         QJsonObject o;
         o[QStringLiteral("id")] = r.id;
         o[QStringLiteral("position")] = r.position;
         o[QStringLiteral("order")] = r.order;
-        o[QStringLiteral("config")] = doc.object();
+        o[QStringLiteral("config")] = QJsonObject::fromVariantMap(r.config);
         arr.append(o);
         if (r.kind == QStringLiteral("python")) anyPython = true;
     }

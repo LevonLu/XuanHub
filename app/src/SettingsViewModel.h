@@ -2,6 +2,8 @@
 // 属性 = 编辑中的草稿；apply() 校验后经 ConfigService::save 写回 config.json，
 // 生效由 M7 ConfigHotReloader 的文件监听自动完成（本类不直接触发 reload，
 // 避免与 watcher 双重重载）。
+// M10：pluginModel 改为排序 proxy（启用在前）；pluginProxy 为插件自绘设置页
+//（settingsQml）的 config 草稿桥，QML 选中变化时重定向其 pluginId。
 #pragma once
 #include <QObject>
 #include <QString>
@@ -11,6 +13,8 @@ class QAbstractItemModel;
 class ConfigService;
 class ThemeRegistry;
 class SettingsPluginModel;
+class SettingsPluginSortModel;
+class SettingsPluginProxy;
 
 class SettingsViewModel : public QObject {
     Q_OBJECT
@@ -23,6 +27,7 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(QStringList themePackIds READ themePackIds NOTIFY themePacksReloaded)
     Q_PROPERTY(bool autoStart READ autoStart WRITE setAutoStart NOTIFY autoStartChanged)
     Q_PROPERTY(QAbstractItemModel* pluginModel READ pluginModel CONSTANT)
+    Q_PROPERTY(QObject* pluginProxy READ pluginProxy CONSTANT)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
 
 public:
@@ -37,7 +42,8 @@ public:
     QStringList themePackNames() const;                // 已安装主题包显示名（下拉用）
     QStringList themePackIds() const;                  // 与 names 同序的 id（保存映射用）
     bool autoStart() const { return m_autoStart; }
-    QAbstractItemModel* pluginModel() const;   // 实现在 .cpp（头里 SettingsPluginModel 是不完整类型）
+    QAbstractItemModel* pluginModel() const;   // 实现在 .cpp（头里模型是不完整类型）
+    QObject* pluginProxy() const;              // 同上，实现在 .cpp
     QString errorMessage() const { return m_errorMessage; }
 
     void setBarHeight(int v);
@@ -72,10 +78,12 @@ private:
     ThemeRegistry* m_registry;
     QString m_exeDir;
     SettingsPluginModel* m_pluginModel;
+    SettingsPluginSortModel* m_sortModel;      // 排序 proxy（QML 拿到的是它）
+    SettingsPluginProxy* m_pluginProxy;        // 自绘设置页的 config 草稿桥
     int m_barHeight = 40;
     int m_barOpacity = 100;                              // 0-100 百分比（100=不透明）
     QString m_barEdge = QStringLiteral("top");
-    QString m_theme = QStringLiteral("dark");          // 模式
+    QString m_theme = QStringLiteral("dark");            // 模式
     QString m_themeId = QStringLiteral("xuanhub-default"); // 主题包 id
     bool m_autoStart = false;
     QString m_errorMessage;

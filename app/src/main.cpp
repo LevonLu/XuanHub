@@ -140,6 +140,10 @@ int main(int argc, char* argv[]) {
     QObject::connect(&tray, &TrayIcon::settingsRequested,
                      &settingsCtl, &SettingsController::open);
 
+    // 调试入口：--settings 启动即打开设置窗口（开发/验收用，免去托盘点击）
+    if (QCoreApplication::arguments().contains(QStringLiteral("--settings")))
+        settingsCtl.open();
+
     auto* monitor = new TaskbarMonitor(&tray);
     QAbstractEventDispatcher::instance()->installNativeEventFilter(monitor);
 
