@@ -51,12 +51,19 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
     // M7 热重载：先留旧值，加载完成后仅对变化项 emit 对应 NOTIFY
     const int oldHeight = m_barHeight;
     const QString oldEdge = m_barEdge;
+    const qreal oldOpacity = m_barOpacity;
     const QString oldTheme = m_theme;
     const QString oldThemeId = m_themeId;
 
     const auto bar = root.value("bar").toObject();
     if (bar.contains("height")) m_barHeight = bar.value("height").toInt(m_barHeight);
     if (bar.contains("edge"))   m_barEdge   = bar.value("edge").toString(m_barEdge);
+    // opacity：0.0-1.0，越界/非法回落 1.0（不透明）。下限 0.2 防用户调成看不见
+    if (bar.contains("opacity")) {
+        const qreal op = bar.value("opacity").toDouble(m_barOpacity);
+        if (op >= 0.2 && op <= 1.0) m_barOpacity = op;
+        else qWarning() << "[Config] invalid opacity:" << op << "-> keep" << m_barOpacity;
+    }
     // theme：语义是模式（dark/light）。兼容旧值：非 dark/light 告警回落 dark
     if (bar.contains("theme")) {
         const QString t = bar.value("theme").toString(m_theme);
@@ -88,11 +95,13 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
 
     qDebug() << "[Config] loaded" << path
              << "| height=" << m_barHeight << "edge=" << m_barEdge
+             << "opacity=" << m_barOpacity
              << "themeId=" << m_themeId << "mode=" << m_theme
              << "| plugins=" << m_pluginEntries.size();
 
     if (m_barHeight != oldHeight) emit barHeightChanged();
     if (m_barEdge != oldEdge) emit barEdgeChanged();
+    if (m_barOpacity != oldOpacity) emit barOpacityChanged();
     if (m_theme != oldTheme) emit themeChanged();
     if (m_themeId != oldThemeId) emit themeIdChanged();
     return true;

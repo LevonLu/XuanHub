@@ -20,6 +20,7 @@ class ConfigService : public QObject {
     Q_OBJECT
     Q_PROPERTY(int barHeight READ barHeight NOTIFY barHeightChanged)
     Q_PROPERTY(QString barEdge READ barEdge NOTIFY barEdgeChanged)
+    Q_PROPERTY(qreal barOpacity READ barOpacity NOTIFY barOpacityChanged)
     Q_PROPERTY(QString theme READ theme NOTIFY themeChanged)
     Q_PROPERTY(QString themeId READ themeId NOTIFY themeIdChanged)
 
@@ -33,6 +34,7 @@ public:
 
     int barHeight() const { return m_barHeight; }      // 逻辑像素
     QString barEdge() const { return m_barEdge; }      // "top"/"bottom"
+    qreal barOpacity() const { return m_barOpacity; }  // 0.0-1.0，1.0=不透明
     QString theme() const { return m_theme; }          // 主题模式 "dark"/"light"
     QString themeId() const { return m_themeId; }      // 主题包 id（如 "xuanhub-default"）
     const QList<PluginConfigEntry>& pluginEntries() const { return m_pluginEntries; }
@@ -48,12 +50,14 @@ public:
 signals:
     void barHeightChanged();
     void barEdgeChanged();
+    void barOpacityChanged();
     void themeChanged();
     void themeIdChanged();
 
 private:
     int m_barHeight = 40;
     QString m_barEdge = QStringLiteral("top");
+    qreal m_barOpacity = 1.0;                              // 0.0-1.0，1.0=不透明
     QString m_theme = QStringLiteral("dark");              // 主题模式（dark/light）
     QString m_themeId = QStringLiteral("xuanhub-default"); // 主题包 id
     QList<PluginConfigEntry> m_pluginEntries;

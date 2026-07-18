@@ -35,6 +35,14 @@ void SettingsViewModel::setBarHeight(int v) {
     emit barHeightChanged();
 }
 
+void SettingsViewModel::setBarOpacity(int v) {
+    // 钳制到 20-100（下限 20 防 bar 完全看不见）
+    v = qBound(20, v, 100);
+    if (m_barOpacity == v) return;
+    m_barOpacity = v;
+    emit barOpacityChanged();
+}
+
 void SettingsViewModel::setBarEdge(const QString& v) {
     if (m_barEdge == v) return;
     m_barEdge = v;
@@ -66,6 +74,8 @@ void SettingsViewModel::reloadThemePacks() {
 
 void SettingsViewModel::reloadFromConfig() {
     setBarHeight(m_config->barHeight());
+    // config 存 0.0-1.0 qreal，UI 用 0-100 int（四舍五入）
+    setBarOpacity(qRound(m_config->barOpacity() * 100));
     setBarEdge(m_config->barEdge());
     setTheme(m_config->theme());
     setThemeId(m_config->themeId());
@@ -104,6 +114,7 @@ bool SettingsViewModel::apply() {
     QJsonObject bar = root.value(QStringLiteral("bar")).toObject();
     bar[QStringLiteral("height")] = m_barHeight;
     bar[QStringLiteral("edge")] = m_barEdge;
+    bar[QStringLiteral("opacity")] = m_barOpacity / 100.0;   // int 0-100 → qreal 0.0-1.0
     bar[QStringLiteral("theme")] = m_theme;          // 模式 dark/light
     bar[QStringLiteral("themeId")] = m_themeId;      // 主题包 id
     root[QStringLiteral("bar")] = bar;

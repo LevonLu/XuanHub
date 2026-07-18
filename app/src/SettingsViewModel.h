@@ -15,6 +15,7 @@ class SettingsPluginModel;
 class SettingsViewModel : public QObject {
     Q_OBJECT
     Q_PROPERTY(int barHeight READ barHeight WRITE setBarHeight NOTIFY barHeightChanged)
+    Q_PROPERTY(int barOpacity READ barOpacity WRITE setBarOpacity NOTIFY barOpacityChanged)
     Q_PROPERTY(QString barEdge READ barEdge WRITE setBarEdge NOTIFY barEdgeChanged)
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
     Q_PROPERTY(QString themeId READ themeId WRITE setThemeId NOTIFY themeIdChanged)
@@ -29,6 +30,7 @@ public:
                       QString exeDir, QObject* parent = nullptr);
 
     int barHeight() const { return m_barHeight; }
+    int barOpacity() const { return m_barOpacity; }    // 0-100 百分比（QML SpinBox 友好）
     QString barEdge() const { return m_barEdge; }
     QString theme() const { return m_theme; }          // 模式 dark/light
     QString themeId() const { return m_themeId; }      // 主题包 id
@@ -39,6 +41,7 @@ public:
     QString errorMessage() const { return m_errorMessage; }
 
     void setBarHeight(int v);
+    void setBarOpacity(int v);   // 0-100 百分比
     void setBarEdge(const QString& v);
     void setTheme(const QString& v);            // 设置模式
     void setThemeId(const QString& v);          // 设置主题包 id
@@ -54,6 +57,7 @@ public:
 
 signals:
     void barHeightChanged();
+    void barOpacityChanged();
     void barEdgeChanged();
     void themeChanged();
     void themeIdChanged();
@@ -69,6 +73,7 @@ private:
     QString m_exeDir;
     SettingsPluginModel* m_pluginModel;
     int m_barHeight = 40;
+    int m_barOpacity = 100;                              // 0-100 百分比（100=不透明）
     QString m_barEdge = QStringLiteral("top");
     QString m_theme = QStringLiteral("dark");          // 模式
     QString m_themeId = QStringLiteral("xuanhub-default"); // 主题包 id
