@@ -9,6 +9,7 @@
 #include <QAbstractNativeEventFilter>
 #include <QAbstractEventDispatcher>
 #include <QPointer>
+#include <QQuickStyle>
 
 #include <windows.h>
 
@@ -70,6 +71,11 @@ int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("XuanHub"));
     app.setOrganizationName(QStringLiteral("XuanHub"));
+
+    // 统一 QtQuick.Controls 样式为 Basic（纯 QML 实现，最稳，与 SettingsWindow 一致）。
+    // 进程级全局设置：Bar 引擎内的插件 Window 也会走 Basic，避免走系统默认样式。
+    // 必须在任何 Controls 控件实例化之前调用——此处紧随 QApplication 构造，最早。
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
 
     const QString exeDir = QCoreApplication::applicationDirPath();
 
