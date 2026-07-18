@@ -69,6 +69,14 @@ PyProxyViewModel::~PyProxyViewModel() {
     m_timer.stop();
     if (m_module) {
         py::gil_scoped_acquire gil;
+        // 可选 stop() 约定：通知模块停掉后台线程（网络轮询等）。
+        // 热重载/卸载旧模块前不调的话，旧线程会一直泄漏运行
+        try {
+            if (py::hasattr(m_module, "stop"))
+                m_module.attr("stop")();
+        } catch (const py::error_already_set& e) {
+            qWarning() << "[PyBridge]" << m_id << "stop() error:" << e.what();
+        }
         // 从 sys.modules 摘掉：热重载重新 import 才能拿到磁盘上的新代码；
         // 解释器状态异常时静默 —— 析构路径绝不抛异常
         try {

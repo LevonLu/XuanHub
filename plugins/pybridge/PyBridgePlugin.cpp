@@ -44,6 +44,12 @@ bool PyBridgePlugin::init(xuanhub::BarPluginContext* ctx) {
             qDebug() << "[PyBridge] PYTHONHOME fallback ->" << XUANHUB_PYTHON_HOME;
         }
         py::initialize_interpreter();
+        // 关键：初始化后主线程默认持有 GIL，而它在 Qt 事件循环里从不进入
+        // 解释器求值循环，永不主动让出 —— python 后台线程会饿死
+        //（实测 worker 3 秒只跑到 1 次）。此处永久 release（有意泄漏，
+        // 进程生命周期内不恢复）；此后一切 python 调用一律 gil_scoped_acquire。
+        static auto* g_gilRelease = new py::gil_scoped_release();
+        Q_UNUSED(g_gilRelease);
         g_interpreterReady = true;
         qInfo().noquote() << "[PyBridge] python" << Py_GetVersion() << "initialized";
     } else {
@@ -84,6 +90,13 @@ QStringList PyBridgePlugin::subPluginIds() {
         }
         if (!d.exists(QStringLiteral("main.py"))) {
             qWarning() << "[PyBridge] skip" << id << ": main.py 缺失";
+            continue;
+        }
+        // 扫阶段即查重并给出双方路径（PluginManager 的去重是兜底，
+        // 但那时 m_dirs 已被覆盖，日志看不出冲突发生在哪两个目录之间）
+        if (m_dirs.contains(id)) {
+            qWarning() << "[PyBridge] duplicate sub-plugin id" << id << ":"
+                       << d.path() << "vs" << m_dirs.value(id) << "-> keep first, skip latter";
             continue;
         }
         ids << id;

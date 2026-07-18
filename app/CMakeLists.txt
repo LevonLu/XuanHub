@@ -81,3 +81,18 @@ target_compile_definitions(XuanHub PRIVATE
 set_target_properties(XuanHub PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${XUANHUB_BIN_DIR}"
 )
+
+# 构建后自动重部署：补齐 Qt 运行时 DLL 与 QML 插件（--qmldir 扫描 QML import，
+# 缺它会漏 qml/QtQuick/*/插件 DLL —— M8 设置窗口曾因此打开空白）。
+# 每次 XuanHub 重新链接后执行；手动部署说明见 AGENTS.md §8。
+find_program(WINDEPLOYQT_EXE NAMES windeployqt HINTS "${CMAKE_PREFIX_PATH}/bin" NO_CACHE)
+if(WINDEPLOYQT_EXE)
+    add_custom_command(TARGET XuanHub POST_BUILD
+        COMMAND "${WINDEPLOYQT_EXE}" "$<IF:$<CONFIG:Debug>,--debug,--release>"
+                --qmldir "${CMAKE_SOURCE_DIR}/app/qml"
+                "$<TARGET_FILE:XuanHub>"
+        VERBATIM
+    )
+else()
+    message(WARNING "windeployqt 未找到，dist 不会自动部署 Qt 依赖（请手动执行，见 AGENTS.md §8）")
+endif()

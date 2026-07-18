@@ -41,16 +41,51 @@ plugins_py/
 def init(config):    # 可选。注入 config.json 里本子插件的 config 段（dict）
 def update():        # 必需。每个 tick 调用，返回 dict → 原样填入 QML 的 plugin.values
 def invoke(name, args):  # 可选。QML 里 plugin.call(name, args) 的入口
+def stop():          # 可选。卸载/热重载前调用，用来停后台线程（见下节）
 ```
 
 - 刷新节拍：`config.intervalMs`（毫秒，缺省 1000）。
 - `invoke()` 返回后框架会立即再拉一次 `update()`，交互反馈不用等下个 tick。
 - `update()` 返回的 dict 值支持：str / int / float / bool / list / dict（嵌套），其他类型转字符串。
 - main.py 所在目录会追加到 `sys.path` 末尾，可导入同目录的辅助模块。
-- **阻塞警告**：`update/invoke` 在宿主 GUI 线程内执行（持 GIL）。必须轻量、瞬时返回；
-  禁止 `time.sleep`、网络请求等阻塞调用，禁止自己起线程触达 UI —— 整个 bar 会卡死。
-  重采集需求是后续里程碑的事（C++ worker 线程 + GIL release）。
 - 抛异常不会拖垮宿主：traceback 记入日志，UI 保留上一次的值。
+
+## 网络请求与后台线程
+
+**`update()/invoke()` 内禁止阻塞**（它们在宿主 GUI 线程执行且持 GIL，`requests.get()` 之类会卡死整个 bar）。
+但**允许**自己起 Python 线程做后台 IO——CPython 在标准库阻塞 IO 和 `sleep` 时会释放 GIL，不影响界面。
+规则：线程只碰纯 Python 对象（**绝不触达任何 Qt/QML 对象**），结果写进模块级缓存，`update()` 只瞬读缓存；
+
+```python
+import threading, time, json, urllib.request
+
+_cache = {"text": "加载中…"}
+_stop = False
+
+def _worker():
+    while not _stop:
+        try:
+            with urllib.request.urlopen("https://api.example.com/data", timeout=5) as r:
+                _cache["text"] = json.load(r)["value"]
+        except Exception:
+            _cache["text"] = "ERR"
+        for _ in range(30):          # 分段 sleep，stop() 后 1s 内能退出
+            if _stop: break
+            time.sleep(1)
+
+def init(config):
+    threading.Thread(target=_worker, daemon=True).start()
+
+def stop():
+    global _stop
+    _stop = True                     # 框架在卸载/热重载前调用；线程用 daemon，随时可被进程回收
+
+def update():
+    return dict(_cache)
+```
+
+**必须实现 `stop()`**：热重载（如设置窗口保存配置）会销毁旧模块并重新 import，旧线程若不停下会泄漏运行。
+`urllib` 开箱即用；`requests` 只要系统 Python 装了即可 import（当前解释器经 PYTHONHOME 指向系统安装）。
 
 ## QML 契约
 
@@ -76,5 +111,4 @@ Item {
 ## 已知限制（后续里程碑）
 
 - 无 EventBus 接入（Python 子插件暂不能收发总线事件）。
-- 无 embeddable Python 分发（当前依赖系统 Python 3.13，经构建期烧入的 PYTHONHOME 兜底定位）。
-- 无重负载采集通道（见上方阻塞警告）。
+- 无 embeddable Python 分发（当前依赖系统 Python 3.13，经构建期烧入的 PYTHONHOME 兜底定位；第三方库随之可用）。
