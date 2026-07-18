@@ -3,10 +3,8 @@ import QtQuick
 
 Rectangle {
     id: root
-    color: {
-        var t = themeManager ? themeManager.currentTheme : "dark";
-        return t === "light" ? "#ececec" : "#1e1e2e";
-    }
+    // 色板由 ThemeManager 提供（context property themeManager.colors）
+    color: themeManager ? themeManager.colors.bg : "#1e1e2e"
 
     Bar {
         anchors.fill: parent

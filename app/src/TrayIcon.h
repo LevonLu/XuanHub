@@ -21,6 +21,7 @@ signals:
 
 private slots:
     void setAutoStartEnabled(bool on);
+    void refreshIcon();             // 主题变化时重绘图标（连 ThemeManager::themeChanged）
 
 private:
     QSystemTrayIcon* m_tray = nullptr;

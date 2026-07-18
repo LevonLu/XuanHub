@@ -37,6 +37,9 @@ qt_add_executable(XuanHub WIN32
     src/ThemeManager.h
     src/ThemeManager.cpp
 
+    src/ThemeRegistry.h
+    src/ThemeRegistry.cpp
+
     src/TrayIcon.h
     src/TrayIcon.cpp
 
@@ -96,3 +99,12 @@ if(WINDEPLOYQT_EXE)
 else()
     message(WARNING "windeployqt 未找到，dist 不会自动部署 Qt 依赖（请手动执行，见 AGENTS.md §8）")
 endif()
+
+# M9：部署 themes/ 主题包到运行时目录（themes/<id>/theme.json 即安装结构）。
+# 每次 XuanHub 链接后整树同步，保证用户改 theme.json / 增删主题包后立刻生效。
+add_custom_command(TARGET XuanHub POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/themes"
+        "${XUANHUB_BIN_DIR}/themes"
+    VERBATIM
+)

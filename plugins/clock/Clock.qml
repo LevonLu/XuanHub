@@ -1,7 +1,7 @@
 // Clock.qml — 时钟显示 + 点击弹出日历气泡窗口。契约：根 Item 声明 property var plugin。
 // 设计取舍：日历用独立顶层 Window（非 Popup）——宿主 Bar 仅 40px 高，
 // Popup 在 overlay 层渲染会被窗口几何裁切；Window 是独立 native 窗口，不受此限。
-// 配色跟随宿主根上下文的 context property themeManager.currentTheme（同引擎可见）。
+// 配色跟随宿主根上下文的 context property themeManager.colors（同引擎可见）。
 //
 // MonthGrid/DayOfWeekRow/WeekNumberColumn 属 QtQuick.Controls（Qt6.2+），由 Basic 样式实现：
 //   - MonthGrid.month/year 是 int（0-11 / 公元年），不是 Date
@@ -26,23 +26,16 @@ Item {
     // undefined，且绑定会因此丢失（Qt 已知行为）。改用「先 show 再定位」两步法：
     // 日历 Window show 后会挂到某个 screen，其内部 Item 的 Screen attached 才有效。
 
-    // ── 色板：跟随 themeManager.currentTheme ──────────────────
-    // Catppuccin Mocha（dark）/ 自配浅色（light），与 SettingsWindow.qml 同色板
-    QtObject {
-        id: pal
-        readonly property bool light: themeManager && themeManager.currentTheme === "light"
-        readonly property color bg:      light ? "#f5f5f5" : "#1e1e2e"
-        readonly property color panel:   light ? "#e6e6e6" : "#313244"
-        readonly property color fg:      light ? "#313244" : "#cdd6f4"
-        readonly property color muted:   light ? "#9aa0b4" : "#7f849c"
-        readonly property color accent:  "#89b4fa"
-        readonly property color hover:   light ? "#dcdcdc" : "#45475a"
-        readonly property color outside: light ? "#bdbdbd" : "#585b70"  // 非当月日
-    }
+    // 色板别名：统一从 themeManager.colors 取（M9 数据驱动主题），缺失时给深色兜底
+    readonly property var colors: themeManager ? themeManager.colors : ({
+        "bg": "#1e1e2e", "panel": "#313244", "fg": "#cdd6f4", "muted": "#7f849c",
+        "accent": "#89b4fa", "danger": "#f38ba8", "success": "#a6e3a1", "warning": "#f9e2af",
+        "hover": "#45475a", "border": "#45475a", "onAccent": "#1e1e2e"
+    })
 
     Text {
         anchors.centerIn: parent
-        color: pal.fg
+        color: root.colors.fg
         font.pixelSize: 16
         text: plugin ? plugin.timeText : "--:--:--"
     }
@@ -98,7 +91,7 @@ Item {
         visible: false
         width: 320
         height: 360
-        color: pal.bg
+        color: root.colors.bg
         // Tool：不进任务栏/Alt+Tab；Frameless：无系统标题栏（自绘）；
         // StaysOnTop：与 Bar 同层级置顶；不加 NoFocus：日历需接收 Esc 与悬停高亮
         flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
@@ -167,14 +160,14 @@ Item {
                     Rectangle {
                         anchors.fill: parent
                         radius: 6
-                        color: prevMa.containsMouse ? pal.hover : "transparent"
+                        color: prevMa.containsMouse ? root.colors.hover : "transparent"
                         border.width: prevMa.containsMouse ? 1 : 0
-                        border.color: pal.muted
+                        border.color: root.colors.muted
                     }
                     Text {
                         anchors.centerIn: parent
                         text: "◀"
-                        color: pal.fg
+                        color: root.colors.fg
                         font.pixelSize: 14
                     }
                     MouseArea {
@@ -194,7 +187,7 @@ Item {
                 Text {
                     Layout.minimumWidth: 130
                     horizontalAlignment: Text.AlignHCenter
-                    color: pal.fg
+                    color: root.colors.fg
                     font.pixelSize: 15
                     font.bold: true
                     text: calendarWin.viewYear + " 年 "
@@ -207,14 +200,14 @@ Item {
                     Rectangle {
                         anchors.fill: parent
                         radius: 6
-                        color: nextMa.containsMouse ? pal.hover : "transparent"
+                        color: nextMa.containsMouse ? root.colors.hover : "transparent"
                         border.width: nextMa.containsMouse ? 1 : 0
-                        border.color: pal.muted
+                        border.color: root.colors.muted
                     }
                     Text {
                         anchors.centerIn: parent
                         text: "▶"
-                        color: pal.fg
+                        color: root.colors.fg
                         font.pixelSize: 14
                     }
                     MouseArea {
@@ -244,15 +237,15 @@ Item {
                 Rectangle {
                     anchors.fill: parent
                     radius: 6
-                    color: todayMa.containsMouse ? pal.hover : "transparent"
+                    color: todayMa.containsMouse ? root.colors.hover : "transparent"
                     border.width: 1
-                    border.color: pal.accent
+                    border.color: root.colors.accent
                 }
                 Text {
                     id: todayRow
                     anchors.centerIn: parent
                     text: "回到今天"
-                    color: pal.accent
+                    color: root.colors.accent
                     font.pixelSize: 12
                 }
                 MouseArea {
@@ -286,7 +279,7 @@ Item {
                         required property int weekNumber
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
-                        color: pal.muted
+                        color: root.colors.muted
                         font.pixelSize: 11
                         text: weekNumber
                     }
@@ -306,7 +299,7 @@ Item {
                             required property string shortName
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
-                            color: pal.muted
+                            color: root.colors.muted
                             font.pixelSize: 12
                             font.bold: true
                             text: shortName
@@ -329,16 +322,16 @@ Item {
                             readonly property bool isToday: model.today
                             readonly property bool isOutside: model.month !== grid.month
 
-                            color: isToday ? pal.accent
-                                  : (ma.containsMouse ? pal.hover : "transparent")
+                            color: isToday ? root.colors.accent
+                                  : (ma.containsMouse ? root.colors.hover : "transparent")
                             radius: 6
 
                             Text {
                                 anchors.centerIn: parent
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
-                                color: parent.isToday ? "#ffffff"
-                                      : (parent.isOutside ? pal.outside : pal.fg)
+                                color: parent.isToday ? root.colors.onAccent
+                                      : (parent.isOutside ? root.colors.muted : root.colors.fg)
                                 font.pixelSize: 12
                                 font.bold: parent.isToday
                                 text: parent.model.day
@@ -363,11 +356,11 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 28
-                color: pal.panel
+                color: root.colors.panel
                 radius: 6
                 Text {
                     anchors.centerIn: parent
-                    color: pal.fg
+                    color: root.colors.fg
                     font.pixelSize: 12
                     // ISO 日期 + 中文周几（dayName 用 today 的星期几）
                     text: {

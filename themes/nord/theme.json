@@ -1,0 +1,32 @@
+{
+  "id": "nord",
+  "name": "Nord",
+  "version": "0.1.0",
+  "author": "arcticicestudio (palette) / XuanHub",
+  "dark": {
+    "bg":      "#2e3440",
+    "panel":   "#3b4252",
+    "fg":      "#d8dee9",
+    "muted":   "#4c566a",
+    "accent":  "#88c0d0",
+    "danger":  "#bf616a",
+    "success": "#a3be8c",
+    "warning": "#ebcb8b",
+    "hover":   "#434c5e",
+    "border":  "#4c566a",
+    "onAccent":"#2e3440"
+  },
+  "light": {
+    "bg":      "#eceff4",
+    "panel":   "#e5e9f0",
+    "fg":      "#2e3440",
+    "muted":   "#7b8394",
+    "accent":  "#5e81ac",
+    "danger":  "#bf616a",
+    "success": "#a3be8c",
+    "warning": "#d08770",
+    "hover":   "#d8dee9",
+    "border":  "#bfbfbf",
+    "onAccent":"#eceff4"
+  }
+}

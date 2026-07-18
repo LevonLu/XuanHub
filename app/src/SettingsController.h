@@ -9,12 +9,13 @@
 class QQuickView;
 class ConfigService;
 class ThemeManager;
+class ThemeRegistry;
 class SettingsViewModel;
 
 class SettingsController : public QObject {
     Q_OBJECT
 public:
-    SettingsController(ConfigService* config, ThemeManager* theme,
+    SettingsController(ConfigService* config, ThemeManager* theme, ThemeRegistry* registry,
                        const QString& exeDir, QObject* parent = nullptr);
     ~SettingsController() override;
 
@@ -24,6 +25,7 @@ public slots:
 private:
     ConfigService* m_config;
     ThemeManager* m_theme;
+    ThemeRegistry* m_registry;   // M9：主题包枚举（设置窗口主题下拉）
     QString m_exeDir;
     SettingsViewModel* m_vm = nullptr;   // 与窗口一同懒建（this 父子）
     QPointer<QQuickView> m_window;

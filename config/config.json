@@ -1,5 +1,5 @@
 {
-  "bar": { "height": 40, "edge": "top", "monitor": "primary", "theme": "dark" },
+  "bar": { "height": 40, "edge": "top", "monitor": "primary", "themeId": "xuanhub-default", "theme": "dark" },
   "plugins": [
     { "id": "launcher", "position": "left",  "order": 0, "config": { "items": [{"name":"Terminal","program":"wt.exe"},{"name":"Notepad","program":"notepad.exe"}] } },
     { "id": "netstat",  "position": "right", "order": 0, "config": { "intervalMs": 1000 } },

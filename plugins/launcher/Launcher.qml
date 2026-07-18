@@ -16,7 +16,7 @@ Item {
             model: plugin        // QAbstractListModel — roleNames: name/program/icon
             delegate: Text {
                 text: model.name
-                color: "#89b4fa"
+                color: themeManager ? themeManager.colors.accent : "#89b4fa"
                 font.pixelSize: 14
 
                 MouseArea {

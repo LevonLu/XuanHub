@@ -6,17 +6,20 @@
 #include "PluginListModel.h"
 #include "PluginManager.h"
 #include "ThemeManager.h"
+#include "ThemeRegistry.h"
 
 #include <QDebug>
 #include <QDir>
 #include <QFile>
 
 ConfigHotReloader::ConfigHotReloader(ConfigService* config, ThemeManager* theme,
+                                     ThemeRegistry* registry,
                                      PluginManager* pm, PluginListModel* model,
                                      BarWindow* window,
                                      QString exeDir, QString configDir, QObject* parent)
-    : QObject(parent), m_config(config), m_theme(theme), m_pm(pm), m_model(model),
-      m_window(window), m_exeDir(std::move(exeDir)), m_configDir(std::move(configDir)) {
+    : QObject(parent), m_config(config), m_theme(theme), m_registry(registry),
+      m_pm(pm), m_model(model), m_window(window),
+      m_exeDir(std::move(exeDir)), m_configDir(std::move(configDir)) {
     // 防抖：一次保存常触发多个 fileChanged（写内容 + 改属性），合并为一次 reload
     m_debounce.setSingleShot(true);
     m_debounce.setInterval(300);
@@ -46,9 +49,14 @@ void ConfigHotReloader::reload() {
     }
     armWatcher();  // 生效路径可能换边（exeDir ↔ configDir）
 
-    // 主题：文件是事实源，覆盖托盘 Toggle Theme 的运行时切换（托盘切换不写回文件）
-    if (m_theme->currentTheme() != m_config->theme())
-        m_theme->switchTheme(m_config->theme());
+    // 主题包：重扫 themes/（用户可能新装/卸载了主题包），再按文件值同步当前主题
+    if (m_registry) m_registry->reload(QDir(m_exeDir).absoluteFilePath(QStringLiteral("themes")));
+
+    // 主题：文件是事实源，覆盖托盘 Toggle Dark/Light 的运行时切换（托盘切换不写回文件）
+    if (m_theme->themeId() != m_config->themeId()
+        || m_theme->mode() != m_config->theme()) {
+        m_theme->applyTheme(m_config->themeId(), m_config->theme());
+    }
 
     // 高度/边缘：重新协商 AppBar 并定位窗口（幂等；值没变也无副作用）
     m_window->setupBar();

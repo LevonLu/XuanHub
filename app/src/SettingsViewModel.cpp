@@ -3,16 +3,31 @@
 #include "AutoStart.h"
 #include "ConfigService.h"
 #include "SettingsPluginModel.h"
+#include "ThemeRegistry.h"
 
 #include <QDebug>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QSet>
 
-SettingsViewModel::SettingsViewModel(ConfigService* config, QString exeDir, QObject* parent)
-    : QObject(parent), m_config(config), m_exeDir(std::move(exeDir)),
+SettingsViewModel::SettingsViewModel(ConfigService* config, ThemeRegistry* registry,
+                                     QString exeDir, QObject* parent)
+    : QObject(parent), m_config(config), m_registry(registry), m_exeDir(std::move(exeDir)),
       m_pluginModel(new SettingsPluginModel(this)) {}
 
 QAbstractItemModel* SettingsViewModel::pluginModel() const { return m_pluginModel; }
+
+QStringList SettingsViewModel::themePackNames() const {
+    return m_registry ? m_registry->packNames() : QStringList{};
+}
+
+QStringList SettingsViewModel::themePackIds() const {
+    if (!m_registry) return {};
+    QStringList ids;
+    ids.reserve(m_registry->packs().size());
+    for (const auto& p : m_registry->packs()) ids.append(p.id);
+    return ids;
+}
 
 void SettingsViewModel::setBarHeight(int v) {
     if (m_barHeight == v) return;
@@ -32,16 +47,28 @@ void SettingsViewModel::setTheme(const QString& v) {
     emit themeChanged();
 }
 
+void SettingsViewModel::setThemeId(const QString& v) {
+    if (m_themeId == v) return;
+    m_themeId = v;
+    emit themeIdChanged();
+}
+
 void SettingsViewModel::setAutoStart(bool v) {
     if (m_autoStart == v) return;
     m_autoStart = v;
     emit autoStartChanged();
 }
 
+void SettingsViewModel::reloadThemePacks() {
+    // 重扫后 QML 侧经 NOTIFY themePacksReloaded 重新读取 names/ids
+    emit themePacksReloaded();
+}
+
 void SettingsViewModel::reloadFromConfig() {
     setBarHeight(m_config->barHeight());
     setBarEdge(m_config->barEdge());
     setTheme(m_config->theme());
+    setThemeId(m_config->themeId());
     setAutoStart(autostart::isEnabled());
     m_pluginModel->reload(m_config->pluginEntries(), m_exeDir);
     setErrorMessage({});
@@ -58,7 +85,12 @@ bool SettingsViewModel::apply() {
         return false;
     }
     if (m_theme != QStringLiteral("dark") && m_theme != QStringLiteral("light")) {
-        setErrorMessage(QStringLiteral("主题仅支持 dark / light"));
+        setErrorMessage(QStringLiteral("主题模式仅支持 dark / light"));
+        return false;
+    }
+    // 校验主题包存在（防 config 手写错 id）
+    if (m_registry && m_registry->find(m_themeId) == nullptr) {
+        setErrorMessage(QStringLiteral("主题包不存在：") + m_themeId);
         return false;
     }
     QJsonArray plugins;
@@ -72,7 +104,8 @@ bool SettingsViewModel::apply() {
     QJsonObject bar = root.value(QStringLiteral("bar")).toObject();
     bar[QStringLiteral("height")] = m_barHeight;
     bar[QStringLiteral("edge")] = m_barEdge;
-    bar[QStringLiteral("theme")] = m_theme;
+    bar[QStringLiteral("theme")] = m_theme;          // 模式 dark/light
+    bar[QStringLiteral("themeId")] = m_themeId;      // 主题包 id
     root[QStringLiteral("bar")] = bar;
     root[QStringLiteral("plugins")] = plugins;
     if (!m_config->save(root)) {
@@ -82,7 +115,8 @@ bool SettingsViewModel::apply() {
     autostart::setEnabled(m_autoStart);
     setErrorMessage({});
     qDebug() << "[Settings] applied:"
-             << "height=" << m_barHeight << "edge=" << m_barEdge << "theme=" << m_theme
+             << "height=" << m_barHeight << "edge=" << m_barEdge
+             << "themeId=" << m_themeId << "mode=" << m_theme
              << "autoStart=" << m_autoStart << "plugins=" << plugins.size();
     return true;
 }

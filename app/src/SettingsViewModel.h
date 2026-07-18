@@ -5,9 +5,11 @@
 #pragma once
 #include <QObject>
 #include <QString>
+#include <QStringList>
 
 class QAbstractItemModel;
 class ConfigService;
+class ThemeRegistry;
 class SettingsPluginModel;
 
 class SettingsViewModel : public QObject {
@@ -15,24 +17,35 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(int barHeight READ barHeight WRITE setBarHeight NOTIFY barHeightChanged)
     Q_PROPERTY(QString barEdge READ barEdge WRITE setBarEdge NOTIFY barEdgeChanged)
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
+    Q_PROPERTY(QString themeId READ themeId WRITE setThemeId NOTIFY themeIdChanged)
+    Q_PROPERTY(QStringList themePackNames READ themePackNames NOTIFY themePacksReloaded)
+    Q_PROPERTY(QStringList themePackIds READ themePackIds NOTIFY themePacksReloaded)
     Q_PROPERTY(bool autoStart READ autoStart WRITE setAutoStart NOTIFY autoStartChanged)
     Q_PROPERTY(QAbstractItemModel* pluginModel READ pluginModel CONSTANT)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
 
 public:
-    SettingsViewModel(ConfigService* config, QString exeDir, QObject* parent = nullptr);
+    SettingsViewModel(ConfigService* config, ThemeRegistry* registry,
+                      QString exeDir, QObject* parent = nullptr);
 
     int barHeight() const { return m_barHeight; }
     QString barEdge() const { return m_barEdge; }
-    QString theme() const { return m_theme; }
+    QString theme() const { return m_theme; }          // 模式 dark/light
+    QString themeId() const { return m_themeId; }      // 主题包 id
+    QStringList themePackNames() const;                // 已安装主题包显示名（下拉用）
+    QStringList themePackIds() const;                  // 与 names 同序的 id（保存映射用）
     bool autoStart() const { return m_autoStart; }
     QAbstractItemModel* pluginModel() const;   // 实现在 .cpp（头里 SettingsPluginModel 是不完整类型）
     QString errorMessage() const { return m_errorMessage; }
 
     void setBarHeight(int v);
     void setBarEdge(const QString& v);
-    void setTheme(const QString& v);
+    void setTheme(const QString& v);            // 设置模式
+    void setThemeId(const QString& v);          // 设置主题包 id
     void setAutoStart(bool v);
+
+    // 重新扫描 themes/ 刷新主题包列表（打开窗口 / 用户可能装了新包时调）
+    Q_INVOKABLE void reloadThemePacks();
 
     // 从 ConfigService 现值 + 磁盘发现重建草稿（每次打开窗口时调用）
     Q_INVOKABLE void reloadFromConfig();
@@ -43,6 +56,8 @@ signals:
     void barHeightChanged();
     void barEdgeChanged();
     void themeChanged();
+    void themeIdChanged();
+    void themePacksReloaded();
     void autoStartChanged();
     void errorMessageChanged();
 
@@ -50,11 +65,13 @@ private:
     void setErrorMessage(const QString& m);
 
     ConfigService* m_config;
+    ThemeRegistry* m_registry;
     QString m_exeDir;
     SettingsPluginModel* m_pluginModel;
     int m_barHeight = 40;
     QString m_barEdge = QStringLiteral("top");
-    QString m_theme = QStringLiteral("dark");
+    QString m_theme = QStringLiteral("dark");          // 模式
+    QString m_themeId = QStringLiteral("xuanhub-default"); // 主题包 id
     bool m_autoStart = false;
     QString m_errorMessage;
 };

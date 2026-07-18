@@ -1,6 +1,6 @@
 // SettingsWindow.qml — 设置窗口（M8）
-// 后端：context property settingsVM（草稿属性 + pluginModel + apply/reloadFromConfig）、
-//       themeManager（currentTheme 驱动色板）。
+// 后端：context property settingsVM（草稿属性 + pluginModel + apply/reloadFromConfig +
+//       themePackNames/themePackIds 主题包列表）、themeManager（colors 色板驱动 palette）。
 // 保存成功或取消都经 Window.window.close() 隐藏（窗口由 SettingsController 持有，不销毁）。
 import QtQuick
 import QtQuick.Controls
@@ -10,30 +10,27 @@ Pane {
     id: root
     padding: 16
 
-    // 色板随主题（Basic 样式经 palette 继承传给所有子控件）
-    QtObject {
-        id: pal
-        property bool light: themeManager && themeManager.currentTheme === "light"
-        property color bg: light ? "#f5f5f5" : "#1e1e2e"
-        property color panel: light ? "#e6e6e6" : "#313244"
-        property color fg: light ? "#313244" : "#cdd6f4"
-        property color muted: light ? "#6c7086" : "#7f849c"
-        property color accent: "#89b4fa"
-        property color danger: "#f38ba8"
-    }
+    // 色板别名：统一从 themeManager.colors 取（M9 数据驱动主题）。Basic 样式经
+    // palette 继承传给所有子控件，故把 colors 灌进 palette.* 让 QtQuick.Controls
+    // 的表单控件也跟随主题。
+    readonly property var c: themeManager ? themeManager.colors : ({
+        "bg": "#1e1e2e", "panel": "#313244", "fg": "#cdd6f4", "muted": "#7f849c",
+        "accent": "#89b4fa", "danger": "#f38ba8", "hover": "#45475a", "border": "#45475a",
+        "placeholderText": "#7f849c", "mid": "#7f849c", "dark": "#313244", "light": "#313244"
+    })
 
-    background: Rectangle { color: pal.bg }
-    palette.window: pal.bg
-    palette.windowText: pal.fg
-    palette.base: pal.bg
-    palette.text: pal.fg
-    palette.button: pal.panel
-    palette.buttonText: pal.fg
-    palette.highlight: pal.accent
-    palette.placeholderText: pal.muted
-    palette.mid: pal.muted
-    palette.dark: pal.panel
-    palette.light: pal.panel
+    background: Rectangle { color: root.c.bg }
+    palette.window: root.c.bg
+    palette.windowText: root.c.fg
+    palette.base: root.c.bg
+    palette.text: root.c.fg
+    palette.button: root.c.panel
+    palette.buttonText: root.c.fg
+    palette.highlight: root.c.accent
+    palette.placeholderText: root.c.muted
+    palette.mid: root.c.muted
+    palette.dark: root.c.panel
+    palette.light: root.c.panel
 
     ColumnLayout {
         anchors.fill: parent
@@ -50,10 +47,10 @@ Pane {
                 spacing: 14
 
                 // ── 状态栏设置 ───────────────────────────
-                Text { text: "状态栏"; color: pal.fg; font.pixelSize: 15; font.bold: true }
+                Text { text: "状态栏"; color: root.c.fg; font.pixelSize: 15; font.bold: true }
                 Rectangle {
                     Layout.fillWidth: true
-                    color: pal.panel
+                    color: root.c.panel
                     radius: 6
                     implicitHeight: barGrid.implicitHeight + 20
 
@@ -67,25 +64,41 @@ Pane {
                         anchors.top: parent.top
                         anchors.margins: 10
 
-                        Text { text: "高度（像素）"; color: pal.fg; Layout.fillWidth: true }
+                        Text { text: "高度（像素）"; color: root.c.fg; Layout.fillWidth: true }
                         SpinBox {
                             from: 24; to: 200
                             value: settingsVM.barHeight
                             onValueModified: settingsVM.barHeight = value
                         }
-                        Text { text: "停靠边缘"; color: pal.fg; Layout.fillWidth: true }
+                        Text { text: "停靠边缘"; color: root.c.fg; Layout.fillWidth: true }
                         ComboBox {
                             model: ["top", "bottom"]
                             currentIndex: settingsVM.barEdge === "bottom" ? 1 : 0
                             onActivated: settingsVM.barEdge = currentText
                         }
-                        Text { text: "主题"; color: pal.fg; Layout.fillWidth: true }
+                        Text { text: "主题包"; color: root.c.fg; Layout.fillWidth: true }
+                        ComboBox {
+                            // 主题包下拉（names 显示，ids 映射回 themeId 保存）
+                            model: settingsVM.themePackNames
+                            // 选中当前 themeId 对应的 name
+                            currentIndex: {
+                                const ids = settingsVM.themePackIds
+                                const i = ids.indexOf(settingsVM.themeId)
+                                return i >= 0 ? i : 0
+                            }
+                            onActivated: {
+                                const ids = settingsVM.themePackIds
+                                if (index >= 0 && index < ids.length)
+                                    settingsVM.themeId = ids[index]
+                            }
+                        }
+                        Text { text: "模式"; color: root.c.fg; Layout.fillWidth: true }
                         ComboBox {
                             model: ["dark", "light"]
                             currentIndex: settingsVM.theme === "light" ? 1 : 0
                             onActivated: settingsVM.theme = currentText
                         }
-                        Text { text: "开机自启"; color: pal.fg; Layout.fillWidth: true }
+                        Text { text: "开机自启"; color: root.c.fg; Layout.fillWidth: true }
                         CheckBox {
                             checked: settingsVM.autoStart
                             onToggled: settingsVM.autoStart = checked
@@ -94,7 +107,7 @@ Pane {
                 }
 
                 // ── 插件设置 ───────────────────────────
-                Text { text: "插件"; color: pal.fg; font.pixelSize: 15; font.bold: true }
+                Text { text: "插件"; color: root.c.fg; font.pixelSize: 15; font.bold: true }
 
                 Repeater {
                     model: settingsVM.pluginModel
@@ -102,7 +115,7 @@ Pane {
                     delegate: Rectangle {
                         id: pluginRow
                         Layout.fillWidth: true
-                        color: pal.panel
+                        color: root.c.panel
                         radius: 6
                         implicitHeight: rowCol.implicitHeight + 16
 
@@ -130,13 +143,13 @@ Pane {
                                 ColumnLayout {
                                     spacing: 0
                                     Text {
-                                        color: pal.fg
+                                        color: root.c.fg
                                         font.pixelSize: 14
                                         text: pluginRow.rowModel.name ? pluginRow.rowModel.name
                                                                       : pluginRow.rowModel.id
                                     }
                                     Text {
-                                        color: pal.muted
+                                        color: root.c.muted
                                         font.pixelSize: 11
                                         text: pluginRow.rowModel.id + " · "
                                               + (pluginRow.rowModel.kind === "python" ? "Python" : "C++")
@@ -173,14 +186,14 @@ Pane {
                                 onTextChanged: pluginRow.rowModel.configJson = text
                                 font.family: "Consolas"
                                 font.pixelSize: 12
-                                color: pal.fg
+                                color: root.c.fg
                                 wrapMode: TextEdit.NoWrap
                                 selectByMouse: true
                                 background: Rectangle {
-                                    color: pal.bg
+                                    color: root.c.bg
                                     radius: 4
                                     border.width: 1
-                                    border.color: cfgArea.activeFocus ? pal.accent : pal.muted
+                                    border.color: cfgArea.activeFocus ? root.c.accent : root.c.muted
                                 }
                             }
                         }
@@ -193,7 +206,7 @@ Pane {
         Text {
             Layout.fillWidth: true
             text: settingsVM.errorMessage
-            color: pal.danger
+            color: root.c.danger
             wrapMode: Text.Wrap
             visible: settingsVM.errorMessage.length > 0
         }

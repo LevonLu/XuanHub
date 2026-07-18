@@ -20,6 +20,7 @@
 #include "PluginListModel.h"
 #include "SettingsController.h"
 #include "ThemeManager.h"
+#include "ThemeRegistry.h"
 #include "TrayIcon.h"
 #include "barplugin/EventBus.h"
 
@@ -102,12 +103,16 @@ int main(int argc, char* argv[]) {
 
     qDebug() << "=== XuanHub start ===" << "configDir =" << configDir;
 
-    // 栈顺序保证析构安全
+    // 栈顺序保证析构安全（构造顺序 = 声明顺序，析构逆序）
     xuanhub::EventBus bus;
     ConfigService config;
     config.load(exeDir, configDir);
 
-    ThemeManager theme(&bus, config.theme());
+    // 主题包注册表：扫描 themes/*/theme.json，解析校验后缓存所有已安装主题包
+    ThemeRegistry registry;
+    registry.reload(QDir(exeDir).absoluteFilePath(QStringLiteral("themes")));
+
+    ThemeManager theme(&bus, &registry, config.themeId(), config.theme());
 
     PluginManager pm(&bus, configDir);
     pm.loadFrom(QDir(exeDir).absoluteFilePath(QStringLiteral("plugins")),
@@ -126,12 +131,12 @@ int main(int argc, char* argv[]) {
     tray.show();
 
     // 配置热重载（M7）：文件监听自动触发 + 托盘 "Reload Config" 手动触发
-    ConfigHotReloader reloader(&config, &theme, &pm, &model, &window, exeDir, configDir);
+    ConfigHotReloader reloader(&config, &theme, &registry, &pm, &model, &window, exeDir, configDir);
     QObject::connect(&tray, &TrayIcon::reloadRequested,
                      &reloader, &ConfigHotReloader::reload);
 
     // 设置窗口（M8）：托盘 "Settings..." 打开（懒建，关闭=隐藏不销毁）
-    SettingsController settingsCtl(&config, &theme, exeDir);
+    SettingsController settingsCtl(&config, &theme, &registry, exeDir);
     QObject::connect(&tray, &TrayIcon::settingsRequested,
                      &settingsCtl, &SettingsController::open);
 

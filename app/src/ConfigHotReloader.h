@@ -9,6 +9,7 @@
 
 class ConfigService;
 class ThemeManager;
+class ThemeRegistry;
 class PluginManager;
 class PluginListModel;
 class BarWindow;
@@ -16,7 +17,7 @@ class BarWindow;
 class ConfigHotReloader : public QObject {
     Q_OBJECT
 public:
-    ConfigHotReloader(ConfigService* config, ThemeManager* theme,
+    ConfigHotReloader(ConfigService* config, ThemeManager* theme, ThemeRegistry* registry,
                       PluginManager* pm, PluginListModel* model, BarWindow* window,
                       QString exeDir, QString configDir, QObject* parent = nullptr);
 
@@ -28,6 +29,7 @@ private:
 
     ConfigService* m_config;
     ThemeManager* m_theme;
+    ThemeRegistry* m_registry;   // M9：重扫 themes/ 发现新装主题包
     PluginManager* m_pm;
     PluginListModel* m_model;
     BarWindow* m_window;

@@ -1,0 +1,32 @@
+{
+  "id": "rose-pine",
+  "name": "Rose Pine",
+  "version": "0.1.0",
+  "author": "rosepinetheme (palette) / XuanHub",
+  "dark": {
+    "bg":      "#191724",
+    "panel":   "#1f1d2e",
+    "fg":      "#e0def4",
+    "muted":   "#6e6a86",
+    "accent":  "#c4a7e7",
+    "danger":  "#eb6f92",
+    "success": "#9ccfd8",
+    "warning": "#f6c177",
+    "hover":   "#26233a",
+    "border":  "#26233a",
+    "onAccent":"#191724"
+  },
+  "light": {
+    "bg":      "#faf4ed",
+    "panel":   "#fffaf3",
+    "fg":      "#575279",
+    "muted":   "#9893a5",
+    "accent":  "#907aa9",
+    "danger":  "#b4637a",
+    "success": "#56949f",
+    "warning": "#ea9d34",
+    "hover":   "#f2e9e1",
+    "border":  "#e8e0db",
+    "onAccent":"#faf4ed"
+  }
+}

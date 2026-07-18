@@ -21,6 +21,7 @@ class ConfigService : public QObject {
     Q_PROPERTY(int barHeight READ barHeight NOTIFY barHeightChanged)
     Q_PROPERTY(QString barEdge READ barEdge NOTIFY barEdgeChanged)
     Q_PROPERTY(QString theme READ theme NOTIFY themeChanged)
+    Q_PROPERTY(QString themeId READ themeId NOTIFY themeIdChanged)
 
 public:
     explicit ConfigService(QObject* parent = nullptr);
@@ -32,7 +33,8 @@ public:
 
     int barHeight() const { return m_barHeight; }      // 逻辑像素
     QString barEdge() const { return m_barEdge; }      // "top"/"bottom"
-    QString theme() const { return m_theme; }          // "dark"/"light"
+    QString theme() const { return m_theme; }          // 主题模式 "dark"/"light"
+    QString themeId() const { return m_themeId; }      // 主题包 id（如 "xuanhub-default"）
     const QList<PluginConfigEntry>& pluginEntries() const { return m_pluginEntries; }
 
     // 实际生效的配置文件路径（exeDir 或 configDir 下；文件不存在时仍是目标路径）
@@ -47,11 +49,13 @@ signals:
     void barHeightChanged();
     void barEdgeChanged();
     void themeChanged();
+    void themeIdChanged();
 
 private:
     int m_barHeight = 40;
     QString m_barEdge = QStringLiteral("top");
-    QString m_theme = QStringLiteral("dark");
+    QString m_theme = QStringLiteral("dark");              // 主题模式（dark/light）
+    QString m_themeId = QStringLiteral("xuanhub-default"); // 主题包 id
     QList<PluginConfigEntry> m_pluginEntries;
     QString m_activePath;
     QJsonObject m_raw;   // load() 时留存的原始 JSON（M8 save 的组装底稿）

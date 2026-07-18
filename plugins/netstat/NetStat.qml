@@ -13,12 +13,12 @@ Item {
         spacing: 12
 
         Text {
-            color: "#a6e3a1"
+            color: themeManager ? themeManager.colors.success : "#a6e3a1"
             font.pixelSize: 14
             text: "↓ " + (plugin ? plugin.downRate : "---")
         }
         Text {
-            color: "#f38ba8"
+            color: themeManager ? themeManager.colors.danger : "#f38ba8"
             font.pixelSize: 14
             text: "↑ " + (plugin ? plugin.upRate : "---")
         }

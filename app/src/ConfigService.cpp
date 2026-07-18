@@ -52,11 +52,23 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
     const int oldHeight = m_barHeight;
     const QString oldEdge = m_barEdge;
     const QString oldTheme = m_theme;
+    const QString oldThemeId = m_themeId;
 
     const auto bar = root.value("bar").toObject();
     if (bar.contains("height")) m_barHeight = bar.value("height").toInt(m_barHeight);
     if (bar.contains("edge"))   m_barEdge   = bar.value("edge").toString(m_barEdge);
-    if (bar.contains("theme"))  m_theme     = bar.value("theme").toString(m_theme);
+    // theme：语义是模式（dark/light）。兼容旧值：非 dark/light 告警回落 dark
+    if (bar.contains("theme")) {
+        const QString t = bar.value("theme").toString(m_theme);
+        if (t == QStringLiteral("dark") || t == QStringLiteral("light")) {
+            m_theme = t;
+        } else {
+            qWarning() << "[Config] invalid theme mode:" << t << "-> dark";
+            m_theme = QStringLiteral("dark");
+        }
+    }
+    // themeId：主题包 id（缺省回落内置默认）
+    if (bar.contains("themeId")) m_themeId = bar.value("themeId").toString(m_themeId);
     if (m_barEdge != QStringLiteral("top") && m_barEdge != QStringLiteral("bottom")) {
         qWarning() << "[Config] invalid edge:" << m_barEdge << "-> top";
         m_barEdge = QStringLiteral("top");
@@ -75,12 +87,14 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
     }
 
     qDebug() << "[Config] loaded" << path
-             << "| height=" << m_barHeight << "edge=" << m_barEdge << "theme=" << m_theme
+             << "| height=" << m_barHeight << "edge=" << m_barEdge
+             << "themeId=" << m_themeId << "mode=" << m_theme
              << "| plugins=" << m_pluginEntries.size();
 
     if (m_barHeight != oldHeight) emit barHeightChanged();
     if (m_barEdge != oldEdge) emit barEdgeChanged();
     if (m_theme != oldTheme) emit themeChanged();
+    if (m_themeId != oldThemeId) emit themeIdChanged();
     return true;
 }
 

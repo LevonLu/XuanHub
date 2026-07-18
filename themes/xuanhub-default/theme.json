@@ -1,0 +1,32 @@
+{
+  "id": "xuanhub-default",
+  "name": "XuanHub Default",
+  "version": "0.1.0",
+  "author": "XuanHub",
+  "dark": {
+    "bg":      "#1e1e2e",
+    "panel":   "#313244",
+    "fg":      "#cdd6f4",
+    "muted":   "#7f849c",
+    "accent":  "#89b4fa",
+    "danger":  "#f38ba8",
+    "success": "#a6e3a1",
+    "warning": "#f9e2af",
+    "hover":   "#45475a",
+    "border":  "#45475a",
+    "onAccent":"#1e1e2e"
+  },
+  "light": {
+    "bg":      "#ececec",
+    "panel":   "#e6e6e6",
+    "fg":      "#313244",
+    "muted":   "#6c7086",
+    "accent":  "#89b4fa",
+    "danger":  "#f38ba8",
+    "success": "#40a02b",
+    "warning": "#df8e1d",
+    "hover":   "#dcdcdc",
+    "border":  "#cccccc",
+    "onAccent":"#ffffff"
+  }
+}

@@ -32,20 +32,22 @@ Item {
         }
     }
 
-    // 加载失败占位符（plan §11 承诺项）
+    // 加载失败占位符（plan §11 承诺项）。色板取 themeManager.colors.danger
     Rectangle {
         id: errorBadge
         visible: slot.status === Loader.Error
         width: badgeText.implicitWidth + 12
         height: wrapper.height
-        color: "#40f38ba8"
+        // danger 配 25% alpha 当底色（淡红告警感，不打扰）
+        color: Qt.rgba(themeManager.colors.danger.r, themeManager.colors.danger.g,
+                       themeManager.colors.danger.b, 0.25)
         radius: 4
 
         Text {
             id: badgeText
             anchors.centerIn: parent
             text: "⚠ " + model.id
-            color: "#f38ba8"
+            color: themeManager.colors.danger
             font.pixelSize: 12
         }
     }
