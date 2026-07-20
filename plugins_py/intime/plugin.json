@@ -1,0 +1,7 @@
+{
+    "id": "py_intime",
+    "name": "InTime",
+    "version": "0.1.0",
+    "author": "XuanHub",
+    "settingsQml": "InTimeSettings.qml"
+}
