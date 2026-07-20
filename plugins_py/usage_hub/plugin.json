@@ -1,0 +1,7 @@
+{
+    "id": "py_usage_hub",
+    "name": "用量中心",
+    "version": "1.0.0",
+    "author": "XuanHub",
+    "settingsQml": "UsageSettings.qml"
+}

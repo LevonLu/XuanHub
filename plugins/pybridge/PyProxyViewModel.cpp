@@ -99,9 +99,9 @@ bool PyProxyViewModel::load() {
         py::object spec = util.attr("spec_from_file_location")(m_modName.toStdString(), filePath.toStdString());
         m_module = util.attr("module_from_spec")(spec);
         py::module_::import("sys").attr("modules")[m_modName.toStdString().c_str()] = m_module;
-        spec.attr("loader").attr("exec_module")(m_module);
-        // 子插件目录挂到 sys.path 末尾，方便 main.py 导入同目录辅助模块
+        // 子插件目录挂到 sys.path 末尾（必须在 exec_module 之前，使 main.py 可导入同目录子包）
         py::module_::import("sys").attr("path").attr("append")(m_dirPath.toStdString());
+        spec.attr("loader").attr("exec_module")(m_module);
         if (py::hasattr(m_module, "init"))
             m_module.attr("init")(variantToPy(m_cfg));
         hasUpdate = py::hasattr(m_module, "update");
