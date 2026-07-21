@@ -1,5 +1,5 @@
 {
-  "bar": { "height": 40, "edge": "top", "monitor": "primary", "opacity": 1.0, "themeId": "xuanhub-default", "theme": "dark" },
+  "bar": { "height": 40, "edge": "top", "monitor": "primary", "opacity": 1.0, "themeId": "xuanhub-default", "theme": "dark", "mode": "appbar", "taskbarOffsetX": 0 },
   "plugins": [
     { "id": "launcher", "position": "left",  "order": 0, "config": { "items": [{"name":"Terminal","program":"wt.exe"},{"name":"Notepad","program":"notepad.exe"}] } },
     { "id": "netstat",  "position": "right", "order": 0, "config": { "intervalMs": 1000 } },

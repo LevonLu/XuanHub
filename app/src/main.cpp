@@ -49,18 +49,23 @@ static void logToFile(QtMsgType type, const QMessageLogContext&, const QString& 
 // ── TaskbarCreated 守卫 ──────────────────────────────────
 class TaskbarMonitor : public QAbstractNativeEventFilter {
 public:
-    explicit TaskbarMonitor(QPointer<TrayIcon> tray) : m_tray(tray) {}
+    explicit TaskbarMonitor(QPointer<TrayIcon> tray, QPointer<BarWindow> window)
+        : m_tray(tray), m_window(window) {}
     bool nativeEventFilter(const QByteArray&, void* msg, qintptr*) override {
         static const UINT s_taskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");
         auto* m = static_cast<MSG*>(msg);
-        if (m->message == s_taskbarCreated && m_tray) {
-            m_tray->recreate();
+        if (m->message == s_taskbarCreated) {
+            // explorer 重启：托盘图标丢失需重建；taskbar 模式下我们的子窗口
+            // 随任务栏销毁，需重建平台窗口重新嵌入（非 taskbar 模式内部忽略）
+            if (m_tray) m_tray->recreate();
+            if (m_window) m_window->recreateForTaskbar();
             return true;
         }
         return false;
     }
 private:
     QPointer<TrayIcon> m_tray;
+    QPointer<BarWindow> m_window;
 };
 
 // ── main ──────────────────────────────────────────────────
@@ -124,7 +129,7 @@ int main(int argc, char* argv[]) {
 
     // 托盘（先于插件加载创建：插件加载期间可能经 EventBus "app.notify"
     // 请求气泡提示——如 pybridge 未检测到 Python 环境，订阅必须先于发布）
-    TrayIcon tray(&theme, &bus);
+    TrayIcon tray(&theme, &bus, &config);
     tray.show();
 
     PluginManager pm(&bus, configDir);
@@ -153,7 +158,7 @@ int main(int argc, char* argv[]) {
     if (QCoreApplication::arguments().contains(QStringLiteral("--settings")))
         settingsCtl.open();
 
-    auto* monitor = new TaskbarMonitor(&tray);
+    auto* monitor = new TaskbarMonitor(&tray, &window);
     QAbstractEventDispatcher::instance()->installNativeEventFilter(monitor);
 
     const int code = app.exec();

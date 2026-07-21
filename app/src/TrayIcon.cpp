@@ -1,9 +1,11 @@
 // TrayIcon.cpp
 #include "TrayIcon.h"
 #include "ThemeManager.h"
+#include "ConfigService.h"
 #include "AutoStart.h"
 #include "barplugin/EventBus.h"
 
+#include <QJsonObject>
 #include <QPainter>
 #include <QPixmap>
 #include <QMenu>
@@ -12,8 +14,10 @@
 #include <QSignalBlocker>
 #include <QTimer>
 
-TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus, QObject* parent)
-    : QObject(parent), m_theme(theme), m_menu(nullptr), m_autoStartAction(nullptr) {
+TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
+                   ConfigService* config, QObject* parent)
+    : QObject(parent), m_theme(theme), m_config(config),
+      m_menu(nullptr), m_autoStartAction(nullptr), m_taskbarModeAction(nullptr) {
     m_tray = new QSystemTrayIcon(this);
     refreshIcon();   // 首次绘制（读当前主题色板）
     m_tray->setToolTip(QStringLiteral("玄枢 XuanHub"));
@@ -42,9 +46,26 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus, QObject* parent)
         m_autoStartAction->setChecked(autostart::isEnabled());
     }
     connect(m_menu, &QMenu::aboutToShow, this, [this]() {
-        QSignalBlocker blocker(m_autoStartAction);
-        m_autoStartAction->setChecked(autostart::isEnabled());
+        {
+            QSignalBlocker blocker(m_autoStartAction);
+            m_autoStartAction->setChecked(autostart::isEnabled());
+        }
+        // 勾选状态与当前工作模式对齐（设置窗口/手改配置也可能切模式）
+        if (m_config) {
+            QSignalBlocker blocker(m_taskbarModeAction);
+            m_taskbarModeAction->setChecked(
+                m_config->barMode() == QStringLiteral("taskbar"));
+        }
     });
+
+    // 工作模式开关（M11）：写回 config.json 的 bar.mode，生效全靠 M7 watcher 热重载
+    m_taskbarModeAction = m_menu->addAction(QStringLiteral("Taskbar Mode"));
+    m_taskbarModeAction->setCheckable(true);
+    connect(m_taskbarModeAction, &QAction::toggled, this, &TrayIcon::setTaskbarMode);
+    if (m_config) {
+        QSignalBlocker blocker(m_taskbarModeAction);
+        m_taskbarModeAction->setChecked(m_config->barMode() == QStringLiteral("taskbar"));
+    }
 
     QAction* toggleTheme = m_menu->addAction(QStringLiteral("Toggle Dark/Light"));
     connect(toggleTheme, &QAction::triggered, [this]() {
@@ -100,6 +121,18 @@ void TrayIcon::recreate() {
 
 void TrayIcon::setAutoStartEnabled(bool on) {
     autostart::setEnabled(on);   // 逻辑收编到 AutoStart.h（设置窗口共用）
+}
+
+void TrayIcon::setTaskbarMode(bool on) {
+    if (!m_config) return;
+    // 只改 bar.mode 一个键，其余配置（含未知键）经 m_raw 原样保留
+    QJsonObject root = m_config->rawConfig();
+    QJsonObject bar = root.value(QStringLiteral("bar")).toObject();
+    bar.insert(QStringLiteral("mode"),
+               on ? QStringLiteral("taskbar") : QStringLiteral("appbar"));
+    root.insert(QStringLiteral("bar"), bar);
+    // 生效走 M7 文件监听热重载（watcher 盯 activePath），本函数不直接动窗口
+    m_config->save(root);
 }
 
 void TrayIcon::onAppNotify(QVariantMap payload) {

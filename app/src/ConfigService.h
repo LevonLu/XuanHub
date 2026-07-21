@@ -23,6 +23,7 @@ class ConfigService : public QObject {
     Q_PROPERTY(qreal barOpacity READ barOpacity NOTIFY barOpacityChanged)
     Q_PROPERTY(QString theme READ theme NOTIFY themeChanged)
     Q_PROPERTY(QString themeId READ themeId NOTIFY themeIdChanged)
+    Q_PROPERTY(QString barMode READ barMode NOTIFY barModeChanged)
 
 public:
     explicit ConfigService(QObject* parent = nullptr);
@@ -37,6 +38,8 @@ public:
     qreal barOpacity() const { return m_barOpacity; }  // 0.0-1.0，1.0=不透明
     QString theme() const { return m_theme; }          // 主题模式 "dark"/"light"
     QString themeId() const { return m_themeId; }      // 主题包 id（如 "xuanhub-default"）
+    QString barMode() const { return m_barMode; }      // 工作模式 "appbar"（占工作区）/"taskbar"（嵌入任务栏）
+    int taskbarOffsetX() const { return m_taskbarOffsetX; }  // taskbar 模式下距任务栏左缘的水平偏移（逻辑像素）
     const QList<PluginConfigEntry>& pluginEntries() const { return m_pluginEntries; }
 
     // 实际生效的配置文件路径（exeDir 或 configDir 下；文件不存在时仍是目标路径）
@@ -53,6 +56,7 @@ signals:
     void barOpacityChanged();
     void themeChanged();
     void themeIdChanged();
+    void barModeChanged();
 
 private:
     int m_barHeight = 40;
@@ -60,6 +64,8 @@ private:
     qreal m_barOpacity = 1.0;                              // 0.0-1.0，1.0=不透明
     QString m_theme = QStringLiteral("dark");              // 主题模式（dark/light）
     QString m_themeId = QStringLiteral("xuanhub-default"); // 主题包 id
+    QString m_barMode = QStringLiteral("appbar");          // 工作模式（appbar/taskbar）
+    int m_taskbarOffsetX = 0;                              // taskbar 模式水平偏移（逻辑像素）
     QList<PluginConfigEntry> m_pluginEntries;
     QString m_activePath;
     QJsonObject m_raw;   // load() 时留存的原始 JSON（M8 save 的组装底稿）

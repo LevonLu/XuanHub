@@ -2,6 +2,7 @@
 #include "BarWindow.h"
 #include "ConfigService.h"
 #include "WorkAreaGuard.h"
+#include "TaskbarEmbed.h"
 #include "PluginListModel.h"
 #include "ThemeManager.h"
 
@@ -9,14 +10,17 @@
 #include <QGuiApplication>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QQuickItem>
+#include <QTimer>
 #include <QDebug>
 
 BarWindow::BarWindow(ConfigService* config, PluginListModel* model,
                        ThemeManager* theme, QWindow* parent)
-    : QQuickView(parent), m_config(config), m_guard(new WorkAreaGuard(this)) {
+    : QQuickView(parent), m_config(config), m_guard(new WorkAreaGuard(this)),
+      m_embed(new TaskbarEmbed(this)) {
     if (model) engine()->rootContext()->setContextProperty("pluginModel", model);
     if (theme) engine()->rootContext()->setContextProperty("themeManager", theme);
-    // barConfig：bar.height/edge/theme 供 QML（含插件 QML，同引擎根上下文）读取
+    // barConfig：bar.height/edge/theme/mode 供 QML（含插件 QML，同引擎根上下文）读取
     if (config) engine()->rootContext()->setContextProperty("barConfig", config);
 
     // 工作区参数变化（ABN_POSCHANGED）→ 重新布局并重新 reserve
@@ -32,6 +36,12 @@ BarWindow::BarWindow(ConfigService* config, PluginListModel* model,
     setFlag(Qt::Tool);  // 不进任务栏 / Alt+Tab
     // 点击 bar 不抢占当前应用焦点（WS_EX_NOACTIVATE 语义，鼠标事件照常投递）
     setFlag(Qt::WindowDoesNotAcceptFocus);
+    // 逐像素透明：taskbar 模式靠它透出任务栏底色；appbar 模式 QML 自绘不透明
+    // 底色，视觉无变化。QWindow 无 WA_TranslucentBackground，透明靠 alpha buffer +
+    // 透明清屏色；必须在 create() 之前设置（此处构造期，main 里才 create）
+    QSurfaceFormat fmt = format();
+    fmt.setAlphaBufferSize(8);
+    setFormat(fmt);
 
     setResizeMode(QQuickView::SizeRootObjectToView);
     setColor(QColor(0, 0, 0, 0));  // 透明，让 QML 自绘底色
@@ -41,6 +51,18 @@ BarWindow::BarWindow(ConfigService* config, PluginListModel* model,
         qWarning() << "[BarWindow] QML not ready, status =" << status();
         for (const auto& e : errors()) qWarning() << "   " << e.toString();
     }
+
+    // taskbar 模式：QML 内容宽变化 → 重新定位（时钟数字变宽、插件增删都会变）
+    if (QQuickItem* root = rootObject()) {
+        m_embed->setContentWidth(qRound(root->implicitWidth()));
+        connect(root, &QQuickItem::implicitWidthChanged, this, [this] {
+            if (rootObject())
+                m_embed->setContentWidth(qRound(rootObject()->implicitWidth()));
+        });
+    }
+    // explorer 重启销毁任务栏（连同我们的子窗口）→ 重建窗口重新嵌入
+    connect(m_embed, &TaskbarEmbed::taskbarVanished,
+            this, &BarWindow::recreateForTaskbar);
 }
 
 BarWindow::~BarWindow() {
@@ -48,6 +70,20 @@ BarWindow::~BarWindow() {
 }
 
 void BarWindow::setupBar() {
+    // taskbar 模式：嵌入原生任务栏左侧，不占工作区
+    if (m_config->barMode() == QStringLiteral("taskbar")) {
+        m_guard->release();   // 从 appbar 切来时归还已 reserve 的工作区（幂等）
+        if (m_embed->attach(this, m_config->taskbarOffsetX())) return;
+        // 任务栏还没准备好（如 explorer 正在重启）→ 1s 后重试，
+        // 直到 attach 成功或模式被热重载切走
+        qWarning() << "[BarWindow] taskbar attach failed, retry in 1s";
+        QTimer::singleShot(1000, this, [this] {
+            if (m_config->barMode() == QStringLiteral("taskbar")) setupBar();
+        });
+        return;
+    }
+    if (m_embed->isAttached()) m_embed->detach();
+
     QScreen* screen = QGuiApplication::primaryScreen();
     if (!screen) {
         qWarning() << "[BarWindow] no primary screen";
@@ -79,4 +115,16 @@ void BarWindow::setupBar() {
         const int y = top ? sg.y() : (sg.bottom() - h + 1);
         setGeometry(sg.x(), y, sg.width(), h);
     }
+}
+
+void BarWindow::recreateForTaskbar() {
+    if (m_config->barMode() != QStringLiteral("taskbar")) return;
+    qDebug() << "[BarWindow] recreate for taskbar (explorer restarted)";
+    // 旧 HWND 已随任务栏销毁：先脱离（对失效句柄的 Win32 调用无害），
+    // 再重建平台窗口并重新嵌入。destroy/create 保留 flags 与 QML 内容
+    m_embed->detach();
+    destroy();
+    create();
+    setupBar();
+    show();
 }

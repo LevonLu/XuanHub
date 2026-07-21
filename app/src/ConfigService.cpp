@@ -70,6 +70,7 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
     const qreal oldOpacity = m_barOpacity;
     const QString oldTheme = m_theme;
     const QString oldThemeId = m_themeId;
+    const QString oldBarMode = m_barMode;
 
     const auto bar = root.value("bar").toObject();
     if (bar.contains("height")) m_barHeight = bar.value("height").toInt(m_barHeight);
@@ -96,6 +97,19 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
         qWarning() << "[Config] invalid edge:" << m_barEdge << "-> top";
         m_barEdge = QStringLiteral("top");
     }
+    // mode：工作模式（appbar 占工作区 / taskbar 嵌入任务栏），非法值回落 appbar
+    if (bar.contains("mode")) {
+        const QString m = bar.value("mode").toString(m_barMode);
+        if (m == QStringLiteral("appbar") || m == QStringLiteral("taskbar")) {
+            m_barMode = m;
+        } else {
+            qWarning() << "[Config] invalid bar mode:" << m << "-> appbar";
+            m_barMode = QStringLiteral("appbar");
+        }
+    }
+    // taskbarOffsetX：taskbar 模式下距任务栏左缘的偏移（逻辑像素，可为负）
+    if (bar.contains("taskbarOffsetX"))
+        m_taskbarOffsetX = bar.value("taskbarOffsetX").toInt(m_taskbarOffsetX);
 
     m_pluginEntries.clear();
     const auto arr = root.value("plugins").toArray();
@@ -113,6 +127,7 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
              << "| height=" << m_barHeight << "edge=" << m_barEdge
              << "opacity=" << m_barOpacity
              << "themeId=" << m_themeId << "mode=" << m_theme
+             << "barMode=" << m_barMode
              << "| plugins=" << m_pluginEntries.size();
 
     if (m_barHeight != oldHeight) emit barHeightChanged();
@@ -120,6 +135,7 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
     if (m_barOpacity != oldOpacity) emit barOpacityChanged();
     if (m_theme != oldTheme) emit themeChanged();
     if (m_themeId != oldThemeId) emit themeIdChanged();
+    if (m_barMode != oldBarMode) emit barModeChanged();
     return true;
 }
 

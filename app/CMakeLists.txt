@@ -11,6 +11,9 @@ qt_add_executable(XuanHub WIN32
     src/WorkAreaGuard.h
     src/WorkAreaGuard.cpp
 
+    src/TaskbarEmbed.h
+    src/TaskbarEmbed.cpp
+
     src/ConfigService.h
     src/ConfigService.cpp
 
