@@ -2,6 +2,7 @@
 #include "TrayIcon.h"
 #include "ThemeManager.h"
 #include "AutoStart.h"
+#include "barplugin/EventBus.h"
 
 #include <QPainter>
 #include <QPixmap>
@@ -9,8 +10,9 @@
 #include <QAction>
 #include <QSystemTrayIcon>
 #include <QSignalBlocker>
+#include <QTimer>
 
-TrayIcon::TrayIcon(ThemeManager* theme, QObject* parent)
+TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus, QObject* parent)
     : QObject(parent), m_theme(theme), m_menu(nullptr), m_autoStartAction(nullptr) {
     m_tray = new QSystemTrayIcon(this);
     refreshIcon();   // 首次绘制（读当前主题色板）
@@ -18,6 +20,11 @@ TrayIcon::TrayIcon(ThemeManager* theme, QObject* parent)
 
     // 主题变化时重绘图标（ThemeManager 在主线程，AutoConnection 排队到 GUI 线程安全）
     if (m_theme) connect(m_theme, &ThemeManager::themeChanged, this, &TrayIcon::refreshIcon);
+
+    // 插件经 EventBus 请求的气泡提示（如 pybridge 未检测到 Python 环境）。
+    // 注意 slot 用裸签名串而非 SLOT() 宏：EventBus 经 QMetaObject::invokeMethod
+    // 投递，后者不接受 SLOT() 的 "1" 前缀（会报 No such method）。
+    if (bus) bus->subscribe(QStringLiteral("app.notify"), this, "onAppNotify(QVariantMap)");
 
     m_menu = new QMenu();
 
@@ -93,4 +100,16 @@ void TrayIcon::recreate() {
 
 void TrayIcon::setAutoStartEnabled(bool on) {
     autostart::setEnabled(on);   // 逻辑收编到 AutoStart.h（设置窗口共用）
+}
+
+void TrayIcon::onAppNotify(QVariantMap payload) {
+    const QString title = payload.value(QStringLiteral("title"),
+                                        QStringLiteral("XuanHub")).toString();
+    const QString msg   = payload.value(QStringLiteral("message")).toString();
+    if (msg.isEmpty() || !m_tray || !QSystemTrayIcon::supportsMessages()) return;
+    qDebug() << "[Tray] app.notify:" << title << "-" << msg;
+    // 发布可能发生在 app.exec() 之前（插件加载阶段），顺延到事件循环里再弹
+    QTimer::singleShot(0, m_tray, [tray = m_tray, title, msg] {
+        tray->showMessage(title, msg, QSystemTrayIcon::Warning, 10000);
+    });
 }

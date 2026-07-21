@@ -80,17 +80,25 @@ int main(int argc, char* argv[]) {
 
     const QString exeDir = QCoreApplication::applicationDirPath();
 
-    // 配置目录：%APPDATA%/XuanHub（plan §2 决策）；不可用时退回 exeDir
+    // 便携标记：exeDir 下存在 portable 文件时，强制所有运行时数据（配置、日志、锁）
+    // 留在 exeDir，不触碰 %APPDATA% 与 %TEMP%
+    const bool isPortable = QFile::exists(QDir(exeDir).absoluteFilePath(QStringLiteral("portable")));
+
+    // 配置目录：便携模式用 exeDir；常规模式用 %APPDATA%/XuanHub，不可用时退回 exeDir
     QString configDir;
-    const QString appData = qEnvironmentVariable("APPDATA");
-    if (!appData.isEmpty())
-        configDir = QDir(appData).absoluteFilePath(QStringLiteral("XuanHub"));
-    if (configDir.isEmpty() || !QDir().mkpath(configDir))
+    if (isPortable) {
         configDir = exeDir;
+    } else {
+        const QString appData = qEnvironmentVariable("APPDATA");
+        if (!appData.isEmpty())
+            configDir = QDir(appData).absoluteFilePath(QStringLiteral("XuanHub"));
+        if (configDir.isEmpty() || !QDir().mkpath(configDir))
+            configDir = exeDir;
+    }
 
     // 单实例守卫：必须在日志初始化之前——
     // 失败实例不能以 Truncate 方式截断正在运行实例的日志
-    QLockFile instLock(QDir::temp().absoluteFilePath(QStringLiteral("XuanHub.lock")));
+    QLockFile instLock(QDir(configDir).absoluteFilePath(QStringLiteral("XuanHub.lock")));
     if (!instLock.tryLock(100)) {
         OutputDebugStringW(L"[XuanHub] another instance is already running, exit\n");
         return 0;
@@ -114,6 +122,11 @@ int main(int argc, char* argv[]) {
 
     ThemeManager theme(&bus, &registry, config.themeId(), config.theme());
 
+    // 托盘（先于插件加载创建：插件加载期间可能经 EventBus "app.notify"
+    // 请求气泡提示——如 pybridge 未检测到 Python 环境，订阅必须先于发布）
+    TrayIcon tray(&theme, &bus);
+    tray.show();
+
     PluginManager pm(&bus, configDir);
     pm.loadFrom(QDir(exeDir).absoluteFilePath(QStringLiteral("plugins")),
                 config.pluginEntries());
@@ -125,10 +138,6 @@ int main(int argc, char* argv[]) {
     window.create();
     window.setupBar();
     window.show();
-
-    // 托盘
-    TrayIcon tray(&theme);
-    tray.show();
 
     // 配置热重载（M7）：文件监听自动触发 + 托盘 "Reload Config" 手动触发
     ConfigHotReloader reloader(&config, &theme, &registry, &pm, &model, &window, exeDir, configDir);

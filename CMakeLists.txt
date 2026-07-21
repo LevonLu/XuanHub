@@ -28,3 +28,20 @@ add_subdirectory(plugins/clock)
 add_subdirectory(plugins/netstat)
 add_subdirectory(plugins/launcher)
 add_subdirectory(plugins/pybridge)
+
+# ── 便携打包目标 ─────────────────────────────────────────────
+# 用法：cmake --build --preset default --target package_portable
+# 在 Release 构建完成后执行，收集 MSVC 运行时 / Python 标准库 / 清理 /
+# 创建 portable 标记，打包为 XuanHub-vX.Y.Z-portable-x64.zip。
+find_program(PWSH_EXE NAMES pwsh powershell)
+if(PWSH_EXE)
+    add_custom_target(package_portable
+        COMMAND "${PWSH_EXE}" -NoProfile -ExecutionPolicy Bypass -File
+            "${CMAKE_SOURCE_DIR}/scripts/package_portable.ps1"
+            -Config "$<CONFIG>"
+        COMMENT "打包 XuanHub 便携版本..."
+        VERBATIM
+    )
+else()
+    message(STATUS "PowerShell 未找到，package_portable 目标不可用")
+endif()

@@ -1,7 +1,9 @@
-// TrayIcon.h — 系统托盘（QSystemTrayIcon + 菜单 + 开机自启）
+// TrayIcon.h — 系统托盘（QSystemTrayIcon + 菜单 + 开机自启 + app.notify 气泡提示）
 #pragma once
 #include <QObject>
+#include <QVariantMap>
 
+namespace xuanhub { class EventBus; }
 class ThemeManager;
 class QSystemTrayIcon;
 class QMenu;
@@ -10,7 +12,7 @@ class QAction;
 class TrayIcon : public QObject {
     Q_OBJECT
 public:
-    explicit TrayIcon(ThemeManager* theme, QObject* parent = nullptr);
+    explicit TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus, QObject* parent = nullptr);
 
     void show();
     void recreate();               // Explorer 重启后重建托盘图标
@@ -22,6 +24,7 @@ signals:
 private slots:
     void setAutoStartEnabled(bool on);
     void refreshIcon();             // 主题变化时重绘图标（连 ThemeManager::themeChanged）
+    void onAppNotify(QVariantMap payload);  // EventBus "app.notify"：插件请求的气泡提示
 
 private:
     QSystemTrayIcon* m_tray = nullptr;

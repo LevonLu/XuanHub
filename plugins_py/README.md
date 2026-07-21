@@ -119,7 +119,10 @@ def update():
 ```
 
 **必须实现 `stop()`**：热重载（如设置窗口保存配置）会销毁旧模块并重新 import，旧线程若不停下会泄漏运行。
-`urllib` 开箱即用；`requests` 只要系统 Python 装了即可 import（当前解释器经 PYTHONHOME 指向系统安装）。
+`urllib`（含 HTTPS）开箱即用；`requests` 等第三方库装进 Python 3.13 即可直接 import
+（解释器指向用户自装的 Python，其 `site-packages` 对插件可见）。
+运行前提：机器装有 CPython 3.13（python.org）；未安装时 pybridge 整体停用并弹托盘提示，
+宿主与其他插件不受影响（打包脚本可选 `-PythonStrategy Bundle` 内置标准库做成免安装包）。
 
 ## QML 契约
 
@@ -145,4 +148,5 @@ Item {
 ## 已知限制（后续里程碑）
 
 - 无 EventBus 接入（Python 子插件暂不能收发总线事件）。
-- 无 embeddable Python 分发（当前依赖系统 Python 3.13，经构建期烧入的 PYTHONHOME 兜底定位；第三方库随之可用）。
+- 依赖用户自装 CPython 3.13（未安装则整体停用 + 托盘提示）；
+  `-PythonStrategy Bundle` 打包可内置标准库免除该依赖（Embedded zip 策略仍实验性，未验证）。

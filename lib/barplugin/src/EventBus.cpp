@@ -1,6 +1,7 @@
 // EventBus.cpp
 #include "barplugin/EventBus.h"
 #include <QMetaObject>
+#include <QMetaMethod>
 #include <QDebug>
 
 namespace xuanhub {
@@ -30,11 +31,18 @@ void EventBus::publish(const QString& topic, const QVariantMap& payload) {
         const QVector<Sub> snapshot = it.value();
         for (const auto& sub : snapshot) {
             if (!sub.receiver) continue;   // 快照后接收者可能已被销毁
-            QMetaObject::invokeMethod(
-                sub.receiver.data(),
-                sub.member.constData(),
-                Qt::AutoConnection,
-                Q_ARG(QVariantMap, payload));
+            // 先 indexOfMethod 定位再 QMetaMethod::invoke：
+            // QMetaObject::invokeMethod(obj, member, ...) 的 member 只按
+            // 方法名匹配，带参数列表的签名串会查无此法（实测踩过）
+            const QMetaObject* mo = sub.receiver->metaObject();
+            const int idx = mo->indexOfMethod(sub.member.constData());
+            if (idx < 0) {
+                qWarning() << "[EventBus] no such method" << mo->className()
+                           << "::" << sub.member.constData() << ", skip";
+                continue;
+            }
+            mo->method(idx).invoke(sub.receiver.data(), Qt::AutoConnection,
+                                   Q_ARG(QVariantMap, payload));
         }
         // 迭代外顺手清理悬空订阅（重新 find，哈希可能已 rehash）
         it = m_subs.find(topic);

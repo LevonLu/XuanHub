@@ -100,6 +100,8 @@ if(WINDEPLOYQT_EXE)
     add_custom_command(TARGET XuanHub POST_BUILD
         COMMAND "${WINDEPLOYQT_EXE}" "$<IF:$<CONFIG:Debug>,--debug,--release>"
                 --qmldir "${CMAKE_SOURCE_DIR}/app/qml"
+                --qmldir "${CMAKE_SOURCE_DIR}/plugins"
+                --qmldir "${CMAKE_SOURCE_DIR}/plugins_py"
                 "$<TARGET_FILE:XuanHub>"
         VERBATIM
     )

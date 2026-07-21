@@ -1,6 +1,8 @@
 // EventBus.h — 插件间松耦合通信
 // subscribe(topic, receiver, slot) 按 topic 订阅；
 // publish(topic, payload) 精准投递订阅者 + 广播 dispatched 信号。
+// 注意用 Q_SIGNALS 而非 signals：pybridge 等定义了 QT_NO_KEYWORDS 的
+// 插件也要包含本头（signals 宏不存在会语法错误）。
 #pragma once
 #include <QObject>
 #include <QString>
@@ -25,7 +27,7 @@ public:
 
     Q_INVOKABLE void publish(const QString& topic, const QVariantMap& payload = {});
 
-signals:
+Q_SIGNALS:
     void dispatched(const QString& topic, const QVariantMap& payload);
 
 private:
