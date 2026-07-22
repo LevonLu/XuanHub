@@ -21,10 +21,10 @@ Item {
     width: 130
     height: 40
 
-    // 注意：不用 Screen attached 获取屏幕几何。在 Loader 动态加载的插件组件中，
-    // Screen.virtualGeometry 会在组件实例化时（尚未挂到窗口 scene graph）求值为
-    // undefined，且绑定会因此丢失（Qt 已知行为）。改用「先 show 再定位」两步法：
-    // 日历 Window show 后会挂到某个 screen，其内部 Item 的 Screen attached 才有效。
+    // 注意：不用 Screen attached 取屏幕几何。弹窗先开在屏幕外时其窗口未挂到任何
+    // screen，内部 Item 的 Screen 无效；taskbar 模式下 bar 是任务栏子窗口，
+    // root.Screen 也会失效（实测 undefined）。统一用宿主注入的根上下文
+    // barScreenGeometry（BarWindow::setupBar 写入）+ mapToGlobal 真实屏幕坐标。
 
     // 色板别名：统一从 themeManager.colors 取（M9 数据驱动主题），缺失时给深色兜底
     readonly property var colors: themeManager ? themeManager.colors : ({
@@ -40,6 +40,21 @@ Item {
         text: plugin ? plugin.timeText : "--:--:--"
     }
 
+    // 点 bar 任意处关闭日历：bar 是 WindowDoesNotAcceptFocus，点击不会让日历
+    // 失活（onActiveChanged 不触发），靠宿主 barWindow.barPressed 信号补齐；
+    // 点桌面/其他窗口仍走失活关闭。信号先于 item 的 onClicked 到达，
+    // 用 calOpenOnBarPress 记录按下瞬间日历状态，避免「点时钟关日历」
+    // 被 onClicked 当成 toggle 又立刻重开。
+    property bool calOpenOnBarPress: false
+
+    Connections {
+        target: typeof barWindow !== "undefined" ? barWindow : null
+        function onBarPressed() {
+            root.calOpenOnBarPress = calendarWin.visible
+            calendarWin.hide()
+        }
+    }
+
     // 左键：切换日历显隐；右键：保留原日志（M4 交互验证遗留）
     MouseArea {
         anchors.fill: parent
@@ -47,8 +62,12 @@ Item {
         hoverEnabled: true
         onClicked: (mouse) => {
             if (mouse.button === Qt.LeftButton) {
-                if (calendarWin.visible) calendarWin.hide()
-                else root.openCalendar()
+                if (root.calOpenOnBarPress) {
+                    // 本次按下已经由 barPressed 把日历关掉了，不再重开
+                    root.calOpenOnBarPress = false
+                    return
+                }
+                root.openCalendar()
             } else {
                 console.log("[Clock] right-clicked")
             }
@@ -56,9 +75,11 @@ Item {
     }
 
     // 弹出日历：以时钟中心点为锚，日历水平居中于时钟下方弹出（气泡感）。
-    // 采用「先 show 再定位」两步法：Window show 后挂到 screen，其内 Item 的
-    // Screen attached 才有效（Loader 加载的插件组件中，root 上的 Screen 是 undefined）。
-    // 初次定位用时钟坐标做粗略居中，show 后在 onAfterAnimating 用真实屏幕几何修正越界。
+    // 日历宽高固定（320×360），定位可以在 show 前一次算完，无需两段式修正：
+    // 锚点用 mapToGlobal（真实屏幕坐标，taskbar 嵌入下也可靠），屏幕边界用
+    // 宿主注入的 barScreenGeometry（当前屏 availableGeometry，已排除任务栏
+    // 占位；taskbar 模式下 bar 是任务栏子窗口，Item.Screen 实测 undefined）。
+    // 注意 QML rect 只有 x/y/width/height，right/bottom 要自己算。
     function openCalendar() {
         const w = calendarWin.width
         const h = calendarWin.height
@@ -66,18 +87,34 @@ Item {
         const belowPt = root.mapToGlobal(Qt.point(root.width / 2, root.height + 6))
 
         // 日历水平居中于时钟中心，垂直贴时钟下沿
-        calendarWin.x = Math.round(belowPt.x - w / 2)
-        calendarWin.y = Math.round(belowPt.y)
+        let x = Math.round(belowPt.x - w / 2)
+        let y = Math.round(belowPt.y)
+
+        // 越界修正：水平收进当前屏；下方越界 → 改从时钟上方弹出
+        const sg = (typeof barScreenGeometry !== "undefined")
+                   ? barScreenGeometry : null
+        if (sg && sg.width > 0) {
+            const sRight = sg.x + sg.width
+            const sBottom = sg.y + sg.height
+            if (x + w > sRight)  x = Math.round(sRight - w)
+            if (x < sg.x)        x = sg.x
+            if (y + h > sBottom) {
+                const abovePt = root.mapToGlobal(Qt.point(root.width / 2, -6))
+                y = Math.round(abovePt.y - h)
+            }
+            if (y < sg.y) y = sg.y
+        }
+        calendarWin.x = x
+        calendarWin.y = y
 
         // 回到今天所在月（同时设置 month + year 两个 int 属性）
         const now = new Date()
         calendarWin.viewYear = now.getFullYear()
         calendarWin.viewMonth = now.getMonth()
 
-        calendarWin.show()           // 显示后窗口挂到 screen，attached 才生效
+        calendarWin.show()
         calendarWin.raise()
         calendarWin.requestActivate()
-        calendarWin.pendingClamp = true   // 标记：等首个 frame 后做越界修正
     }
 
     // ── 日历气泡窗口 ──────────────────────────────────────────
@@ -86,7 +123,6 @@ Item {
         // 当前显示月/年（int，MonthGrid.month/year 直接绑定）
         property int viewMonth: 0
         property int viewYear: 0
-        property bool pendingClamp: false   // show 后等待首个 frame 做越界修正
 
         visible: false
         width: 320
@@ -99,43 +135,10 @@ Item {
         // 失活（点击窗口外）自动关闭——常见气泡行为
         onActiveChanged: if (!active && visible) hide()
 
-        // 窗口 show 后挂到 screen，此时内部 Item 的 Screen attached 才有效。
-        // 用 Qt.callLater 在 show() 返回、窗口挂到 screen 后做一次越界修正。
-        onVisibleChanged: if (visible && pendingClamp) Qt.callLater(doClamp)
-
         // Esc 关闭（窗口作用域 Shortcut）
         Shortcut {
             sequence: "Escape"
             onActivated: calendarWin.hide()
-        }
-
-        // 屏幕几何探针：Window 内部的 Item 才能正确拿到 Screen attached
-        //（Window show 后挂到 screen，attached 生效）。不可见不影响功能。
-        Item {
-            id: screenProbe
-            visible: false
-        }
-
-        // 越界修正：show 后用真实屏幕几何把日历拉回可视区，必要时上翻
-        function doClamp() {
-            calendarWin.pendingClamp = false
-            const sg = screenProbe.Screen.virtualGeometry  // 现在有效
-            if (!sg || sg.width === 0) return              // 保险：拿不到就不修正
-            const w = calendarWin.width
-            const h = calendarWin.height
-            let x = calendarWin.x
-            let y = calendarWin.y
-            // 水平越界收边
-            if (x + w > sg.right)  x = Math.round(sg.right - w)
-            if (x < sg.left)       x = sg.left
-            // 垂直下越界 → 改从时钟上方弹出（重新算 y）
-            if (y + h > sg.bottom) {
-                const abovePt = root.mapToGlobal(Qt.point(root.width / 2, -6))
-                y = Math.round(abovePt.y - h)
-            }
-            if (y < sg.top) y = sg.top
-            calendarWin.x = x
-            calendarWin.y = y
         }
 
         // 中文 locale；系统无 zh_CN 时 Qt 自动回退，不报错

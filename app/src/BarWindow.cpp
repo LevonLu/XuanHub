@@ -11,6 +11,7 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickItem>
+#include <QMouseEvent>
 #include <QTimer>
 #include <QDebug>
 
@@ -22,6 +23,8 @@ BarWindow::BarWindow(ConfigService* config, PluginListModel* model,
     if (theme) engine()->rootContext()->setContextProperty("themeManager", theme);
     // barConfig：bar.height/edge/theme/mode 供 QML（含插件 QML，同引擎根上下文）读取
     if (config) engine()->rootContext()->setContextProperty("barConfig", config);
+    // barWindow：暴露本窗口给 QML（插件 QML 用 Connections 收听 barPressed 信号）
+    engine()->rootContext()->setContextProperty("barWindow", this);
 
     // 工作区参数变化（ABN_POSCHANGED）→ 重新布局并重新 reserve
     connect(m_guard, &WorkAreaGuard::needRelayout,
@@ -69,7 +72,30 @@ BarWindow::~BarWindow() {
     if (m_guard) m_guard->release();
 }
 
+void BarWindow::mousePressEvent(QMouseEvent* event) {
+    // 先于 item 投递广播：Connections 直连接收，弹窗关闭发生在
+    // 被点 item 的 onPressed/onClicked 之前（插件据此区分"点部件 toggle 关闭"
+    // 与"点空白处仅关闭"）
+    Q_EMIT barPressed();
+    QQuickView::mousePressEvent(event);
+}
+
 void BarWindow::setupBar() {
+    // 暴露 bar 所在屏幕的可用几何给 QML（含插件 QML，同引擎根上下文）。
+    // 用 availableGeometry 而非 virtualGeometry：弹窗越界修正要收在「当前屏」
+    // 内，多屏并集的左/右缘不是本屏边缘（实测日历左缘越出主屏不修正）；
+    // 可用几何还会排除任务栏占位，下界正好贴在任务栏上沿。
+    // taskbar 模式下 bar 是任务栏子窗口，QWindow::screen() 关联失效（QML 侧
+    // Item.Screen.virtualGeometry 为 undefined），此时回落主屏——目前 bar
+    // 只支持主屏（appbar reserve 与主任务栏都在主屏），回落是准确的。
+    // 每次 setupBar 刷新，保证热重载/换屏后值不过期。
+    {
+        QScreen* s = screen();
+        if (!s) s = QGuiApplication::primaryScreen();
+        if (s) engine()->rootContext()->setContextProperty(
+            QStringLiteral("barScreenGeometry"), s->availableGeometry());
+    }
+
     // taskbar 模式：嵌入原生任务栏左侧，不占工作区
     if (m_config->barMode() == QStringLiteral("taskbar")) {
         m_guard->release();   // 从 appbar 切来时归还已 reserve 的工作区（幂等）

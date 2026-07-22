@@ -26,6 +26,16 @@ public:
     // 我们的 HWND 已随任务栏销毁，重建平台窗口并重新嵌入。非 taskbar 模式直接忽略。
     void recreateForTaskbar();
 
+Q_SIGNALS:
+    // bar 收到任意鼠标按下时发射（先于 QML item 投递）。
+    // 用途：bar 是 WindowDoesNotAcceptFocus，点击 bar 不会让插件弹窗失活，
+    // 弹窗插件（usage_hub 详情、clock 日历）收听此信号实现"点 bar 任意处关闭弹窗"；
+    // 点击桌面/其他窗口的关闭仍由弹窗自身的 onActiveChanged 失活逻辑覆盖。
+    void barPressed();
+
+protected:
+    void mousePressEvent(QMouseEvent* event) override;
+
 private:
     ConfigService* m_config;
     WorkAreaGuard* m_guard;

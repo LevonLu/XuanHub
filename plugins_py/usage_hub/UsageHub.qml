@@ -173,14 +173,34 @@ Item {
     }
 
     // ── Bar 点击 → 切换弹窗 ──────────────────────────────────────
+    // 点 bar 任意处关闭弹窗：bar 是 WindowDoesNotAcceptFocus，点击不会让弹窗
+    // 失活（onActiveChanged 不触发），靠宿主 barWindow.barPressed 信号补齐；
+    // 点桌面/其他窗口仍走失活关闭。信号先于 item 的 onClicked 到达，
+    // 用 popupOpenOnBarPress 记录按下瞬间弹窗状态，避免「点部件关弹窗」
+    // 被 onClicked 当成 toggle 又立刻重开。
+    property bool popupOpenOnBarPress: false
+
+    Connections {
+        target: typeof barWindow !== "undefined" ? barWindow : null
+        function onBarPressed() {
+            root.popupOpenOnBarPress = popupWin.visible
+            popupWin.hide()
+            tipDelay.stop(); tip.hide()
+        }
+    }
+
     MouseArea {
         id: clickArea
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
         hoverEnabled: true
         onClicked: {
-            if (popupWin.visible) { popupWin.hide() }
-            else { root.openPopup() }
+            if (root.popupOpenOnBarPress) {
+                // 本次按下已经由 barPressed 把弹窗关掉了，不再重开
+                root.popupOpenOnBarPress = false
+                return
+            }
+            root.openPopup()
         }
         onContainsMouseChanged: {
             if (containsMouse) tipDelay.restart()
@@ -191,28 +211,44 @@ Item {
     // ── 悬停提示气泡（400ms 延迟） ──────────────────────────────
     Timer { id: tipDelay; interval: 400; onTriggered: root.showTip() }
 
+    // 定位一律用 mapToGlobal（真实屏幕坐标）：taskbar 模式下 bar 是任务栏子窗口，
+    // Qt 缓存的 Window.window.x/y 是父客户区坐标（不可靠）；上下翻转也不看
+    // barConfig.barEdge（taskbar 模式下它与任务栏实际位置无关），统一 show 后
+    // 按真实屏幕几何越界修正（doClamp）。
     function showTip() {
         const anchor = root.mapToGlobal(Qt.point(root.width / 2, 0))
-        const w = root.Window.window
-        let x = Math.round(anchor.x - tip.width / 2)
-        let y
-        if (w) {
-            x = Math.max(w.x + 4, Math.min(x, w.x + w.width - tip.width - 4))
-            const atBottom = (typeof barConfig !== "undefined") && barConfig.barEdge === "bottom"
-            y = atBottom ? Math.round(w.y - tip.height - 6)
-                         : Math.round(w.y + w.height + 6)
-        } else {
-            y = Math.round(anchor.y + root.height + 6)
-        }
-        tip.x = x; tip.y = y
+        tip.x = Math.round(anchor.x - tip.width / 2)
+        tip.y = Math.round(anchor.y + root.height + 6)
+        tip.pendingClamp = true   // 必须在 show() 前置位：onVisibleChanged 同步触发
         tip.show()
     }
 
     Window {
         id: tip; visible: false
+        property bool pendingClamp: false
         width: tipText.implicitWidth + 16; height: tipText.implicitHeight + 10
         color: "transparent"
         flags: Qt.ToolTip | Qt.FramelessWindowHint | Qt.WindowDoesNotAcceptFocus
+
+        onVisibleChanged: if (visible && pendingClamp) Qt.callLater(tipDoClamp)
+
+        function tipDoClamp() {
+            pendingClamp = false
+            // 同 popupWin.doClamp：屏幕几何取宿主注入的 barScreenGeometry
+            const sg = (typeof barScreenGeometry !== "undefined")
+                       ? barScreenGeometry : null
+            if (!sg || sg.width === 0) return
+            const sRight = sg.x + sg.width; const sBottom = sg.y + sg.height
+            let x = tip.x; let y = tip.y
+            if (x + tip.width > sRight)  x = Math.round(sRight - tip.width)
+            if (x < sg.x)                x = sg.x
+            if (y + tip.height > sBottom) {
+                const abovePt = root.mapToGlobal(Qt.point(root.width / 2, -6))
+                y = Math.round(abovePt.y - tip.height)
+            }
+            if (y < sg.y) y = sg.y
+            tip.x = x; tip.y = y
+        }
         Rectangle {
             anchors.fill: parent; radius: 5; color: root.cPanel
             border.width: 1; border.color: root.cBorder
@@ -241,22 +277,20 @@ Item {
     function openPopup() {
         const pw = 400
         const anchor = root.mapToGlobal(Qt.point(root.width / 2, root.height + 6))
-        let x = Math.round(anchor.x - pw / 2)
-        let y = Math.round(anchor.y)
-
-        // 只用 bar 窗口做水平越界修正（垂直留给 doClamp 在 show 后处理）
-        const bw = root.Window.window
-        if (bw) {
-            x = Math.max(bw.x + 4, Math.min(x, bw.x + bw.width - pw - 4))
-        }
-
-        popupWin.x = x
-        popupWin.y = y
+        popupWin.x = Math.round(anchor.x - pw / 2)
+        popupWin.y = Math.round(anchor.y)
+        // 清掉上次上翻遗留的底边锚：否则卡片重建的高度瞬变会让 onHeightChanged
+        // 用旧锚抢跑，doClamp 看到 y 已被预调而误判"不越界"不上翻（实测导致
+        // 弹窗位置 正常/偏高 逐次交替）
+        popupWin.bottomAnchor = -1
+        // 隐身创建：定位是「先 show 再 clamp」两段式（高度要等卡片布局才收敛），
+        // 不隐身用户会看到弹窗从屏幕外跳到正确位置；doClamp 末尾恢复 opacity
+        popupWin.opacity = 0
+        popupWin.pendingClamp = true   // 必须在 show() 前置位：onVisibleChanged 同步触发
+        rebuildCards()                 // 提前重建，让高度尽量在 show 前收敛
         popupWin.show()
         popupWin.raise()
         popupWin.requestActivate()
-        popupWin.pendingClamp = true
-        rebuildCards()
     }
 
     function rebuildCards() {
@@ -288,6 +322,10 @@ Item {
     Window {
         id: popupWin
         property bool pendingClamp: false
+        // >=0 时为「上翻」模式：弹窗底边锚定在该屏幕 y 处（部件上方 6px）。
+        // 卡片是 show 后异步填充的，高度会在 doClamp 之后继续变化（实测 520→394），
+        // 只 clamp 一次会让弹窗悬空——锚定底边后由 onHeightChanged 持续跟随。
+        property real bottomAnchor: -1
 
         visible: false; width: 400
         height: Math.min(520, Math.max(200, cardContainer.implicitHeight + 100))
@@ -297,23 +335,46 @@ Item {
         onActiveChanged: if (!active && visible) hide()
         Shortcut { sequence: "Escape"; onActivated: popupWin.hide() }
         onVisibleChanged: if (visible && pendingClamp) Qt.callLater(doClamp)
+        onHeightChanged: {
+            if (visible && bottomAnchor >= 0)
+                y = Math.round(bottomAnchor - height)
+            // 高度每变一次都把显现时间后推：等高度稳定 50ms 再显示，
+            // 否则用户会看到 doClamp 之后高度继续收敛带来的顶边收缩
+            if (visible) revealTimer.restart()
+        }
 
-        Item { id: screenProbe; visible: false }
+        // 显现定时器：doClamp 或最后一次高度变化 50ms 后恢复 opacity
+        Timer {
+            id: revealTimer; interval: 50
+            onTriggered: popupWin.opacity = 1
+        }
 
         function doClamp() {
             pendingClamp = false
-            const sg = screenProbe.Screen.virtualGeometry
-            if (!sg || sg.width === 0) return
+            // 屏幕几何取宿主注入的 barScreenGeometry（当前屏 availableGeometry，
+            // 已排除任务栏占位）：弹窗先开在屏幕外时其内部 Item 的 Screen 无效；
+            // taskbar 模式下 bar 是任务栏子窗口，root.Screen 同样失效（实测 undefined）。
+            // 注意 QML rect 只有 x/y/width/height，right/bottom 要自己算。
+            const sg = (typeof barScreenGeometry !== "undefined")
+                       ? barScreenGeometry : null
+            if (!sg || sg.width === 0) { popupWin.opacity = 1; return }
+            const sRight = sg.x + sg.width; const sBottom = sg.y + sg.height
             const w = popupWin.width; const h = popupWin.height
-            let x = popupWin.x; let y = popupWin.y
-            if (x + w > sg.right)  x = Math.round(sg.right - w)
-            if (x < sg.left)       x = sg.left
-            if (y + h > sg.bottom) {
+            // y 不读当前值（onHeightChanged 可能在高度瞬变时改过它），
+            // 从锚点重算「下方展开」的目标位置再判断是否越界
+            let x = popupWin.x
+            const belowPt = root.mapToGlobal(Qt.point(root.width / 2, root.height + 6))
+            let y = Math.round(belowPt.y)
+            if (x + w > sRight)  x = Math.round(sRight - w)
+            if (x < sg.x)        x = sg.x
+            if (y + h > sBottom) {
                 const abovePt = root.mapToGlobal(Qt.point(root.width / 2, -6))
+                bottomAnchor = Math.round(abovePt.y)
                 y = Math.round(abovePt.y - h)
             }
-            if (y < sg.top) y = sg.top
+            if (y < sg.y) y = sg.y
             popupWin.x = x; popupWin.y = y
+            revealTimer.restart()   // 高度可能继续瞬变，由定时器在最后稳定后显现
         }
 
         // ── 内容 ─────────────────────────────────────────────
