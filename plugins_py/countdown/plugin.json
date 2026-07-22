@@ -1,0 +1,28 @@
+{
+    "id": "py_countdown",
+    "name": "PyCountdown",
+    "version": "0.1.0",
+    "author": "XuanHub",
+    "settings": [
+        { "group": "目标时间", "fields": [
+            { "key": "mode", "type": "enum", "label": "目标模式", "default": "每日重复",
+              "options": ["每日重复", "指定日期"], "description": "每日重复=每天到点归零；指定日期=倒数到某个一次性时刻" },
+            { "key": "targetTime", "type": "string", "label": "每日时刻", "default": "18:00",
+              "placeholder": "HH:MM 或 HH:MM:SS", "description": "「每日重复」模式用：每天到达的时刻" },
+            { "key": "targetDateTime", "type": "string", "label": "指定日期时刻", "default": "",
+              "placeholder": "YYYY-MM-DD HH:MM:SS", "description": "「指定日期」模式用：一次性目标时刻（秒可省）" }
+        ]},
+        { "group": "显示", "fields": [
+            { "key": "prefix", "type": "string", "label": "前缀", "default": "下班" },
+            { "key": "suffix", "type": "string", "label": "后缀", "default": "剩余" },
+            { "key": "reachedText", "type": "string", "label": "到点文字", "default": "下班啦🎉",
+              "description": "倒计时归零后显示的文字" },
+            { "key": "reachedColor", "type": "color", "label": "到点颜色", "default": "",
+              "description": "空 = 跟随主题成功色；非空须为 #hex 或 SVG 颜色名" }
+        ]},
+        { "group": "刷新", "fields": [
+            { "key": "intervalMs", "type": "int", "label": "刷新间隔 (ms)",
+              "default": 1000, "min": 200, "max": 60000, "step": 1000 }
+        ]}
+    ]
+}

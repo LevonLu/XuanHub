@@ -7,6 +7,7 @@
     { "id": "pybridge", "position": "right", "order": 9, "config": {} },
     { "id": "py_hello", "position": "right", "order": 2, "config": { "intervalMs": 1000, "prefix": "Py" } },
     { "id": "py_usage_hub", "position": "right", "order": 3, "config": { "intervalMs": 3000, "vendors": [] } },
-    { "id": "py_intime", "position": "right", "order": 5, "config": { "intervalMs": 1000, "workSeconds": 1500, "restSeconds": 300 } }
+    { "id": "py_intime", "position": "right", "order": 5, "config": { "intervalMs": 1000, "workSeconds": 1500, "restSeconds": 300 } },
+    { "id": "py_countdown", "position": "right", "order": 6, "config": { "intervalMs": 1000, "mode": "每日重复", "targetTime": "18:00", "prefix": "下班", "suffix": "剩余", "reachedText": "下班啦🎉", "reachedColor": "" } }
   ]
 }
