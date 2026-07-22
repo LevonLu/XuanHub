@@ -32,7 +32,7 @@ Item {
         }
     }
 
-    // 加载失败占位符（plan §11 承诺项）。色板取 themeManager.colors.danger
+    // 加载失败占位符。色板取 themeManager.colors.danger
     Rectangle {
         id: errorBadge
         visible: slot.status === Loader.Error

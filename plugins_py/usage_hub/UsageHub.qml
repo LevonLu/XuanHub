@@ -31,6 +31,16 @@ Item {
         return pv[vid + "_" + key]
     }
 
+    // bar hover 反馈（提示部件可点击弹窗）；clickArea 在下方声明，运行时解析无碍
+    property color cHover: themeManager ? themeManager.colors.hover : "#45475a"
+    Rectangle {
+        anchors.fill: parent
+        radius: 6
+        color: Qt.rgba(root.cHover.r, root.cHover.g, root.cHover.b,
+                       clickArea.containsMouse ? 0.35 : 0)
+        Behavior on color { ColorAnimation { duration: 120 } }
+    }
+
     function barColor(pct) {
         return pct < 50 ? root.cSuccess : pct < 80 ? root.cWarning : root.cDanger
     }
@@ -383,6 +393,7 @@ Item {
         Rectangle {
             anchors.fill: parent; anchors.margins: 1
             color: root.cBg; radius: 8
+            border.width: 1; border.color: root.cBorder
 
             ColumnLayout {
                 anchors.fill: parent; anchors.margins: 12; spacing: 8
@@ -390,7 +401,7 @@ Item {
                 // 标题行
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { text: "用量中心"; color: root.cFg; font.pixelSize: 16; font.bold: true }
+                    Text { text: "用量中心"; color: root.cFg; font.pixelSize: 15; font.bold: true }
                     Item { Layout.fillWidth: true }
                     Text {
                         text: "✕"; color: root.cMuted; font.pixelSize: 16

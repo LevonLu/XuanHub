@@ -33,6 +33,16 @@ Item {
         "hover": "#45475a", "border": "#45475a", "onAccent": "#1e1e2e"
     })
 
+    // bar hover 反馈（提示可点击弹日历）；barMa 在下方声明，运行时解析无碍
+    property color hoverColor: root.colors.hover
+    Rectangle {
+        anchors.fill: parent
+        radius: 6
+        color: Qt.rgba(root.hoverColor.r, root.hoverColor.g, root.hoverColor.b,
+                       barMa.containsMouse ? 0.35 : 0)
+        Behavior on color { ColorAnimation { duration: 120 } }
+    }
+
     Text {
         anchors.centerIn: parent
         color: root.colors.fg
@@ -57,6 +67,7 @@ Item {
 
     // 左键：切换日历显隐；右键：保留原日志（M4 交互验证遗留）
     MouseArea {
+        id: barMa
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true
@@ -127,10 +138,21 @@ Item {
         visible: false
         width: 320
         height: 360
-        color: root.colors.bg
+        color: "transparent"
         // Tool：不进任务栏/Alt+Tab；Frameless：无系统标题栏（自绘）；
         // StaysOnTop：与 Bar 同层级置顶；不加 NoFocus：日历需接收 Esc 与悬停高亮
         flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+
+        // 圆角 + 边框：frameless 窗口自身不能圆角，透明窗口 + 底层 Rectangle 实现
+        //（与用量中心弹窗同一范式）；ColumnLayout 叠在其上，z 序天然靠后声明者在上
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            color: root.colors.bg
+            radius: 8
+            border.width: 1
+            border.color: root.colors.border
+        }
 
         // 失活（点击窗口外）自动关闭——常见气泡行为
         onActiveChanged: if (!active && visible) hide()

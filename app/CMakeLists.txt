@@ -59,6 +59,10 @@ qt_add_executable(XuanHub WIN32
 qt_policy(SET QTP0001 NEW)  # QML 模块资源前缀 :/qt/qml/
 qt_policy(SET QTP0004 NEW)  # 为含 .qml 的子目录自动生成 qmldir
 
+# UiMetrics 是设计令牌 singleton：需标记 QT_QML_SINGLETON_TYPE，
+# 让自动生成的 qmldir 以 singleton 注册（各 Ui*.qml 经 import XuanHub 引用）
+set_source_files_properties(qml/UiMetrics.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
 qt_add_qml_module(XuanHub
     URI XuanHub
     VERSION 1.0
@@ -67,6 +71,14 @@ qt_add_qml_module(XuanHub
         qml/Bar.qml
         qml/PluginSlot.qml
         qml/SettingsWindow.qml
+        # UI 设计令牌与自绘控件库（Basic 样式 + palette 驱动，设置窗口用）
+        qml/UiMetrics.qml
+        qml/UiButton.qml
+        qml/UiSwitch.qml
+        qml/UiComboBox.qml
+        qml/UiSpinBox.qml
+        qml/UiTextField.qml
+        qml/UiCard.qml
     RESOURCES
         resources/default_config.json
 )

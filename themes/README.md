@@ -36,17 +36,17 @@ themes/
 
 | 字段 | 语义 | 典型用途 |
 |---|---|---|
-| `bg` | 根背景 | 状态栏底色、弹窗底色 |
-| `panel` | 面板/卡片背景 | 设置项分组、日历底栏 |
+| `bg` | 根背景 | 状态栏底色、弹窗/设置窗口底色 |
+| `panel` | 面板/卡片背景 | 设置窗口分组卡片、日历底栏、控件底色 |
 | `fg` | 主文字 | 标题、正文 |
-| `muted` | 次要文字 | 周数、星期表头、非当月日、副标题 |
-| `accent` | 强调色 | 今日高亮、链接、主按钮边框、托盘图标边 |
-| `danger` | 危险/错误 | 上行网速、加载失败 badge、错误提示 |
-| `success` | 成功/正常 | 下行网速 |
-| `warning` | 警告 | 预留（暂无内置用途） |
-| `hover` | 悬停反馈 | 按钮 hover 背景 |
-| `border` | 边框 | 分隔线、弱边框 |
-| `onAccent` | accent 背景上的文字色 | 今日白/黑字（取决于 accent 明度） |
+| `muted` | 次要文字 | 副标题、描述小字、占位文本、非当月日 |
+| `accent` | 强调色 | 主按钮底色、导航选中条、开关开态、焦点描边、今日高亮、链接 |
+| `danger` | 危险/错误 | 错误提示、非法输入红框、关闭按钮 hover、加载失败 badge |
+| `success` | 成功/正常 | 下行网速、用量正常状态 |
+| `warning` | 警告 | 用量进度中高水位 |
+| `hover` | 悬停反馈 | bar 部件 hover 底色、按钮/列表行 hover |
+| `border` | 边框 | 弹窗描边、输入框描边、分隔线 |
+| `onAccent` | accent 背景上的文字色 | 主按钮文字、今日高亮上的字（按 accent 明度选黑/白） |
 
 字段值必须是 QColor 可解析的颜色字符串（`#RGB` / `#RRGGBB` / `#RRGGBBAA` 等 hex 形态、SVG 命名色），不支持 `rgb()` 函数式。非法色值视为该字段**缺失**（日志记 `[Theme] ... invalid color value ... -> treated as missing`）：必填字段非法 → 整包拒载；其余字段非法 → 走内置默认主题 fallback。
 
@@ -64,6 +64,8 @@ Text { color: themeManager.colors.fg }
 ```qml
 color: themeManager ? themeManager.colors.accent : "#89b4fa"
 ```
+
+**换肤覆盖范围**：bar、全部插件部件与弹窗、设置窗口（含按钮/开关/输入框等自绘控件）均只吃这 11 个字段——设置窗口自绘控件经 `palette` 继承色板（`highlight=accent`、`button=panel` 等），hover/焦点等派生态用 `Qt.lighter/Qt.rgba` 从色板色推算，无任何硬编码色。也就是说一套 theme.json 即可给整个程序完整换肤；写新 QML 时请遵守同一规矩（派生态从色板推算，不要写死颜色）。
 
 ## 5. 模式切换 vs 主题包切换
 

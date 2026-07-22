@@ -65,7 +65,10 @@ XuanHub/
 │   │                                    # PluginFilterModel、ThemeManager（M9 多主题）、
 │   │                                    # ThemeRegistry（M9 主题包扫描/校验）、TrayIcon
 │   ├── qml/                             # main.qml / Bar.qml（三栏 ListView）/ PluginSlot.qml（Loader 槽）
-│   │                                    # / SettingsWindow.qml（M8 设置窗口，Qt Quick Controls）
+│   │                                    # / SettingsWindow.qml（M8 设置窗口，Qt Quick Controls，左侧导航+卡片流）
+│   │                                    # / Ui*.qml（设计令牌 UiMetrics singleton + 自绘控件库：
+│   │                                    #   UiButton/UiSwitch/UiComboBox/UiSpinBox/UiTextField/UiCard，
+│   │                                    #   Basic 样式自绘 background/contentItem，颜色全走 palette）
 │   └── resources/default_config.json    # qrc 内置默认配置（首运行播种用）
 ├── plugins/
 │   ├── clock/                           # ClockPlugin + ClockViewModel（QTimer 1s）+ Clock.qml

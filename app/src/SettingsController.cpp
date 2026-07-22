@@ -42,7 +42,7 @@ void SettingsController::open() {
         // 代价：失去系统阴影，改由 QML DropShadow 补偿。
         w->setColor(QColor(Qt::transparent));
         w->setResizeMode(QQuickView::SizeRootObjectToView);
-        w->resize(720, 640);   // 插件 Tab 为 master-detail 两栏，需更宽（M10）
+        w->resize(780, 680);   // 左侧导航 + 卡片流布局后加宽加高（插件页为 master-detail 两栏，M10）
         w->rootContext()->setContextProperty(QStringLiteral("settingsVM"), m_vm);
         w->rootContext()->setContextProperty(QStringLiteral("themeManager"), m_theme);
         w->rootContext()->setContextProperty(QStringLiteral("settingsCtl"), this);
