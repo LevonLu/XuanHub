@@ -17,8 +17,6 @@
 # Development.SABIModule 提供 Python::SABIModule（python3.lib + 头文件目录）
 find_package(Python 3.12 REQUIRED COMPONENTS Interpreter Development Development.SABIModule)
 
-get_filename_component(_python_home "${Python_EXECUTABLE}" DIRECTORY)
-
 # nanobind：third_party/nanobind 本地副本（v2.14.0，含 ext/robin_map）
 find_package(nanobind REQUIRED
     PATHS "${CMAKE_SOURCE_DIR}/third_party/nanobind/cmake" NO_DEFAULT_PATH)
@@ -91,9 +89,13 @@ target_link_options(pybridge PRIVATE /DELAYLOAD:pybackend.dll)
 
 target_compile_definitions(pybridge PRIVATE QT_NO_KEYWORDS)
 
-# 构建机的 Python 安装目录，烧进 DLL 作为嵌入式运行时找标准库的兜底
-#（embeddable 分发时 Lib 在 exe 旁，地标搜索命中，该兜底自动失效）
-target_compile_definitions(pybridge PRIVATE XUANHUB_PYTHON_HOME="${_python_home}")
+# 开发兜底：把指定的 Python 安装目录烧进 DLL，作为运行时找标准库的一级兜底。
+# 默认为空——开源/分发构建的产物不应内嵌构建机绝对路径；本机开发需要时
+# 在 CMakeUserPresets.json（gitignored）的 cacheVariables 里设置：
+#   "XUANHUB_PYTHON_HOME_FALLBACK": "C:/Python313"
+set(XUANHUB_PYTHON_HOME_FALLBACK "" CACHE PATH
+    "烧入 pybridge.dll 的 Python 目录兜底（仅本机开发用，分发构建留空）")
+target_compile_definitions(pybridge PRIVATE XUANHUB_PYTHON_HOME="${XUANHUB_PYTHON_HOME_FALLBACK}")
 
 # 输出 pybridge.dll（无 lib 前缀）到运行时插件目录
 set_target_properties(pybridge PROPERTIES

@@ -24,7 +24,6 @@
                  未安装的用户机器上 pybridge 自动停用并弹提示，其余功能不受影响。
       Bundle   - Copy Lib/ (excluding site-packages) and DLLs/ from system
                  Python install (~30 MB); Python 子插件开箱即用，无需用户安装。
-      Embedded - Download python313.zip from python.org (~3 MB). Experimental.
 
 .PARAMETER NoPrune
     Skip pruning of unnecessary files.
@@ -45,7 +44,7 @@ param(
     [switch]$NoZip,
 
     [Parameter(Mandatory = $false)]
-    [ValidateSet("Embedded", "Bundle", "None")]
+    [ValidateSet("Bundle", "None")]
     [string]$PythonStrategy = "None",
 
     [Parameter(Mandatory = $false)]
@@ -230,89 +229,12 @@ if ($PythonStrategy -ne "Bundle") {
             Write-Host "        Removed stale $($_.Name)"
         }
 }
-if ($PythonStrategy -ne "Embedded") {
-    foreach ($f in @("python313.zip", "python313._pth")) {
-        $p = Join-Path $DistDir $f
-        if (Test-Path $p) {
-            Remove-Item $p -Force -ErrorAction SilentlyContinue
-            Write-Host "        Removed stale $f"
-        }
-    }
-}
-
-if ($PythonStrategy -eq "Embedded") {
-    # ---- Embedded: download python313.zip from python.org (~3 MB) ----
-    $resolvedHome = Resolve-PythonHome
-    if (-not $resolvedHome) {
-        Write-Warning "Python 3.12+ not found; falling back to Bundle strategy"
-        $PythonStrategy = "Bundle"
-    } else {
-        $pythonExe = Join-Path $resolvedHome 'python.exe'
-        $pyVer = & $pythonExe -c "import sys; print('{}.{}.{}'.format(sys.version_info.major, sys.version_info.minor, sys.version_info.micro))" 2>$null
-        if (-not $pyVer) {
-            Write-Warning "Cannot determine Python version; falling back to Bundle strategy"
-            $PythonStrategy = "Bundle"
-        } else {
-            Write-Host "        Target Python: $pyVer"
-
-            $embedZip = "python-$pyVer-embed-amd64.zip"
-            $embedUrl = "https://www.python.org/ftp/python/$pyVer/$embedZip"
-
-            # Cache the downloaded embeddable zip in third_party/ (gitignored)
-            $cacheDir = Join-Path $ProjectRoot "third_party"
-            New-Item -ItemType Directory -Path $cacheDir -Force -ErrorAction SilentlyContinue | Out-Null
-            $cachedZip = Join-Path $cacheDir $embedZip
-
-            if (-not (Test-Path $cachedZip)) {
-                Write-Host "        Downloading $embedUrl ..."
-                try {
-                    $ProgressPreference = 'SilentlyContinue'
-                    Invoke-WebRequest -Uri $embedUrl -OutFile $cachedZip -ErrorAction Stop
-                } catch {
-                    Write-Warning "Download failed: $_"
-                    Write-Warning "Falling back to Bundle strategy"
-                    $PythonStrategy = "Bundle"
-                }
-            } else {
-                Write-Host "        Using cached: $cachedZip"
-            }
-
-            if ($PythonStrategy -eq "Embedded") {
-                $dstZip = Join-Path $DistDir "python313.zip"
-                $pthFile = Join-Path $DistDir "python313._pth"
-                try {
-                    Add-Type -AssemblyName System.IO.Compression.FileSystem
-                    $archive = [System.IO.Compression.ZipFile]::OpenRead($cachedZip)
-                    $entry = $archive.Entries | Where-Object { $_.Name -eq "python313.zip" } | Select-Object -First 1
-                    if ($entry) {
-                        [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $dstZip, $true)
-                        Write-Host ("        + python313.zip ({0:N1} MB)" -f ((Get-Item $dstZip).Length / 1MB))
-                    } else {
-                        Write-Warning "python313.zip not found in embeddable archive; falling back to Bundle"
-                        $PythonStrategy = "Bundle"
-                    }
-                } catch {
-                    Write-Warning "Extraction failed: $_"
-                    Write-Warning "Falling back to Bundle strategy"
-                    $PythonStrategy = "Bundle"
-                } finally {
-                    if ($archive) { $archive.Dispose() }
-                }
-
-                if ($PythonStrategy -eq "Embedded") {
-                    # Write a minimal ._pth file so embedded CPython can locate
-                    # python313.zip without PYTHONHOME being set.
-                    #   Line 1: python313.zip  -> stdlib from the zip
-                    #   Line 2: .              -> allow imports from exe dir
-                    # We intentionally do NOT "import site" -- the portable
-                    # distro has no site-packages, and enabling site would
-                    # try to write .pyc caches to user directories.
-                    "python313.zip" + [Environment]::NewLine + "." |
-                        Out-File -FilePath $pthFile -Encoding ascii
-                    Write-Host "        + python313._pth (embedded path config)"
-                }
-            }
-        }
+# 清掉旧版本 Embedded 策略（已移除）可能留下的产物
+foreach ($f in @("python313.zip", "python313._pth")) {
+    $p = Join-Path $DistDir $f
+    if (Test-Path $p) {
+        Remove-Item $p -Force -ErrorAction SilentlyContinue
+        Write-Host "        Removed stale $f"
     }
 }
 

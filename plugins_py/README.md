@@ -149,4 +149,4 @@ Item {
 
 - 无 EventBus 接入（Python 子插件暂不能收发总线事件）。
 - 依赖用户自装 CPython ≥3.12（未安装则整体停用 + 托盘提示）；
-  `-PythonStrategy Bundle` 打包可内置标准库免除该依赖（Embedded zip 策略仍实验性，未验证）。
+  `-PythonStrategy Bundle` 打包可内置标准库免除该依赖。

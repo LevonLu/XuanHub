@@ -551,7 +551,7 @@ def update():
 
 # 从源码构建
 
-前提：Qt 6.9.3（msvc2022_64）、MSVC 2022、CMake ≥ 3.21。Qt 安装路径不同就改 `CMakePresets.json` 或新建 `CMakeUserPresets.json` 覆盖 `CMAKE_PREFIX_PATH`。
+前提：Qt 6.9.3（msvc2022_64）、MSVC 2022、CMake ≥ 3.21。Qt 安装路径不同就改 `CMakePresets.json` 或新建 `CMakeUserPresets.json` 覆盖 `CMAKE_PREFIX_PATH`。克隆后先 `git submodule update --init --recursive`（拉取 nanobind 及嵌套的 ext/robin_map）。
 
 ```bash
 cmake --preset default                 # 配置（生成到 build/default）
@@ -559,7 +559,7 @@ cmake --build --preset default         # Release
 cmake --build --preset default-debug   # Debug
 ```
 
-运行产物统一在 `build/default/dist/<CONFIG>/`（含 `XuanHub.exe`、插件目录、Qt 依赖，链接后自动 windeployqt）。仓库根的 `config/config.json` 是开发示例，需手动拷到该目录才会以便携模式生效。构建 Python 桥接需要本机装有 Python ≥3.12 开发包（nanobind 本地副本放 `third_party/nanobind`）。
+运行产物统一在 `build/default/dist/<CONFIG>/`（含 `XuanHub.exe`、插件目录、Qt 依赖，链接后自动 windeployqt）。仓库根的 `config/config.json` 是开发示例，需手动拷到该目录才会以便携模式生效。pybridge（Python 桥接）为可选组件：构建需本机装有 Python ≥3.12 开发包与已初始化的 nanobind 子模块，缺失时 configure 告警并跳过该插件，其余功能照常构建。
 
 ## 仓库目录速览
 
@@ -570,7 +570,7 @@ plugins/        # C++ 插件：clock / netstat / launcher / pybridge
 plugins_py/     # Python 子插件（README.md 即开发契约）
 themes/         # 主题包（README.md 即开发契约）
 config/         # 开发用示例配置
-third_party/    # nanobind 本地副本（pybind11 为迁移后遗留，未再引用）
+third_party/    # nanobind git submodule（含嵌套的 ext/robin_map）
 plan.md         # 里程碑与设计决策记录
 AGENTS.md       # 面向 AI 代理的项目说明（架构细节最齐全的一份文档）
 ```

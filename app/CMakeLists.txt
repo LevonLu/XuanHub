@@ -98,7 +98,17 @@ set_target_properties(XuanHub PROPERTIES
 # 构建后自动重部署：补齐 Qt 运行时 DLL 与 QML 插件（--qmldir 扫描 QML import，
 # 缺它会漏 qml/QtQuick/*/插件 DLL —— M8 设置窗口曾因此打开空白）。
 # 每次 XuanHub 重新链接后执行；手动部署说明见 AGENTS.md §8。
-find_program(WINDEPLOYQT_EXE NAMES windeployqt HINTS "${CMAKE_PREFIX_PATH}/bin" NO_CACHE)
+# 优先用 Qt6 自带的 windeployqt 导入目标（随 Qt 定位，天然无机器路径）；
+# 目标不存在时退回 find_program（CMAKE_PREFIX_PATH 可能是列表，逐个拼 bin）
+if(TARGET Qt6::windeployqt)
+    set(WINDEPLOYQT_EXE "$<TARGET_FILE:Qt6::windeployqt>")
+else()
+    set(_windeployqt_hints "")
+    foreach(_prefix IN LISTS CMAKE_PREFIX_PATH)
+        list(APPEND _windeployqt_hints "${_prefix}/bin")
+    endforeach()
+    find_program(WINDEPLOYQT_EXE NAMES windeployqt HINTS ${_windeployqt_hints} NO_CACHE)
+endif()
 if(WINDEPLOYQT_EXE)
     add_custom_command(TARGET XuanHub POST_BUILD
         COMMAND "${WINDEPLOYQT_EXE}" "$<IF:$<CONFIG:Debug>,--debug,--release>"

@@ -15,5 +15,5 @@ CMakeUserPresets.json
 *.pdb
 __pycache__/
 
-# 第三方源码（网络受限时手动放入的 pybind11 等本地副本）
-third_party/
+# pixi 环境
+.pixi/
