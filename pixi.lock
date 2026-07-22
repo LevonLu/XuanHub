@@ -1,0 +1,8 @@
+version: 7
+platforms:
+- name: win-64
+environments:
+  default:
+    channels: []
+    packages: {}
+packages: []

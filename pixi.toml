@@ -1,0 +1,31 @@
+# pixi.toml — 玄枢 / XuanHub 任务入口
+# 纯任务管理：C++ 工具链（MSVC 2022 / Qt 6.9.3 / CMake）均为系统安装，不走 conda 依赖。
+# 用法：`pixi run <任务名>`，列出全部任务：`pixi task list`
+
+[workspace]
+name = "xuanhub"
+version = "0.1.0"
+description = "玄枢 XuanHub — Qt6/QML Windows 插件化状态栏框架"
+channels = []
+platforms = ["win-64"]
+
+[tasks]
+# ── 构建 ──────────────────────────────────────────────
+configure = { cmd = "cmake --preset default", description = "CMake 配置（生成到 build/default，VS 17 2022 生成器）" }
+build = { cmd = "cmake --build --preset default", depends-on = ["configure"], description = "Release 构建（POST_BUILD 已带 windeployqt）" }
+build-debug = { cmd = "cmake --build --preset default-debug", depends-on = ["configure"], description = "Debug 构建" }
+
+# ── 运行 / 调试 ───────────────────────────────────────
+setup-config = { cmd = "cmake -E copy_if_different config/config.json build/default/dist/Release/config.json", description = "拷贝开发用示例配置到 dist（CMake 不会自动拷贝）" }
+run = { cmd = 'build/default/dist/Release/XuanHub.exe', depends-on = ["build", "setup-config"], description = "构建并运行 XuanHub" }
+run-settings = { cmd = 'build/default/dist/Release/XuanHub.exe --settings', depends-on = ["build", "setup-config"], description = "构建并运行，启动即打开设置窗口" }
+log = { cmd = 'powershell -NoProfile -Command "Get-Content $env:APPDATA/XuanHub/xuanhub.log -Tail 80"', description = "查看运行日志尾部（%APPDATA%/XuanHub/xuanhub.log）" }
+
+# ── 分发 ──────────────────────────────────────────────
+deploy = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy_qt.ps1", description = "手动重新部署 Qt 依赖（windeployqt 自动定位：PATH → CMakeCache，Qt 升级或未重新链接时用）" }
+package = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package_portable.ps1", depends-on = ["build"], description = "便携分发打包（默认不内置 Python 标准库，产出 dist/*.zip）" }
+package-bundle = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package_portable.ps1 -PythonStrategy Bundle", depends-on = ["build"], description = "免安装打包：内置 Python 标准库，Python 子插件开箱即用" }
+package-nozip = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package_portable.ps1 -NoZip", depends-on = ["build"], description = "只准备便携目录，不打 zip" }
+
+# ── 清理 ──────────────────────────────────────────────
+clean = { cmd = "cmake -E remove_directory build/default", description = "删除整个构建目录（下次 build 会重新 configure）" }
