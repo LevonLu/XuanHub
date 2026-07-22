@@ -20,7 +20,7 @@
 
 .PARAMETER PythonStrategy
     Python stdlib bundling strategy:
-      None     - Skip stdlib. DEFAULT. Python 子插件依赖用户自装 Python 3.13；
+      None     - Skip stdlib. DEFAULT. Python 子插件依赖用户自装 Python 3.12+；
                  未安装的用户机器上 pybridge 自动停用并弹提示，其余功能不受影响。
       Bundle   - Copy Lib/ (excluding site-packages) and DLLs/ from system
                  Python install (~30 MB); Python 子插件开箱即用，无需用户安装。
@@ -54,26 +54,37 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# 定位本机 Python 3.13 安装目录（与 CMake FindPython 同源：注册表优先，
-# 其次 py launcher，最后 PATH；排除 WindowsApps 商店占位 stub）
-function Resolve-Python313Home {
-    foreach ($key in @('HKCU:\Software\Python\PythonCore\3.13\InstallPath',
-                       'HKLM:\Software\Python\PythonCore\3.13\InstallPath')) {
-        $pyHome = (Get-ItemProperty $key -ErrorAction SilentlyContinue).'(default)'
-        if ($pyHome -and (Test-Path (Join-Path $pyHome 'python.exe'))) {
-            return $pyHome.TrimEnd('\', '/')
+# 定位本机 Python ≥3.12 安装目录（nanobind 稳定 ABI 硬性下限）：
+# 注册表枚举全部 PythonCore 版本（取最高）→ py launcher → PATH；
+# 排除 WindowsApps 商店占位 stub
+function Resolve-PythonHome {
+    $candidates = @()
+    foreach ($root in @('HKCU:\Software\Python\PythonCore', 'HKLM:\Software\Python\PythonCore')) {
+        Get-ChildItem $root -ErrorAction SilentlyContinue | ForEach-Object {
+            $ver = $_.PSChildName   # 形如 "3.13"（32 位安装带 "-32" 后缀）
+            if ($ver -match '^3\.(\d+)') {
+                $home = (Get-ItemProperty "$root\$ver\InstallPath" -ErrorAction SilentlyContinue).'(default)'
+                if ($home -and (Test-Path (Join-Path $home 'python.exe'))) {
+                    $candidates += [pscustomobject]@{ Minor = [int]$Matches[1]; Home = $home.TrimEnd('\', '/') }
+                }
+            }
         }
     }
+    $best = $candidates | Where-Object { $_.Minor -ge 12 } |
+            Sort-Object Minor -Descending | Select-Object -First 1
+    if ($best) { return $best.Home }
     $pyLauncher = @(Get-Command py -ErrorAction SilentlyContinue)[0]
     if ($pyLauncher) {
-        $exe = & $pyLauncher.Source -3.13 -c "import sys; print(sys.executable)" 2>$null
-        if ($exe -and (Test-Path "$exe")) { return (Split-Path "$exe" -Parent) }
+        $exe = & $pyLauncher.Source -3 -c "import sys; print(sys.executable)" 2>$null
+        $minor = & $pyLauncher.Source -3 -c "import sys; print(sys.version_info[1])" 2>$null
+        if ($exe -and [int]$minor -ge 12 -and (Test-Path "$exe")) { return (Split-Path "$exe" -Parent) }
     }
     $cmd = @(Get-Command python -ErrorAction SilentlyContinue |
              Where-Object { $_.Source -notlike '*WindowsApps*' })[0]
     if ($cmd) {
         $exe = & $cmd.Source -c "import sys; print(sys.executable)" 2>$null
-        if ($exe -and (Test-Path "$exe")) { return (Split-Path "$exe" -Parent) }
+        $minor = & $cmd.Source -c "import sys; print(sys.version_info[1])" 2>$null
+        if ($exe -and [int]$minor -ge 12 -and (Test-Path "$exe")) { return (Split-Path "$exe" -Parent) }
     }
     return $null
 }
@@ -212,6 +223,12 @@ if ($PythonStrategy -ne "Bundle") {
             Write-Host "        Removed stale $d/ directory"
         }
     }
+    # 解释器 DLL 只在 Bundle 策略下随包分发，其余策略清掉旧产物
+    Get-ChildItem $DistDir -Filter 'python3*.dll' -File -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+            Write-Host "        Removed stale $($_.Name)"
+        }
 }
 if ($PythonStrategy -ne "Embedded") {
     foreach ($f in @("python313.zip", "python313._pth")) {
@@ -225,9 +242,9 @@ if ($PythonStrategy -ne "Embedded") {
 
 if ($PythonStrategy -eq "Embedded") {
     # ---- Embedded: download python313.zip from python.org (~3 MB) ----
-    $resolvedHome = Resolve-Python313Home
+    $resolvedHome = Resolve-PythonHome
     if (-not $resolvedHome) {
-        Write-Warning "Python 3.13 not found; falling back to Bundle strategy"
+        Write-Warning "Python 3.12+ not found; falling back to Bundle strategy"
         $PythonStrategy = "Bundle"
     } else {
         $pythonExe = Join-Path $resolvedHome 'python.exe'
@@ -305,11 +322,18 @@ if ($PythonStrategy -eq "Bundle") {
     #       及其依赖 DLL，如 libcrypto）——缺了它 urllib/HTTPS 在无 Python
     #       的机器上必挂。site-packages 必须排除：那是打包机的第三方包
     #       （动辄 GB 级），插件依赖应由插件目录自行 vendor。
-    $pythonHome = Resolve-Python313Home
+    $pythonHome = Resolve-PythonHome
     if (-not $pythonHome) {
-        Write-Warning "Python 3.13 not found (registry/py launcher/PATH); skipping Python stdlib entirely"
+        Write-Warning "Python 3.12+ not found (registry/py launcher/PATH); skipping Python stdlib entirely"
     } else {
         Write-Host "        Python home: $pythonHome"
+
+        # 解释器 DLL 进包（M12 稳定 ABI）：python3.dll（转发器）+ python3XX.dll
+        #（实际运行时）。构建期 CMake 不再拷贝它们，打包时随标准库一并搬运
+        foreach ($dll in (Get-ChildItem $pythonHome -Filter 'python3*.dll' -File)) {
+            Copy-Item $dll.FullName $DistDir -Force
+            Write-Host "        + $($dll.Name)"
+        }
 
         # 刷新式拷贝：先删再拷，保证排除项（site-packages）对旧产物也生效
         foreach ($d in @("Lib", "DLLs")) {
@@ -378,7 +402,7 @@ if ($PythonStrategy -eq "Bundle") {
 
 if ($PythonStrategy -eq "None") {
     Write-Host "        Python stdlib NOT bundled."
-    Write-Host "        Python sub-plugins require user-installed Python 3.13 (auto-located via registry)."
+    Write-Host "        Python sub-plugins require user-installed Python 3.12+ (registry/py launcher/PATH)."
 }
 
 # ---- Step 4: Create portable marker ----

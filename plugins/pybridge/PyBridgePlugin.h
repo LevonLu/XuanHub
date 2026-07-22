@@ -8,8 +8,6 @@
 #include "barplugin/IBarPlugin.h"
 #include "barplugin/IBarPluginHost.h"
 
-class PyProxyViewModel;
-
 class PyBridgePlugin : public QObject, public xuanhub::IBarPlugin, public xuanhub::IBarPluginHost {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID "xuanhub.BarPlugin/1.0" FILE "metadata.json")
@@ -29,5 +27,7 @@ public:
 private:
     xuanhub::BarPluginContext m_ctx;   // 拷贝保存（init 传入的 ctx 是核心栈上对象）
     QHash<QString, QString> m_dirs;    // id → 子插件目录（subPluginIds 扫描结果）
-    QList<PyProxyViewModel*> m_vms;    // 已实例化的子插件 VM，shutdown 统一销毁
+    // 子插件 VM 由 pybackend.dll 工厂创建（本 DLL 不触碰 Python 类型，
+    // 只持有 QObject*；拆分原因见 PyBackendApi.h 头注释）
+    QList<QObject*> m_vms;             // 已实例化的子插件 VM，shutdown 统一销毁
 };

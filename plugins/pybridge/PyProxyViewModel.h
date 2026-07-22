@@ -8,8 +8,8 @@
 #include <QTimer>
 #include <QVariantMap>
 
-#include <pybind11/embed.h>
-namespace py = pybind11;
+#include <nanobind/nanobind.h>
+namespace nb = nanobind;
 
 class PyProxyViewModel : public QObject {
     Q_OBJECT
@@ -40,5 +40,5 @@ private:
     QVariantMap m_cfg;
     QVariantMap m_values;
     QTimer m_timer;
-    py::object m_module;    // 已导入的 main.py 模块对象；一切访问必须持 GIL
+    nb::object m_module;    // 已导入的 main.py 模块对象；一切访问必须持 GIL
 };

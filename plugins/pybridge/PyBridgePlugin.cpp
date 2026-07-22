@@ -5,50 +5,140 @@
 #include <windows.h>
 
 #include "PyBridgePlugin.h"
-#include "PyProxyViewModel.h"
+#include "PyBackendApi.h"
 
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <pybind11/embed.h>
+#include <QProcess>
+#include <QRegularExpression>
+#include <QStandardPaths>
 #include "barplugin/EventBus.h"
-
-namespace py = pybind11;
 
 namespace {
 // 解释器是进程级单例。CPython 重复 init/finalize 不稳定，
 // 因此热重载（shutdownAll → loadFrom）周期内保持存活、不 finalize；
-// 进程退出由 OS 整体回收 —— 主动 finalize 在 pybind11 静态对象
+// 进程退出由 OS 整体回收 —— 主动 finalize 在绑定库静态对象
 // 析构顺序下反而易崩（plan.md §12 M6 决策）。
+// 注：本 DLL（pybridge）不触碰任何 CPython/nanobind 符号——nanobind
+// 以数据符号导入 python3.dll，无法 /DELAYLOAD（LNK1194），故解释器
+// 初始化（裸 Py_Initialize，nanobind 官方不支持嵌入）与代理 VM 实现
+// 整体收进 exe 旁的 pybackend.dll，经 PyBackendApi.h 的窄函数接口调用。
 bool g_interpreterReady = false;
 
-// Python 环境检测结果（进程内只检测一次）：无 Python 3.13 标准库时
+// Python 环境检测结果（进程内只检测一次）：无 Python 3.12+ 标准库时
 // 不初始化解释器，Python 子插件整体停用，宿主与其余插件不受影响。
 bool g_pythonChecked   = false;
 bool g_pythonAvailable = false;
 bool g_pyNotifySent    = false;    // 「未检测到 Python」提示只发一次
+QString g_pythonHome;              // 发现到的 Python 安装目录（DLL 预载用）
 
-// 以 Lib/os.py 为地标校验候选目录是完整的 Python 标准库
-bool hasStdlib(const QString& home) {
-    return !home.isEmpty() && QDir(home).exists(QStringLiteral("Lib/os.py"));
+// 从 home 下的 python3<minor>.dll 文件名判定次版本号（不启动进程）；
+// python3.dll 是稳定 ABI 转发器、无版本号，跳过。找不到返回 -1。
+int pythonMinorVersion(const QString& home) {
+    if (home.isEmpty()) return -1;
+    const QDir d(home);
+    const auto dlls = d.entryList({QStringLiteral("python3*.dll")}, QDir::Files);
+    for (const QString& f : dlls) {
+        const QRegularExpression re(QStringLiteral("^python3(\\d+)\\.dll$"),
+                                    QRegularExpression::CaseInsensitiveOption);
+        const auto m = re.match(f);
+        if (m.hasMatch()) return m.captured(1).toInt();
+    }
+    return -1;
 }
 
-// 用户自装的 python.org 3.13（注册表 InstallPath 默认值，HKCU 优先）
+// 校验候选目录是可用的 Python ≥3.12 安装：版本 DLL + Lib/os.py 地标
+bool hasStdlib(const QString& home) {
+    return pythonMinorVersion(home) >= 12
+        && QDir(home).exists(QStringLiteral("Lib/os.py"));
+}
+
+// 注册表枚举（python.org 安装器写入）：Software\Python\PythonCore\<ver>\InstallPath，
+// HKCU→HKLM 全版本枚举，取 ≥3.12 中最高者
 QString registryPythonHome() {
     const HKEY roots[] = { HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE };
+    QString best;
+    int bestMinor = 11;  // 下限 3.12
     for (const HKEY root : roots) {
-        wchar_t buf[MAX_PATH] = {};
-        DWORD size = sizeof(buf);
-        if (RegGetValueW(root, L"Software\\Python\\PythonCore\\3.13\\InstallPath",
-                         nullptr, RRF_RT_REG_SZ, nullptr, buf, &size) == ERROR_SUCCESS
-            && buf[0] != L'\0') {
-            return QString::fromWCharArray(buf);
+        HKEY hk = nullptr;
+        if (RegOpenKeyExW(root, L"Software\\Python\\PythonCore", 0, KEY_READ, &hk)
+            != ERROR_SUCCESS)
+            continue;
+        wchar_t name[64];
+        for (DWORD i = 0;; ++i) {
+            DWORD len = static_cast<DWORD>(std::size(name));
+            if (RegEnumKeyExW(hk, i, name, &len, nullptr, nullptr, nullptr, nullptr)
+                != ERROR_SUCCESS)
+                break;
+            // 版本键形如 "3.13"（32 位安装带 "-32" 后缀，剥掉再比）
+            const QString v = QString::fromWCharArray(name);
+            const auto parts = v.split(QLatin1Char('.'));
+            if (parts.size() < 2 || parts[0] != QLatin1String("3")) continue;
+            bool ok = false;
+            const int minor = parts[1].split(QLatin1Char('-')).first().toInt(&ok);
+            if (!ok || minor <= bestMinor) continue;
+            wchar_t buf[MAX_PATH] = {};
+            DWORD size = sizeof(buf);
+            const QString sub = QStringLiteral("Software\\Python\\PythonCore\\") + v
+                              + QStringLiteral("\\InstallPath");
+            if (RegGetValueW(root, reinterpret_cast<LPCWSTR>(sub.utf16()),
+                             nullptr, RRF_RT_REG_SZ, nullptr, buf, &size) == ERROR_SUCCESS
+                && buf[0] != L'\0') {
+                best = QString::fromWCharArray(buf);
+                bestMinor = minor;
+            }
         }
+        RegCloseKey(hk);
+    }
+    return best;
+}
+
+// py launcher（python.org 安装器附带）：`py -3` 选最高的 3.x，打印次版本与前缀
+QString pyLauncherHome() {
+    QProcess p;
+    p.start(QStringLiteral("py"), {QStringLiteral("-3"), QStringLiteral("-c"),
+        QStringLiteral("import sys; print(sys.version_info[1]); print(sys.prefix)")});
+    if (!p.waitForFinished(3000) || p.exitCode() != 0) return {};
+    const auto lines = QString::fromUtf8(p.readAllStandardOutput())
+                           .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    if (lines.size() < 2) return {};
+    bool ok = false;
+    const int minor = lines[0].trimmed().toInt(&ok);
+    if (!ok || minor < 12) return {};
+    return lines[1].trimmed();
+}
+
+// PATH 上的 python / python3（conda、uv、手动加 PATH 的 python.org 安装等）。
+// WindowsApps 的 Store 占位 stub 没有 Lib/os.py，会被 hasStdlib 自然滤掉
+QString pathPythonHome() {
+    for (const char* exe : {"python", "python3"}) {
+        const QString p = QStandardPaths::findExecutable(QLatin1String(exe));
+        if (!p.isEmpty()) return QFileInfo(p).absolutePath();
     }
     return {};
+}
+
+// 显式全路径预装解释器 DLL：用户安装目录通常不在 PATH，
+// 直接 LoadLibrary("python3.dll") 会失败。先装版本化 python3XX.dll，
+// 再装 python3.dll——其导出转发到前者，按名命中已加载模块，不依赖搜索路径。
+// 返回两个 DLL 是否都加载成功（架构不匹配等会失败）。
+bool preloadPythonDlls(const QString& home) {
+    const QDir d(home);
+    bool versioned = false;
+    const auto dlls = d.entryList({QStringLiteral("python3*.dll")}, QDir::Files);
+    for (const QString& f : dlls) {
+        if (f.compare(QStringLiteral("python3.dll"), Qt::CaseInsensitive) == 0) continue;
+        const QString full = d.absoluteFilePath(f);
+        if (LoadLibraryW(reinterpret_cast<LPCWSTR>(full.utf16()))) versioned = true;
+    }
+    const QString sabi = d.absoluteFilePath(QStringLiteral("python3.dll"));
+    const bool sabiOk = LoadLibraryW(reinterpret_cast<LPCWSTR>(sabi.utf16())) != nullptr;
+    return versioned && sabiOk;
 }
 
 // 读取子插件目录的 plugin.json；文件缺失/解析失败返回空对象
@@ -67,11 +157,12 @@ xuanhub::PluginMetadata PyBridgePlugin::metadata() const {
 bool PyBridgePlugin::init(xuanhub::BarPluginContext* ctx) {
     m_ctx = *ctx;  // 拷贝保存（EventBus 等后续子插件能力用）
 
-    // Python 环境检测（进程内一次）：找不到 Python 3.13 标准库就不初始化
+    // Python 环境检测（进程内一次）：找不到 Python 3.12+ 标准库就不初始化
     // 解释器（缺标准库初始化会触发 fatal error 拖垮宿主），Python 子插件
     // 整体停用、其余功能不受影响。定位优先级：
     //   内置 Lib/（Bundle 打包，压掉用户 PYTHONHOME）→ 用户 PYTHONHOME
-    //   → 构建机烧入路径兜底（开发场景）→ 注册表 python.org 3.13（用户自装）
+    //   → 构建机烧入路径兜底（开发场景）→ 注册表枚举（≥3.12 取最高）
+    //   → py launcher → PATH
     if (!g_pythonChecked) {
         g_pythonChecked = true;
         // 调试钩子：强制走「无 Python 环境」路径（验收降级/提示行为用）
@@ -79,39 +170,50 @@ bool PyBridgePlugin::init(xuanhub::BarPluginContext* ctx) {
             qWarning() << "[PyBridge] XUANHUB_DISABLE_PYTHON set, python force-disabled";
         } else {
             const QString exeDir = QCoreApplication::applicationDirPath();
-            if (hasStdlib(exeDir)) {
-                qputenv("PYTHONHOME", exeDir.toUtf8());
+            struct Cand { QString home; const char* tag; };
+            const Cand cands[] = {
+                { exeDir, "bundled" },
+                { qEnvironmentVariable("PYTHONHOME"), "env" },
+                { QStringLiteral(XUANHUB_PYTHON_HOME), "fallback" },
+                { registryPythonHome(), "registry" },
+                { pyLauncherHome(), "py-launcher" },
+                { pathPythonHome(), "PATH" },
+            };
+            for (const auto& c : cands) {
+                if (!hasStdlib(c.home)) continue;
+                // 显式 qputenv，不依赖 CPython getpath 的隐式查找
+                qputenv("PYTHONHOME", c.home.toUtf8());
+                g_pythonHome = c.home;
                 g_pythonAvailable = true;
-                qDebug() << "[PyBridge] PYTHONHOME -> bundled" << exeDir;
-            } else if (hasStdlib(qEnvironmentVariable("PYTHONHOME"))) {
-                g_pythonAvailable = true;  // 用户显式指定，原样使用
-                qDebug() << "[PyBridge] PYTHONHOME env ->" << qEnvironmentVariable("PYTHONHOME");
-            } else if (hasStdlib(QStringLiteral(XUANHUB_PYTHON_HOME))) {
-                qputenv("PYTHONHOME", XUANHUB_PYTHON_HOME);
-                g_pythonAvailable = true;
-                qDebug() << "[PyBridge] PYTHONHOME fallback ->" << XUANHUB_PYTHON_HOME;
-            } else if (const QString reg = registryPythonHome(); hasStdlib(reg)) {
-                // 显式 qputenv，不依赖 CPython getpath 的隐式注册表查找
-                qputenv("PYTHONHOME", reg.toUtf8());
-                g_pythonAvailable = true;
-                qDebug() << "[PyBridge] PYTHONHOME registry ->" << reg;
+                qDebug() << "[PyBridge] PYTHONHOME" << c.tag << "->" << c.home;
+                break;
             }
         }
         if (!g_pythonAvailable)
-            qWarning() << "[PyBridge] no Python 3.13 stdlib found;"
-                          " python sub-plugins disabled (install Python 3.13 to enable)";
+            qWarning() << "[PyBridge] no Python 3.12+ stdlib found;"
+                          " python sub-plugins disabled (install Python 3.12+ to enable)";
     }
 
     if (g_pythonAvailable && !g_interpreterReady) {
-        py::initialize_interpreter();
-        // 关键：初始化后主线程默认持有 GIL，而它在 Qt 事件循环里从不进入
-        // 解释器求值循环，永不主动让出 —— python 后台线程会饿死
-        //（实测 worker 3 秒只跑到 1 次）。此处永久 release（有意泄漏，
-        // 进程生命周期内不恢复）；此后一切 python 调用一律 gil_scoped_acquire。
-        static auto* g_gilRelease = new py::gil_scoped_release();
-        Q_UNUSED(g_gilRelease);
-        g_interpreterReady = true;
-        qInfo().noquote() << "[PyBridge] python" << Py_GetVersion() << "initialized";
+        // pybackend.dll 静态导入 python3.dll（用户安装目录通常不在 PATH）：
+        // 必须先按发现的目录全路径预装解释器 DLL，再显式加载 pybackend.dll
+        //（pybridge 侧 /DELAYLOAD:pybackend.dll，此处 LoadLibrary 命中后
+        // 后续对导出函数的延迟加载调用即安全），任一步失败按无环境降级
+        if (!preloadPythonDlls(g_pythonHome)) {
+            qWarning() << "[PyBridge] failed to load python3.dll from" << g_pythonHome
+                       << "(arch mismatch?) - python sub-plugins disabled";
+            g_pythonAvailable = false;
+        } else if (!LoadLibraryW(reinterpret_cast<LPCWSTR>(
+                       (QCoreApplication::applicationDirPath()
+                        + QStringLiteral("/pybackend.dll")).utf16()))) {
+            qWarning() << "[PyBridge] failed to load pybackend.dll"
+                          " - python sub-plugins disabled";
+            g_pythonAvailable = false;
+        } else if (!xb_py_initialize()) {
+            g_pythonAvailable = false;
+        } else {
+            g_interpreterReady = true;
+        }
     }
 
     // 无 Python 环境：经 EventBus 请求宿主弹一次提示（托盘订阅 app.notify；
@@ -121,8 +223,8 @@ bool PyBridgePlugin::init(xuanhub::BarPluginContext* ctx) {
         m_ctx.eventBus->publish(QStringLiteral("app.notify"), {
             {QStringLiteral("title"), QStringLiteral("XuanHub")},
             {QStringLiteral("message"), QStringLiteral(
-                "未检测到 Python 3.13 环境，Python 插件已停用。"
-                "安装 Python 3.13（python.org）后重启即可启用。")},
+                "未检测到 Python 3.12+ 环境，Python 插件已停用。"
+                "安装 Python（python.org）后重启即可启用。")},
         });
     }
     return true;
@@ -191,11 +293,8 @@ xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const 
         qWarning() << "[PyBridge] skip" << id << ": 目录内无 .qml";
         return info;
     }
-    auto* vm = new PyProxyViewModel(id, dirPath, cfg, this);
-    if (!vm->load()) {
-        delete vm;  // 脚本语法错误/缺 update()：记日志后跳过，不影响宿主与其他插件
-        return info;
-    }
+    QObject* vm = xb_py_vm_load(id, dirPath, cfg, this);
+    if (!vm) return info;  // 脚本语法错误/缺 update()：工厂内已记日志，跳过不影响其他插件
     m_vms.append(vm);
     info.meta = {id,
                  obj.value(QStringLiteral("name")).toString(id),
