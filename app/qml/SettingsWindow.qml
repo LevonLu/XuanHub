@@ -174,8 +174,10 @@ Pane {
                             anchors.top: parent.top
                             anchors.margins: 10
 
-                            Text { text: "主题包"; color: root.c.fg; Layout.fillWidth: true }
+                            Text { text: "主题包"; color: root.c.fg }
                             ComboBox {
+                                // 列宽让给下拉框：主题包显示名较长，implicit 宽度会截断
+                                Layout.fillWidth: true
                                 model: settingsVM.themePackNames
                                 currentIndex: {
                                     const ids = settingsVM.themePackIds
@@ -188,8 +190,9 @@ Pane {
                                         settingsVM.themeId = ids[index]
                                 }
                             }
-                            Text { text: "模式"; color: root.c.fg; Layout.fillWidth: true }
+                            Text { text: "模式"; color: root.c.fg }
                             ComboBox {
+                                Layout.fillWidth: true
                                 model: ["dark", "light"]
                                 currentIndex: settingsVM.theme === "light" ? 1 : 0
                                 onActivated: settingsVM.theme = currentText
@@ -225,6 +228,14 @@ Pane {
                                 model: ["top", "bottom"]
                                 currentIndex: settingsVM.barEdge === "bottom" ? 1 : 0
                                 onActivated: settingsVM.barEdge = currentText
+                            }
+                            Text { text: "工作模式"; color: root.c.fg; Layout.fillWidth: true }
+                            ComboBox {
+                                // appbar：占住桌面工作区；taskbar：嵌入原生任务栏左侧。
+                                // 与托盘 "任务栏模式" 勾选项写同一 config 键（bar.mode）
+                                model: ["appbar", "taskbar"]
+                                currentIndex: settingsVM.barMode === "taskbar" ? 1 : 0
+                                onActivated: settingsVM.barMode = currentText
                             }
                             Text { text: "透明度 (%)"; color: root.c.fg; Layout.fillWidth: true }
                             SpinBox {

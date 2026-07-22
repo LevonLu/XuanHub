@@ -33,10 +33,10 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
     m_menu = new QMenu();
 
     // 设置窗口（M8）
-    QAction* settings = m_menu->addAction(QStringLiteral("Settings..."));
+    QAction* settings = m_menu->addAction(QStringLiteral("设置..."));
     connect(settings, &QAction::triggered, this, &TrayIcon::settingsRequested);
 
-    m_autoStartAction = m_menu->addAction(QStringLiteral("Auto Start"));
+    m_autoStartAction = m_menu->addAction(QStringLiteral("开机自启"));
     m_autoStartAction->setCheckable(true);
     connect(m_autoStartAction, &QAction::toggled, this, &TrayIcon::setAutoStartEnabled);
     // 勾选状态与注册表现状对齐（阻断信号，避免初始化时回写一遍）；
@@ -59,7 +59,7 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
     });
 
     // 工作模式开关（M11）：写回 config.json 的 bar.mode，生效全靠 M7 watcher 热重载
-    m_taskbarModeAction = m_menu->addAction(QStringLiteral("Taskbar Mode"));
+    m_taskbarModeAction = m_menu->addAction(QStringLiteral("任务栏模式"));
     m_taskbarModeAction->setCheckable(true);
     connect(m_taskbarModeAction, &QAction::toggled, this, &TrayIcon::setTaskbarMode);
     if (m_config) {
@@ -67,7 +67,7 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
         m_taskbarModeAction->setChecked(m_config->barMode() == QStringLiteral("taskbar"));
     }
 
-    QAction* toggleTheme = m_menu->addAction(QStringLiteral("Toggle Dark/Light"));
+    QAction* toggleTheme = m_menu->addAction(QStringLiteral("切换深色/浅色"));
     connect(toggleTheme, &QAction::triggered, [this]() {
         // 仅切 light/dark 模式，保持当前主题包（switchMode 不写回文件，热重载时会回滚）
         const QString t = (m_theme->mode() == QStringLiteral("dark"))
@@ -76,11 +76,11 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
     });
 
     // 配置热重载（M7）：手动触发入口，与文件监听同一个 reload()
-    QAction* reload = m_menu->addAction(QStringLiteral("Reload Config"));
+    QAction* reload = m_menu->addAction(QStringLiteral("重新加载配置"));
     connect(reload, &QAction::triggered, this, &TrayIcon::reloadRequested);
 
     m_menu->addSeparator();
-    QAction* quit = m_menu->addAction(QStringLiteral("Quit"));
+    QAction* quit = m_menu->addAction(QStringLiteral("退出"));
     connect(quit, &QAction::triggered, []() { QCoreApplication::quit(); });
 
     m_tray->setContextMenu(m_menu);

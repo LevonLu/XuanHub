@@ -137,7 +137,11 @@ def _rebuild_cache():
         else:
             parts.append(f"[{v.name}] ...")
 
-    cache["summary"] = " | ".join(parts) if parts else "无已启用厂商"
+    if parts:
+        cache["summary"] = " | ".join(parts)
+    else:
+        # 区分两种空态：完全没配厂商 → 引导用户去配置；配了但全部禁用 → 如实说明
+        cache["summary"] = "无已启用厂商" if _vendors else "未配置密钥"
     cache["vendor_ids"] = vendor_ids
     return cache
 

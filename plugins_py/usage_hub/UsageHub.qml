@@ -82,12 +82,14 @@ Item {
             }
         }
 
-        // 兜底：无厂商
+        // 兜底：无厂商。init 完成后 summary 已就位（未配置密钥/无已启用厂商），
+        // 仅在 init 前的短暂窗口（summary 未到）显示"初始化中..."
         Text {
             text: {
                 var pv = plugin ? plugin.values : null
                 var ids = (pv && pv.vendor_ids) ? pv.vendor_ids : []
-                return ids.length === 0 ? "初始化中..." : ""
+                if (ids.length > 0) return ""
+                return (pv && pv.summary) ? pv.summary : "初始化中..."
             }
             color: root.cMuted; font.pixelSize: 12
             visible: {

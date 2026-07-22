@@ -20,12 +20,12 @@ public:
     void recreate();               // Explorer 重启后重建托盘图标
 
 signals:
-    void settingsRequested();    // 菜单 "Settings..." 触发（M8 设置窗口）
-    void reloadRequested();      // 菜单 "Reload Config" 触发（M7 热重载）
+    void settingsRequested();    // 菜单 "设置..." 触发（M8 设置窗口）
+    void reloadRequested();      // 菜单 "重新加载配置" 触发（M7 热重载）
 
 private slots:
     void setAutoStartEnabled(bool on);
-    void setTaskbarMode(bool on);   // 菜单 "Taskbar Mode"：写回 config.json 走热重载生效
+    void setTaskbarMode(bool on);   // 菜单 "任务栏模式"：写回 config.json 走热重载生效
     void refreshIcon();             // 主题变化时重绘图标（连 ThemeManager::themeChanged）
     void onAppNotify(QVariantMap payload);  // EventBus "app.notify"：插件请求的气泡提示
 

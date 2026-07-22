@@ -67,12 +67,12 @@ color: themeManager ? themeManager.colors.accent : "#89b4fa"
 
 ## 5. 模式切换 vs 主题包切换
 
-- **模式（dark/light）**：托盘菜单 "Toggle Dark/Light" 快速切换；设置窗口"模式"下拉。每套主题包必须同时提供两套色板。
+- **模式（dark/light）**：托盘菜单 "切换深色/浅色" 快速切换；设置窗口"模式"下拉。每套主题包必须同时提供两套色板。
 - **主题包**：设置窗口"主题包"下拉。切主题包保持当前模式。
 
 ## 6. 调试
 
 - 日志：`%APPDATA%/XuanHub/xuanhub.log`，`[Theme]` 前缀记录加载/切换/fallback。
-- 改 `theme.json` 保存后，触发任意一次配置热重载（如改 config.json 或托盘 "Reload Config"）即重新扫描 `themes/`——新装的主题包立刻出现在设置窗口。
+- 改 `theme.json` 保存后，触发任意一次配置热重载（如改 config.json 或托盘 "重新加载配置"）即重新扫描 `themes/`——新装的主题包立刻出现在设置窗口。
 - 主题包加载失败不会影响其他主题包，也不会让程序崩溃（回落到内置默认）。
 - 维护提醒：默认色板在代码内有多处硬编码兜底（`ThemeRegistry` 内置默认、`TrayIcon` 取色兜底、各 QML 防御默认值），调整 `xuanhub-default` 配色时需同步检查这些位置。

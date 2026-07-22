@@ -1,5 +1,5 @@
 // SettingsController.h — 设置窗口控制器（M8）
-// 懒创建独立 QQuickView（普通窗口，非常驻置顶），托盘 "Settings..." 打开；
+// 懒创建独立 QQuickView（普通窗口，非常驻置顶），托盘 "设置..." 打开；
 // 关闭=隐藏不销毁；每次打开 reloadFromConfig() 刷新草稿。
 // 调试钩子：--uitest 启动参数开启 devUiEvent()（Qt 层注入鼠标/键盘事件，
 // 供无头自动化验收用；正常启动完全不可见，QML 侧也没有 uiTestCommands）。

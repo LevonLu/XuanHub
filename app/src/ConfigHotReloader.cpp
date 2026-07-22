@@ -52,7 +52,7 @@ void ConfigHotReloader::reload() {
     // 主题包：重扫 themes/（用户可能新装/卸载了主题包），再按文件值同步当前主题
     if (m_registry) m_registry->reload(QDir(m_exeDir).absoluteFilePath(QStringLiteral("themes")));
 
-    // 主题：文件是事实源，覆盖托盘 Toggle Dark/Light 的运行时切换（托盘切换不写回文件）
+    // 主题：文件是事实源，覆盖托盘「切换深色/浅色」的运行时切换（托盘切换不写回文件）
     if (m_theme->themeId() != m_config->themeId()
         || m_theme->mode() != m_config->theme()) {
         m_theme->applyTheme(m_config->themeId(), m_config->theme());

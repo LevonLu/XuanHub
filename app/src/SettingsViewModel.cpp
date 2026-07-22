@@ -59,6 +59,12 @@ void SettingsViewModel::setBarEdge(const QString& v) {
     emit barEdgeChanged();
 }
 
+void SettingsViewModel::setBarMode(const QString& v) {
+    if (m_barMode == v) return;
+    m_barMode = v;
+    emit barModeChanged();
+}
+
 void SettingsViewModel::setTheme(const QString& v) {
     if (m_theme == v) return;
     m_theme = v;
@@ -89,6 +95,7 @@ void SettingsViewModel::reloadFromConfig() {
     // config 存 0.0-1.0 qreal，UI 用 0-100 int（四舍五入）
     setBarOpacity(qRound(m_config->barOpacity() * 100));
     setBarEdge(m_config->barEdge());
+    setBarMode(m_config->barMode());
     setTheme(m_config->theme());
     setThemeId(m_config->themeId());
     setAutoStart(autostart::isEnabled());
@@ -104,6 +111,10 @@ bool SettingsViewModel::apply() {
     }
     if (m_barEdge != QStringLiteral("top") && m_barEdge != QStringLiteral("bottom")) {
         setErrorMessage(QStringLiteral("停靠边缘仅支持 top / bottom"));
+        return false;
+    }
+    if (m_barMode != QStringLiteral("appbar") && m_barMode != QStringLiteral("taskbar")) {
+        setErrorMessage(QStringLiteral("工作模式仅支持 appbar / taskbar"));
         return false;
     }
     if (m_theme != QStringLiteral("dark") && m_theme != QStringLiteral("light")) {
@@ -126,6 +137,7 @@ bool SettingsViewModel::apply() {
     QJsonObject bar = root.value(QStringLiteral("bar")).toObject();
     bar[QStringLiteral("height")] = m_barHeight;
     bar[QStringLiteral("edge")] = m_barEdge;
+    bar[QStringLiteral("mode")] = m_barMode;     // 工作模式 appbar/taskbar（M11）
     bar[QStringLiteral("opacity")] = m_barOpacity / 100.0;   // int 0-100 → qreal 0.0-1.0
     bar[QStringLiteral("theme")] = m_theme;          // 模式 dark/light
     bar[QStringLiteral("themeId")] = m_themeId;      // 主题包 id
@@ -139,7 +151,8 @@ bool SettingsViewModel::apply() {
     setErrorMessage({});
     qDebug() << "[Settings] applied:"
              << "height=" << m_barHeight << "edge=" << m_barEdge
-             << "themeId=" << m_themeId << "mode=" << m_theme
+             << "barMode=" << m_barMode
+             << "themeId=" << m_themeId << "theme=" << m_theme
              << "autoStart=" << m_autoStart << "plugins=" << plugins.size();
     return true;
 }

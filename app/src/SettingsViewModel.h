@@ -21,6 +21,7 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(int barHeight READ barHeight WRITE setBarHeight NOTIFY barHeightChanged)
     Q_PROPERTY(int barOpacity READ barOpacity WRITE setBarOpacity NOTIFY barOpacityChanged)
     Q_PROPERTY(QString barEdge READ barEdge WRITE setBarEdge NOTIFY barEdgeChanged)
+    Q_PROPERTY(QString barMode READ barMode WRITE setBarMode NOTIFY barModeChanged)
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
     Q_PROPERTY(QString themeId READ themeId WRITE setThemeId NOTIFY themeIdChanged)
     Q_PROPERTY(QStringList themePackNames READ themePackNames NOTIFY themePacksReloaded)
@@ -37,6 +38,7 @@ public:
     int barHeight() const { return m_barHeight; }
     int barOpacity() const { return m_barOpacity; }    // 0-100 百分比（QML SpinBox 友好）
     QString barEdge() const { return m_barEdge; }
+    QString barMode() const { return m_barMode; }      // 工作模式 appbar/taskbar（M11）
     QString theme() const { return m_theme; }          // 模式 dark/light
     QString themeId() const { return m_themeId; }      // 主题包 id
     QStringList themePackNames() const;                // 已安装主题包显示名（下拉用）
@@ -49,6 +51,7 @@ public:
     void setBarHeight(int v);
     void setBarOpacity(int v);   // 0-100 百分比
     void setBarEdge(const QString& v);
+    void setBarMode(const QString& v);          // 设置工作模式（appbar/taskbar）
     void setTheme(const QString& v);            // 设置模式
     void setThemeId(const QString& v);          // 设置主题包 id
     void setAutoStart(bool v);
@@ -65,6 +68,7 @@ signals:
     void barHeightChanged();
     void barOpacityChanged();
     void barEdgeChanged();
+    void barModeChanged();
     void themeChanged();
     void themeIdChanged();
     void themePacksReloaded();
@@ -83,6 +87,7 @@ private:
     int m_barHeight = 40;
     int m_barOpacity = 100;                              // 0-100 百分比（100=不透明）
     QString m_barEdge = QStringLiteral("top");
+    QString m_barMode = QStringLiteral("appbar");      // 工作模式 appbar/taskbar
     QString m_theme = QStringLiteral("dark");            // 模式
     QString m_themeId = QStringLiteral("xuanhub-default"); // 主题包 id
     bool m_autoStart = false;

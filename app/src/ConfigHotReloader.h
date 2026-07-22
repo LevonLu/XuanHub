@@ -1,6 +1,6 @@
 // ConfigHotReloader.h — 配置热重载（M7）
 // QFileSystemWatcher 监听 ConfigService::activePath()（300ms 防抖），
-// 托盘菜单 "Reload Config" 手动触发走同一 reload() 入口。
+// 托盘菜单 "重新加载配置" 手动触发走同一 reload() 入口。
 #pragma once
 #include <QObject>
 #include <QString>

@@ -23,7 +23,7 @@ namespace {
 // 解释器是进程级单例。CPython 重复 init/finalize 不稳定，
 // 因此热重载（shutdownAll → loadFrom）周期内保持存活、不 finalize；
 // 进程退出由 OS 整体回收 —— 主动 finalize 在绑定库静态对象
-// 析构顺序下反而易崩（plan.md §12 M6 决策）。
+// 析构顺序下反而易崩（M6 决策记录）。
 // 注：本 DLL（pybridge）不触碰任何 CPython/nanobind 符号——nanobind
 // 以数据符号导入 python3.dll，无法 /DELAYLOAD（LNK1194），故解释器
 // 初始化（裸 Py_Initialize，nanobind 官方不支持嵌入）与代理 VM 实现

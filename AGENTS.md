@@ -1,10 +1,10 @@
 # AGENTS.md — 玄枢 / XuanHub
 
-> 面向 AI 编码代理的项目说明。阅读本文件即可了解项目全貌；更详细的设计决策与里程碑见根目录 `plan.md`。
+> 面向 AI 编码代理的项目说明。阅读本文件即可了解项目全貌（含设计决策与验收清单）。
 
 ## 1. 项目概览
 
-**玄枢（XuanHub）** 是一个基于 **Qt6 / QML 的 Windows 插件化状态栏框架**（对标 polybar / waybar / Rainmeter），当前版本 0.1.0，MVP（M1–M5）与第二阶段 Python Bridge（M6）均已完成（见 `plan.md` §10）。
+**玄枢（XuanHub）** 是一个基于 **Qt6 / QML 的 Windows 插件化状态栏框架**（对标 polybar / waybar / Rainmeter），当前版本 0.1.0。
 
 - 可执行文件 `XuanHub.exe`：无边框、置顶、`Qt::Tool` 的 `QQuickView`，两种工作形态（`bar.mode`，M11）——`appbar`（默认）：通过 Win32 AppBar（`SHAppBarMessage(ABM_NEW)`）在主屏顶部/底部占住桌面工作区；`taskbar`：`SetParent` 嵌入原生任务栏左侧，背景透明、不占工作区，与任务栏融为一体。
 - 插件系统：插件是独立 DLL（`QPluginLoader` 加载），自带 QML 界面文件，框架只负责发现、加载、布局。
@@ -23,7 +23,7 @@
 | 插件加载 | `QPluginLoader` + `Q_PLUGIN_METADATA`（IID `xuanhub.BarPlugin/1.0`）；host 插件另有 `xuanhub.BarPluginHost/1.0` |
 | Python 桥接 | nanobind v2.14.0（`third_party/nanobind` git submodule）+ 内嵌 CPython（稳定 ABI `Py_LIMITED_API=0x030C0000`，链接 `python3.lib`，运行时兼容 ≥3.12；解释器初始化走裸 `Py_Initialize()`——nanobind 官方不支持嵌入，只用作对象包装/GIL/转换层） |
 | 系统 API | Win32：`SHAppBarMessage`（工作区）、`GetIfTable2`（网络）、注册表 Run 键（自启）、`RegisterWindowMessage("TaskbarCreated")`（托盘重建） |
-| 配置 | JSON（`QJsonDocument`）；M7 起热重载（`QFileSystemWatcher` + 托盘 "Reload Config" 手动触发） |
+| 配置 | JSON（`QJsonDocument`）；M7 起热重载（`QFileSystemWatcher` + 托盘 "重新加载配置" 手动触发） |
 
 ## 3. 构建与运行命令
 
@@ -50,7 +50,6 @@ cmake --build --preset default-debug   # Debug
 ```
 XuanHub/
 ├── CMakeLists.txt / CMakePresets.json   # 顶层工程与预设
-├── plan.md                              # 开发计划/里程碑 TODO/设计决策记录（重要参考）
 ├── config/config.json                   # 开发用示例配置（手动拷贝到 dist）
 ├── lib/barplugin/                       # 插件接口共享库 barplugin.dll（SHARED）
 │   ├── include/barplugin/               # IBarPlugin.h / IBarPluginHost.h / BarPluginContext.h
@@ -89,6 +88,16 @@ XuanHub/
 依赖方向：**插件只链接 `barplugin`**；宿主 `app` 也链接 `barplugin`。`barplugin` 必须是 **SHARED** 库，保证宿主与所有插件 DLL 共享同一份 `EventBus` 类型/单例语义（STATIC 链接会有跨 DLL 的 ABI 隐患）。插件对宿主核心零依赖，核心仅通过接口拿到 `QObject* viewModel()` 与 `QUrl qmlUrl()`。
 
 ## 5. 运行时架构要点
+
+分层视图（依赖自上而下，插件只依赖 `lib/barplugin`，对宿主核心零依赖）：
+
+```
+QML 渲染层 (app/qml)     main.qml → Bar.qml（三栏）→ PluginSlot.qml（Loader）
+插件适配层 (app/src)     PluginManager · PluginListModel · ConfigService · ThemeManager · TrayIcon
+横切服务 (lib/barplugin) IBarPlugin · BarPluginContext · EventBus · PluginMetadata
+Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaGuard · TaskbarEmbed
+                         ↑ 加载 ↑   plugins/<id>/<id>.dll + <Id>.qml（+ plugins_py/ 经 pybridge）
+```
 
 ### 插件加载流程（`PluginManager::loadFrom`）
 
@@ -129,7 +138,7 @@ XuanHub/
 - 主题包是**纯 JSON 声明式**目录：`<exeDir>/themes/<id>/theme.json`，由 `ThemeRegistry` 启动时扫描 + 校验（`bg/fg/accent` 必填，其余 fallback 到内置默认）。开发契约见 `themes/README.md`。
 - `ThemeManager` 暴露给 QML：`themeId`（当前主题包 id）、`mode`（dark/light）、`colors`（11 字段色板 QVariantMap，已 fallback 填满）。QML 统一 `themeManager.colors.bg` 取色，不再本地维护色板。
 - 配置双字段：`bar.themeId`（主题包 id，缺省 `xuanhub-default`）+ `bar.theme`（模式 dark/light，缺省 dark）。
-- 托盘 "Toggle Dark/Light" 仅切模式（`switchMode`，不写回文件，热重载时回滚）；主题包切换走设置窗口（写 config.json → 热重载生效）。
+- 托盘 "切换深色/浅色" 仅切模式（`switchMode`，不写回文件，热重载时回滚）；主题包切换走设置窗口（写 config.json → 热重载生效）。
 - 热重载时 `ConfigHotReloader` 会**重扫 `themes/`**（新装/卸载主题包立刻可见），再按文件值 `applyTheme(themeId, mode)`。
 - 内置兜底：`ThemeRegistry` 持有一份硬编码默认主题，`themes/` 全丢或 themeId 找不到时仍可用。
 
@@ -148,11 +157,11 @@ XuanHub/
 
 `position` 取值 `left/center/right`（空默认 `right`，非法值告警并回落）；`edge` 仅 `top/bottom`；`config` 段原样经 `ctx->pluginConfig` 传给插件。
 
-**工作模式（M11）**：`bar.mode` = `appbar`（默认，占工作区）/ `taskbar`（嵌入任务栏）。taskbar 模式下 `TaskbarEmbed` 把 BarWindow `SetParent` 到 `Shell_TrayWnd`（`QWindow::fromWinId` 包裹 + 强制 `WS_CHILD`，保留 `WS_EX_NOACTIVATE`），贴合任务栏左侧（`bar.taskbarOffsetX` 微调，Win11 居中图标/小组件遮挡时用），高度跟随任务栏，背景强制全透明，宽度收缩为 QML 内容宽；500ms 轮询矫正位置与 z-order（任务栏重绘会压盖子窗口）。explorer 重启时子窗口随任务栏销毁：`TaskbarCreated`（main.cpp `TaskbarMonitor`）与 `TaskbarEmbed::taskbarVanished` 双路触发 `BarWindow::recreateForTaskbar()` 重建窗口重新嵌入。切换方式：改 config.json 热重载，或托盘 "Taskbar Mode" 勾选项（只写回 `bar.mode` 一键，生效全靠 watcher）。
+**工作模式（M11）**：`bar.mode` = `appbar`（默认，占工作区）/ `taskbar`（嵌入任务栏）。taskbar 选型：`SetParent` 嵌入 `Shell_TrayWnd` 是业界验证方案（TrafficMonitor 等）；Deskband 已被 Win11 移除、顶层透明叠加有 z-order 争夺缺陷，均未采用。taskbar 模式下 `TaskbarEmbed` 把 BarWindow `SetParent` 到 `Shell_TrayWnd`（`QWindow::fromWinId` 包裹 + 强制 `WS_CHILD`，保留 `WS_EX_NOACTIVATE`），贴合任务栏左侧（`bar.taskbarOffsetX` 微调，Win11 居中图标/小组件遮挡时用），高度跟随任务栏，背景强制全透明，宽度收缩为 QML 内容宽；500ms 轮询矫正位置与 z-order（任务栏重绘会压盖子窗口）。explorer 重启时子窗口随任务栏销毁：`TaskbarCreated`（main.cpp `TaskbarMonitor`）与 `TaskbarEmbed::taskbarVanished` 双路触发 `BarWindow::recreateForTaskbar()` 重建窗口重新嵌入。切换方式：改 config.json 热重载、托盘 "任务栏模式" 勾选项（只写回 `bar.mode` 一键，生效全靠 watcher），或设置窗口「外观 → 状态栏 → 工作模式」（随整页草稿经 apply 写回）。
 
-**热重载（M7）**：保存 config.json 自动生效（`ConfigHotReloader` 的 `QFileSystemWatcher` 监听 `activePath()`，300ms 防抖，编辑器重命名式保存后自动重挂监视），或托盘 "Reload Config" 手动触发。`reload()` 顺序：`load()`（解析失败保留旧配置）→ theme 按文件覆盖 → `setupBar()` 重协商 → `shutdownAll() → loadFrom() → setPlugins()` 插件全量重载（同一槽函数内完成，QML 不会碰到悬空 viewModel）。注意：托盘 Toggle Theme 不写回文件，热重载时文件值会覆盖它。
+**热重载（M7）**：保存 config.json 自动生效（`ConfigHotReloader` 的 `QFileSystemWatcher` 监听 `activePath()`，300ms 防抖，编辑器重命名式保存后自动重挂监视），或托盘 "重新加载配置" 手动触发。`reload()` 顺序：`load()`（解析失败保留旧配置）→ theme 按文件覆盖 → `setupBar()` 重协商 → `shutdownAll() → loadFrom() → setPlugins()` 插件全量重载（同一槽函数内完成，QML 不会碰到悬空 viewModel）。注意：托盘「切换深色/浅色」不写回文件，热重载时文件值会覆盖它。
 
-**写回与设置窗口（M8）**：`ConfigService` 的 `m_raw` 留存原始 JSON，`save(QJsonObject)` 用 QSaveFile 原子写 `activePath()`——调用方只改已知键，未知键（如 `bar.monitor`）不丢。设置窗口（托盘 "Settings..." → `SettingsController` 懒建的独立 QQuickView + `SettingsWindow.qml`，720×640）只做一件事：校验后写 config.json，**生效全靠 M7 watcher，不直接调 reload**。插件列表来自 config ∪ sidecar 元数据（`plugins/*/metadata.json`、`plugins_py/*/plugin.json`）的并集；`pybridge` 总开关在保存时自动托管（有 py_* 启用则自动补条目，全禁则移除）。开机自启逻辑在 `AutoStart.h`（托盘菜单与设置窗口共用）。
+**写回与设置窗口（M8）**：`ConfigService` 的 `m_raw` 留存原始 JSON，`save(QJsonObject)` 用 QSaveFile 原子写 `activePath()`——调用方只改已知键，未知键（如 `bar.monitor`）不丢。设置窗口（托盘 "设置..." → `SettingsController` 懒建的独立 QQuickView + `SettingsWindow.qml`，720×640）只做一件事：校验后写 config.json，**生效全靠 M7 watcher，不直接调 reload**。插件列表来自 config ∪ sidecar 元数据（`plugins/*/metadata.json`、`plugins_py/*/plugin.json`）的并集；`pybridge` 总开关在保存时自动托管（有 py_* 启用则自动补条目，全禁则移除）。开机自启逻辑在 `AutoStart.h`（托盘菜单与设置窗口共用）。
 
 **插件设置 schema 化（M10）**：设置窗口插件页为 master-detail——左侧插件列表（`SettingsPluginSortModel`：启用在前 → order → id，勾选即时归位），右侧选中插件的设置（未启用只显示启用框；启用后才显示位置/排序与插件级设置）。插件 config 的编辑方式两种并存，sidecar 声明、**自绘优先（settingsQml > settings > 无）**：
 
@@ -179,15 +188,20 @@ XuanHub/
 
 ## 7. 测试与验证
 
-**项目没有自动化测试框架，也没有任何测试目录。** 验证方式为手动验收，清单在 `plan.md` §13：
+**项目没有自动化测试框架，也没有任何测试目录。** 验证方式为手动验收：
 
-- 运行 `XuanHub.exe` 看贴顶置顶、最大化其他窗口验证不遮挡、退出后工作区归还；
-- 增删 `plugins/<id>/` 目录后重启，验证插件出现/消失与日志 `[Plugin] loaded: <id> pos=...`；
-- 改 `config.json` 的 position/order 重启验证布局；
-- netstat 在大流量下载时观察速率刷新且 UI 不卡；launcher 点击能否拉起进程（`QProcess::startDetached`）；
-- 托盘菜单（自启/切主题/退出）、切换 100%/150%/200% DPI、重启 Explorer 后托盘存活。
+- 窗口与工作区：运行 `XuanHub.exe` 看贴顶置顶；最大化其他窗口验证不遮挡；正常退出立即归还工作区（强杀依赖系统延迟清理，属已知行为）。
+- 插件加载：增删 `plugins/<id>/` 目录后重启，验证插件出现/消失与日志 `[Plugin] loaded: <id> pos=...`；放入 IID 不符的 DLL 验证 qWarning 跳过不崩溃。
+- 布局：改 `config.json` 的 position/order（保存即热重载）验证三栏布局。
+- 采集与交互：netstat 在大流量下载时观察速率刷新且 UI 不卡；launcher 点击能拉起进程（`QProcess::startDetached`）。
+- 热重载：运行中保存 `config.json`（position/order/height/theme、增删插件条目）观察 ~300ms 内生效；写坏 JSON 验证告警且保留旧配置；托盘 "重新加载配置" 手动触发。
+- 设置窗口：托盘 "设置..." 打开；改主题/高度保存后即时生效；勾选/取消插件即时上下线；非法输入保存被拒并红字提示；通用页勾选自启后查注册表 Run 键、与托盘菜单勾选同步。
+- 托盘：菜单各项（设置.../开机自启/任务栏模式/切换深色浅色/重新加载配置/退出）逐一点验；重启 Explorer 后托盘自动重建。
+- taskbar 模式：托盘勾 "任务栏模式"（或设置窗口/手改 `bar.mode`）观察条栏嵌入任务栏左侧、背景透出任务栏、宽度随内容收缩；切回 appbar 验证工作区重新 reserve 无残留；重启 explorer 验证自动重新嵌入；100%/150% DPI 各验一次位置与高度。
+- DPI：100%/150%/200% 切换验证不糊、appbar 矩形物理像素换算正确。
+- Python 子插件：改 `plugins_py/<name>/main.py` 重启即生效（免重编 DLL）；`update()` 抛异常时 UI 保留旧值、日志有 traceback、宿主不崩；无 Python 环境的机器上 pybridge 自动停用 + 托盘提示，其余功能正常。
 
-调试入口：`%APPDATA%/XuanHub/xuanhub.log` 与 `OutputDebugString`（可用 DebugView 查看）。`--settings` 启动即打开设置窗口（免点托盘）；`--uitest` 读 `<exeDir>/uitest.txt` 回放 UI 验收脚本（`click:x,y` / `kp:文本` / `fc:可见文本`（定位后点击），经 QTest 注入，供无头自动化验收，见 plan.md M10）。
+调试入口：`%APPDATA%/XuanHub/xuanhub.log` 与 `OutputDebugString`（可用 DebugView 查看）。`--settings` 启动即打开设置窗口（免点托盘）；`--uitest` 读 `<exeDir>/uitest.txt` 回放 UI 验收脚本（`click:x,y` / `kp:文本` / `fc:可见文本`（定位后点击），供无头自动化验收；事件必须经 QTest 注入——直接 postEvent 不走 Qt Quick 输入分发，实测无效）。
 
 ## 8. 部署
 
@@ -210,8 +224,8 @@ XuanHub/
 - **ABI 锁定**：插件 DLL 必须与宿主同 Qt 版本、同编译器、同 CRT（/MD 或 /MDd 对应），否则 `instance()` 返回 nullptr 或直接崩溃。所有目标必须经同一 toolchain 构建。
 - `barplugin` 保持 SHARED；任何将其改回 STATIC 的"简化"都会引入跨 DLL 对象语义/ABI 问题。
 - 卸载顺序铁律：先 `shutdown()` 删光插件对象，再 `unload()`；`PluginManager` 已清除 `PreventUnloadHint` 使 `unload()` 真正生效，破坏顺序会导致卸载后执行已释放代码。host 插件（pybridge）额外要求：host 在所有普通插件之后 shutdown（其子插件 VM 依赖 host 持有的解释器）。
-- CPython 解释器任何时刻**不主动 finalize**（plan.md §12 决策记录）；pybridge 走稳定 ABI（`Py_LIMITED_API=0x030C0000`），不再与某个 `python3XX.dll` 次版本绑定，但 nanobind/Qt 侧仍同受 ABI 锁定；用户安装的 Python 必须 ≥3.12 且与系统架构一致（x64）。
-- 崩溃残留 AppBar：`WorkAreaGuard` 负责启动清旧注册/退出 `ABM_REMOVE` 归还工作区；强杀进程依赖系统延迟清理，属已知行为。
+- CPython 解释器任何时刻**不主动 finalize**（CPython 重复 init/finalize 不稳，进程退出由 OS 回收）；pybridge 走稳定 ABI（`Py_LIMITED_API=0x030C0000`），不再与某个 `python3XX.dll` 次版本绑定，但 nanobind/Qt 侧仍同受 ABI 锁定；用户安装的 Python 必须 ≥3.12 且与系统架构一致（x64）。
+- 崩溃残留 AppBar：`WorkAreaGuard` 负责启动清旧注册/退出 `ABM_REMOVE` 归还工作区；强杀进程依赖系统延迟清理，属已知行为。工作区占用只用 `SHAppBarMessage(ABM_NEW)`（系统托管生命周期），**不用** `SPI_SETWORKAREA`（易被其他程序覆盖、残留难清）。
 - DPI：`main.cpp` 首行必须保持 `PassThrough` 舍入策略；AppBar 矩形用物理像素、QML 内用逻辑像素，换算见 `BarWindow::setupBar`。
 - 注册表自启项（Run 键）由托盘菜单切换；配置文件会写入 `%APPDATA%/XuanHub` —— 涉及这两处的改动注意权限与残留清理。
 - 日志文件每次启动以 Truncate 打开；单实例锁必须先于日志初始化（顺序已在 main.cpp 注释中说明，勿颠倒）。
@@ -230,4 +244,3 @@ XuanHub/
 - 新插件 CMake 模板：`plugins/clock/CMakeLists.txt`
 - Python 桥接：`lib/barplugin/include/barplugin/IBarPluginHost.h`（两阶段契约）、`plugins/pybridge/PyBridgePlugin.{h,cpp}`（host 外壳 + 环境探测/预装，不触碰 Python 符号）、`plugins/pybridge/PyBackendApi.h` + `PyBackend.cpp`（pybackend.dll：解释器初始化 + VM 工厂，LNK1194 拆分的唯一 Python 模块）、`plugins/pybridge/PyProxyViewModel.{h,cpp}`（代理 VM + QVariant↔py 转换，编入 pybackend.dll）
 - Python 子插件开发契约：`plugins_py/README.md`；示例：`plugins_py/hello/`（参考样例）、`plugins_py/intime/`（定时休息提醒 + 全屏遮罩 + 自绘设置页）、`plugins_py/usage_hub/`（多厂商 API 用量看板 + 自绘设置页）
-- 设计决策与里程碑：`plan.md`（§11 关键风险、§12 决策记录尤具参考价值）

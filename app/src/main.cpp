@@ -144,12 +144,12 @@ int main(int argc, char* argv[]) {
     window.setupBar();
     window.show();
 
-    // 配置热重载（M7）：文件监听自动触发 + 托盘 "Reload Config" 手动触发
+    // 配置热重载（M7）：文件监听自动触发 + 托盘 "重新加载配置" 手动触发
     ConfigHotReloader reloader(&config, &theme, &registry, &pm, &model, &window, exeDir, configDir);
     QObject::connect(&tray, &TrayIcon::reloadRequested,
                      &reloader, &ConfigHotReloader::reload);
 
-    // 设置窗口（M8）：托盘 "Settings..." 打开（懒建，关闭=隐藏不销毁）
+    // 设置窗口（M8）：托盘 "设置..." 打开（懒建，关闭=隐藏不销毁）
     SettingsController settingsCtl(&config, &theme, &registry, exeDir);
     QObject::connect(&tray, &TrayIcon::settingsRequested,
                      &settingsCtl, &SettingsController::open);
