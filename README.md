@@ -5,7 +5,7 @@
 状态栏以无边框、置顶窗口的形式占据主屏顶部或底部边缘（经 Win32 AppBar 向系统申请工作区，其他窗口最大化时不会遮挡它）；栏上的一切内容——时钟、网速、启动器……——都是可插拔的插件。插件有两种形态：
 
 - **C++ 插件**：独立 DLL，性能最好，可直接调用 Win32 API；
-- **Python 子插件**：由内置的 `pybridge` 桥接插件承载（内嵌 CPython 3.13），**写插件不需要碰 C++**，改完即生效。
+- **Python 子插件**：由内置的 `pybridge` 桥接插件承载（内嵌 CPython，稳定 ABI 兼容 3.12+），**写插件不需要碰 C++**，改完即生效。
 
 ## 特性
 
@@ -21,7 +21,7 @@
 
 - Windows 10 / 11，x64
 - **基础功能零依赖**：宿主与 C++ 插件开箱即用，分发包已附带 MSVC 运行库
-- **Python 子插件需要自装 CPython 3.13**（python.org 下载安装即可，程序经注册表自动定位，无需配置）。未安装时：宿主与 C++ 插件完全不受影响，Python 子插件自动停用，启动时托盘弹出提示；安装后重启自动启用
+- **Python 子插件需要自装 CPython 3.12+**（python.org 下载安装即可，程序经注册表/py launcher/PATH 自动定位，无需配置）。未安装时：宿主与 C++ 插件完全不受影响，Python 子插件自动停用，启动时托盘弹出提示；安装后重启自动启用
 
 ---
 
@@ -417,7 +417,7 @@ ctx->eventBus->publish(QStringLiteral("my.topic"), QVariantMap{{"key", 1}});
 
 # Python 插件开发（pybridge）
 
-`pybridge` 是一个特殊的桥接插件：内嵌 CPython 3.13 解释器，扫描 `<exeDir>/plugins_py/` 下的子插件，为每个子插件创建通用代理 ViewModel 注入 QML。**写 Python 插件只需三个文本文件，零 C++、零编译。**
+`pybridge` 是一个特殊的桥接插件：内嵌 CPython 解释器（稳定 ABI，兼容 3.12+），扫描 `<exeDir>/plugins_py/` 下的子插件，为每个子插件创建通用代理 ViewModel 注入 QML。**写 Python 插件只需三个文本文件，零 C++、零编译。**
 
 完整开发契约见 `plugins_py/README.md`，参考实现见 `plugins_py/hello/`。以下为要点。
 
@@ -539,13 +539,13 @@ def update():
     return dict(_cache)
 ```
 
-`urllib`（含 HTTPS）开箱即用——运行时的解释器指向用户自装的 Python 3.13，其完整标准库与编译扩展模块（`_socket`、`_ssl` 等）均可用。第三方库（如 `requests`）装进该 Python 3.13 即可直接 import（其 `site-packages` 对插件可见）。
+`urllib`（含 HTTPS）开箱即用——运行时的解释器指向用户自装的 Python（≥3.12），其完整标准库与编译扩展模块（`_socket`、`_ssl` 等）均可用。第三方库（如 `requests`）装进该 Python 即可直接 import（其 `site-packages` 对插件可见）。
 
 ## 调试
 
 - 日志：`%APPDATA%/XuanHub/xuanhub.log`（Python traceback 也在其中）；
 - 改 `main.py` / `*.qml` 后重新构建（POST_BUILD 会把 `plugins_py/` 同步到运行目录）再重启宿主即生效，免重编任何 DLL；
-- 已知限制：Python 子插件暂无 EventBus 接入；运行依赖用户自装的 CPython 3.13（未安装时自动停用 + 托盘提示）。
+- 已知限制：Python 子插件暂无 EventBus 接入；运行依赖用户自装的 CPython ≥3.12（未安装时自动停用 + 托盘提示）。
 
 ---
 
@@ -559,7 +559,7 @@ cmake --build --preset default         # Release
 cmake --build --preset default-debug   # Debug
 ```
 
-运行产物统一在 `build/default/dist/<CONFIG>/`（含 `XuanHub.exe`、插件目录、Qt 依赖，链接后自动 windeployqt）。仓库根的 `config/config.json` 是开发示例，需手动拷到该目录才会以便携模式生效。构建 Python 桥接需要本机装有 Python 3.13（pybind11 本地副本放 `third_party/pybind11`，缺失时自动联网拉取）。
+运行产物统一在 `build/default/dist/<CONFIG>/`（含 `XuanHub.exe`、插件目录、Qt 依赖，链接后自动 windeployqt）。仓库根的 `config/config.json` 是开发示例，需手动拷到该目录才会以便携模式生效。构建 Python 桥接需要本机装有 Python ≥3.12 开发包（nanobind 本地副本放 `third_party/nanobind`）。
 
 ## 仓库目录速览
 
@@ -570,7 +570,7 @@ plugins/        # C++ 插件：clock / netstat / launcher / pybridge
 plugins_py/     # Python 子插件（README.md 即开发契约）
 themes/         # 主题包（README.md 即开发契约）
 config/         # 开发用示例配置
-third_party/    # pybind11 本地副本
+third_party/    # nanobind 本地副本（pybind11 为迁移后遗留，未再引用）
 plan.md         # 里程碑与设计决策记录
 AGENTS.md       # 面向 AI 代理的项目说明（架构细节最齐全的一份文档）
 ```
