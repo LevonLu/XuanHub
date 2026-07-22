@@ -614,6 +614,7 @@ Pane {
                         TextField {
                             property var field: ({})
                             property bool invalid: false
+                            property bool _initializing: false   // init 守卫（同 stringFieldComp，防 pluginId 时序串台）
                             Component.onDestruction: if (invalid) root.invalidFields -= 1
                             validator: DoubleValidator {
                                 bottom: field.min !== undefined ? field.min : -1e300
@@ -624,11 +625,13 @@ Pane {
                             onFieldChanged: init()
                             function init() {
                                 if (!field.key) return
+                                _initializing = true
                                 text = String(root.draftValue(field.key,
                                     field.default !== undefined ? field.default : 0))
+                                _initializing = false
                             }
                             onTextChanged: {
-                                if (!field.key) return
+                                if (!field.key || _initializing) return
                                 const ok = acceptableInput && text.length > 0
                                 root.setFieldInvalid(this, !ok)
                                 if (ok) settingsVM.pluginProxy.setValue(field.key, parseFloat(text))
@@ -648,15 +651,20 @@ Pane {
                         id: stringFieldComp
                         TextField {
                             property var field: ({})
+                            // init 守卫：程序设 text 不触发 onTextChanged 回写草稿，
+                            // 防止切换插件时 pluginId 时序竞态把字段写到上一个插件
+                            property bool _initializing: false
                             placeholderText: field.placeholder || ""
                             Component.onCompleted: init()
                             onFieldChanged: init()
                             function init() {
                                 if (!field.key) return
+                                _initializing = true
                                 text = String(root.draftValue(field.key,
                                     field.default !== undefined ? field.default : ""))
+                                _initializing = false
                             }
-                            onTextChanged: if (field.key) settingsVM.pluginProxy.setValue(field.key, text)
+                            onTextChanged: if (field.key && !_initializing) settingsVM.pluginProxy.setValue(field.key, text)
                             color: root.c.fg
                             background: Rectangle {
                                 color: root.c.bg
@@ -673,6 +681,7 @@ Pane {
                             id: colorRow
                             property var field: ({})
                             property bool invalid: false
+                            property bool _initializing: false   // init 守卫（同 stringFieldComp，防 pluginId 时序串台）
                             spacing: 6
                             Component.onDestruction: if (invalid) root.invalidFields -= 1
 
@@ -687,8 +696,10 @@ Pane {
                             onFieldChanged: init()
                             function init() {
                                 if (!field.key) return
+                                _initializing = true
                                 colorInput.text = String(root.draftValue(field.key,
                                     field.default !== undefined ? field.default : ""))
+                                _initializing = false
                             }
 
                             TextField {
@@ -696,7 +707,7 @@ Pane {
                                 Layout.fillWidth: true
                                 placeholderText: colorRow.field.placeholder || "留空跟随默认"
                                 onTextChanged: {
-                                    if (!colorRow.field.key) return
+                                    if (!colorRow.field.key || colorRow._initializing) return
                                     const ok = colorRow.validText(text)
                                     root.setFieldInvalid(colorRow, !ok)
                                     if (ok) settingsVM.pluginProxy.setValue(field.key, text)

@@ -1,8 +1,10 @@
 {
   "bar": { "height": 40, "edge": "top", "monitor": "primary", "opacity": 1.0, "themeId": "xuanhub-default", "theme": "dark", "mode": "appbar", "taskbarOffsetX": 0 },
   "plugins": [
-    { "id": "launcher", "position": "left",  "order": 0, "config": { "items": [{"name":"Terminal","program":"wt.exe"},{"name":"Notepad","program":"notepad.exe"}] } },
-    { "id": "netstat",  "position": "right", "order": 0, "config": { "intervalMs": 1000 } },
-    { "id": "clock",    "position": "right", "order": 1, "config": { "format": "HH:mm:ss" } }
+    { "id": "netstat", "position": "left", "order": 0, "config": { "intervalMs": 1000, "downPrefix": "↓ ", "upPrefix": "↑ ", "downColor": "", "upColor": "" } },
+    { "id": "clock", "position": "center", "order": 1, "config": { "format": "HH:mm:ss" } },
+    { "id": "py_usage_hub", "position": "right", "order": 3, "config": { "intervalMs": 3000, "vendors": [] } },
+    { "id": "py_countdown", "position": "left", "order": 6, "config": { "intervalMs": 1000, "mode": "每日重复", "targetTime": "18:00", "prefix": "下班", "suffix": "剩余", "reachedText": "下班啦🎉", "reachedColor": "" } },
+    { "id": "pybridge", "position": "right", "order": 9, "config": {} }
   ]
 }
