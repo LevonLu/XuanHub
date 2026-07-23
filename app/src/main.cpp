@@ -77,6 +77,10 @@ int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("XuanHub"));
     app.setOrganizationName(QStringLiteral("XuanHub"));
+    // BarWindow 是 Qt::Tool，lastWindowClosed 机制会把它排除在"可见顶层窗口"之外，
+    // 于是设置窗口（唯一普通顶层窗口）被 close 隐藏后 Qt 误判"已无窗口"→ 默认退出整个进程。
+    // 玄枢的生命周期由托盘 "退出" 显式控制，关闭这条隐式退出路径。
+    app.setQuitOnLastWindowClosed(false);
 
     // 统一 QtQuick.Controls 样式为 Basic（纯 QML 实现，最稳，与 SettingsWindow 一致）。
     // 进程级全局设置：Bar 引擎内的插件 Window 也会走 Basic，避免走系统默认样式。

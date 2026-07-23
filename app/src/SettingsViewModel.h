@@ -12,6 +12,7 @@
 class QAbstractItemModel;
 class ConfigService;
 class ThemeRegistry;
+class ThemeManager;
 class SettingsPluginModel;
 class SettingsPluginSortModel;
 class SettingsPluginProxy;
@@ -33,7 +34,7 @@ class SettingsViewModel : public QObject {
 
 public:
     SettingsViewModel(ConfigService* config, ThemeRegistry* registry,
-                      QString exeDir, QObject* parent = nullptr);
+                      ThemeManager* themeMgr, QString exeDir, QObject* parent = nullptr);
 
     int barHeight() const { return m_barHeight; }
     int barOpacity() const { return m_barOpacity; }    // 0-100 百分比（QML SpinBox 友好）
@@ -80,6 +81,7 @@ private:
 
     ConfigService* m_config;
     ThemeRegistry* m_registry;
+    ThemeManager* m_themeMgr;   // 运行时主题状态（托盘临时切换的真实值，草稿以此对齐防回滚）
     QString m_exeDir;
     SettingsPluginModel* m_pluginModel;
     SettingsPluginSortModel* m_sortModel;      // 排序 proxy（QML 拿到的是它）

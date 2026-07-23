@@ -5,6 +5,7 @@
 #include "SettingsPluginModel.h"
 #include "SettingsPluginProxy.h"
 #include "SettingsPluginSortModel.h"
+#include "ThemeManager.h"
 #include "ThemeRegistry.h"
 
 #include <QDebug>
@@ -14,8 +15,9 @@
 #include <QSet>
 
 SettingsViewModel::SettingsViewModel(ConfigService* config, ThemeRegistry* registry,
-                                     QString exeDir, QObject* parent)
-    : QObject(parent), m_config(config), m_registry(registry), m_exeDir(std::move(exeDir)),
+                                     ThemeManager* themeMgr, QString exeDir, QObject* parent)
+    : QObject(parent), m_config(config), m_registry(registry), m_themeMgr(themeMgr),
+      m_exeDir(std::move(exeDir)),
       m_pluginModel(new SettingsPluginModel(this)),
       m_sortModel(new SettingsPluginSortModel(this)),
       m_pluginProxy(new SettingsPluginProxy(m_pluginModel, this)) {
@@ -96,8 +98,11 @@ void SettingsViewModel::reloadFromConfig() {
     setBarOpacity(qRound(m_config->barOpacity() * 100));
     setBarEdge(m_config->barEdge());
     setBarMode(m_config->barMode());
-    setTheme(m_config->theme());
-    setThemeId(m_config->themeId());
+    // 主题草稿取运行时值（ThemeManager）而非文件旧值（ConfigService）：
+    // 托盘「切换深色/浅色」是纯运行时切换不写文件，若此处读文件旧值，用户改了别的设置
+    // 保存时会把草稿里的旧 mode 一并写回 → 热重载把用户临时切的模式打回文件值。
+    setTheme(m_themeMgr ? m_themeMgr->mode() : m_config->theme());
+    setThemeId(m_themeMgr ? m_themeMgr->themeId() : m_config->themeId());
     setAutoStart(autostart::isEnabled());
     m_pluginModel->reload(m_config->pluginEntries(), m_exeDir);
     setErrorMessage({});

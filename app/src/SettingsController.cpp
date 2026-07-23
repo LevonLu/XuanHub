@@ -32,7 +32,7 @@ void SettingsController::open() {
         // Basic 样式：自绘色板随主题（进程内仅设置窗口用 Controls，不影响 bar 的 QML）
         QQuickStyle::setStyle(QStringLiteral("Basic"));
 
-        m_vm = new SettingsViewModel(m_config, m_registry, m_exeDir, this);
+        m_vm = new SettingsViewModel(m_config, m_registry, m_theme, m_exeDir, this);
         auto* w = new QQuickView();
         w->setTitle(QStringLiteral("玄枢设置 XuanHub Settings"));
         // 无边框：去掉系统标题栏，改由 QML 自绘标题栏（配色跟随主题）。
