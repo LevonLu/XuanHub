@@ -81,6 +81,7 @@ QVariant SettingsPluginModel::data(const QModelIndex& index, int role) const {
         case EnabledRole:    return r.enabled;
         case PositionRole:   return r.position;
         case OrderRole:      return r.order;
+        case WidthRole:      return r.width;
         case ConfigRole:     return r.config;
         case SchemaRole:     return r.schema.toVariantList();
         case SettingsQmlRole:
@@ -98,6 +99,7 @@ bool SettingsPluginModel::setData(const QModelIndex& index, const QVariant& valu
         case EnabledRole:    r.enabled = value.toBool(); break;
         case PositionRole:   r.position = value.toString(); break;
         case OrderRole:      r.order = value.toInt(); break;
+        case WidthRole:      r.width = value.toInt(); break;
         case SetConfigValueRole: {
             // value 形如 {key: "...", value: ...}，写 config 草稿单字段
             const QVariantMap m = value.toMap();
@@ -123,6 +125,7 @@ QHash<int, QByteArray> SettingsPluginModel::roleNames() const {
         { VersionRole, "version" },       { AuthorRole, "author" },
         { KindRole, "kind" },             { EnabledRole, "enabled" },
         { PositionRole, "position" },     { OrderRole, "order" },
+        { WidthRole, "width" },
         { ConfigRole, "config" },         { SchemaRole, "schema" },
         { SettingsQmlRole, "settingsQml" },
         { SetConfigValueRole, "setConfigValue" },
@@ -142,6 +145,7 @@ void SettingsPluginModel::reload(const QList<PluginConfigEntry>& entries, const 
         r.enabled = true;
         r.position = e.position.isEmpty() ? QStringLiteral("right") : e.position;
         r.order = e.order;
+        r.width = e.width;
         r.config = e.config;   // 结构化草稿直接入行（未知键随之保留）
         // kind 先按 id 前缀猜，磁盘发现命中后会被纠正
         r.kind = e.id.startsWith(QStringLiteral("py_")) ? QStringLiteral("python")
@@ -251,6 +255,7 @@ bool SettingsPluginModel::toPluginEntriesJson(QJsonArray* out, QString* err) con
         o[QStringLiteral("id")] = r.id;
         o[QStringLiteral("position")] = r.position;
         o[QStringLiteral("order")] = r.order;
+        o[QStringLiteral("width")] = r.width;   // 0=自适应，>0 固定像素宽
         o[QStringLiteral("config")] = QJsonObject::fromVariantMap(r.config);
         arr.append(o);
         if (r.kind == QStringLiteral("python")) anyPython = true;

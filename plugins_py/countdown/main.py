@@ -77,23 +77,30 @@ def update():
     daily = str(cfg.get("mode", "每日重复")) != "指定日期"
 
     if daily:
-        parsed = _try_parse_time(cfg.get("targetTime", ""))
+        raw = str(cfg.get("targetTime", "")).strip()
+        if not raw:
+            raw = "18:00"                         # 空配置兜底：默认 18:00
+        parsed = _try_parse_time(raw)
         if parsed is None:
-            return {"text": "⚠ 目标时间格式错误", "reached": False, "reachedColor": reached_color}
+            return {"text": "⚠ 目标时间格式错误（HH:MM）", "reached": False,
+                    "reachedColor": reached_color}
         h, m, s = parsed
         target = now.replace(hour=h, minute=m, second=s, microsecond=0)
     else:
-        target = _parse_datetime(cfg.get("targetDateTime", ""))
+        raw = str(cfg.get("targetDateTime", "")).strip()
+        target = _parse_datetime(raw)
         if target is None:
-            return {"text": "⚠ 目标时间格式错误", "reached": False, "reachedColor": reached_color}
+            return {"text": "⚠ 目标时间格式错误（YYYY-MM-DD HH:MM）", "reached": False,
+                    "reachedColor": reached_color}
 
     reached = now >= target
 
     if reached:
         text = str(cfg.get("reachedText", "下班啦🎉"))
     else:
-        prefix = str(cfg.get("prefix", ""))
-        suffix = str(cfg.get("suffix", ""))
+        # 前缀/后缀：去首尾空白，纯空白串视为空（与 settings 中留空语义一致）
+        prefix = str(cfg.get("prefix", "")).strip()
+        suffix = str(cfg.get("suffix", "")).strip()
         body = _fmt_duration((target - now).total_seconds())
         # 自动拼接：空的前后缀不留多余空格
         text = " ".join(p for p in (prefix, body, suffix) if p)

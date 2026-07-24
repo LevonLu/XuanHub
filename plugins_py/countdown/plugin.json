@@ -3,12 +3,13 @@
     "name": "PyCountdown",
     "version": "0.1.0",
     "author": "XuanHub",
+    "settingsQml": "CountdownSettings.qml",
     "settings": [
         { "group": "目标时间", "fields": [
             { "key": "mode", "type": "enum", "label": "目标模式", "default": "每日重复",
               "options": ["每日重复", "指定日期"], "description": "每日重复=每天到点归零；指定日期=倒数到某个一次性时刻" },
-            { "key": "targetTime", "type": "string", "label": "每日时刻", "default": "18:00",
-              "placeholder": "HH:MM 或 HH:MM:SS", "description": "「每日重复」模式用：每天到达的时刻" },
+            { "key": "targetTime", "type": "string", "label": "每日时刻", "default": "18:00:00",
+              "placeholder": "HH:MM:SS", "description": "「每日重复」模式用：每天到达的时刻（时:分:秒）" },
             { "key": "targetDateTime", "type": "string", "label": "指定日期时刻", "default": "",
               "placeholder": "YYYY-MM-DD HH:MM:SS", "description": "「指定日期」模式用：一次性目标时刻（秒可省）" }
         ]},

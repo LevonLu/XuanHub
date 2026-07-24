@@ -1,0 +1,7 @@
+{
+    "id": "sysinfo",
+    "name": "System Info",
+    "version": "0.2.0",
+    "author": "XuanHub",
+    "settingsQml": "SysInfoSettings.qml"
+}

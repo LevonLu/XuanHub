@@ -42,7 +42,10 @@ void SettingsController::open() {
         // 代价：失去系统阴影，改由 QML DropShadow 补偿。
         w->setColor(QColor(Qt::transparent));
         w->setResizeMode(QQuickView::SizeRootObjectToView);
-        w->resize(780, 680);   // 左侧导航 + 卡片流布局后加宽加高（插件页为 master-detail 两栏，M10）
+        // 左侧导航 + 卡片流布局（插件页为 master-detail 两栏，M10）；
+        // 加宽到 960：sysinfo 自绘设置页每行含 metric 下拉+前缀+颜色+预览+↑↓✕ 多个控件，
+        // 780 下右侧内容区被挤窄导致上移下移按钮被截断。
+        w->resize(960, 680);
         w->rootContext()->setContextProperty(QStringLiteral("settingsVM"), m_vm);
         w->rootContext()->setContextProperty(QStringLiteral("themeManager"), m_theme);
         w->rootContext()->setContextProperty(QStringLiteral("settingsCtl"), this);

@@ -26,6 +26,7 @@ QVariant PluginListModel::data(const QModelIndex& index, int role) const {
         case PositionRole: return it.position;
         case QmlUrlRole:   return it.qmlUrl;
         case ViewModelRole:return QVariant::fromValue(it.vm);
+        case WidthRole:    return it.width;
     }
     return {};
 }
@@ -36,6 +37,7 @@ QHash<int, QByteArray> PluginListModel::roleNames() const {
         { PositionRole,  "position" },
         { QmlUrlRole,    "qmlUrl" },
         { ViewModelRole, "viewModel" },
+        { WidthRole,     "width" },
     };
 }
 
@@ -62,7 +64,7 @@ void PluginListModel::setPlugins(const QVector<PluginManager::LoadedPlugin>& ite
     });
 
     for (const auto& lp : sorted)
-        m_items.append({ lp.id, lp.position, lp.qmlUrl, lp.viewModel });
+        m_items.append({ lp.id, lp.position, lp.qmlUrl, lp.viewModel, lp.width });
     endResetModel();
 }
 

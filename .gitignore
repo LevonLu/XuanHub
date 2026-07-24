@@ -17,3 +17,9 @@ __pycache__/
 
 # pixi 环境
 .pixi/
+
+# Agent
+.claude/
+.zcode/
+.trae/
+CLAUDE.md

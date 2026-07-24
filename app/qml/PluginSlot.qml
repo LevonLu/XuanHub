@@ -8,8 +8,12 @@ Item {
     // 高度跟随所属 ListView（即 bar 实际高度），与 config.barHeight 联动；
     // 脱离 ListView 使用时的回退值 40
     height: ListView.view ? ListView.view.height : 40
-    width: slot.item ? slot.item.width
-                     : (slot.status === Loader.Error ? errorBadge.width : 0)
+    // 宽度：config 的 width>0 时用固定宽（用户在设置里为该插件指定），
+    // 否则跟随加载的插件 QML 根 Item 宽度（自适应，即默认行为）。
+    // 注意：固定宽模式下 Loader 内容会被裁剪/留白，由插件 QML 自行处理对齐。
+    width: model.width > 0 ? model.width
+                           : (slot.item ? slot.item.width
+                                        : (slot.status === Loader.Error ? errorBadge.width : 0))
 
     Loader {
         id: slot

@@ -13,6 +13,7 @@ struct PluginConfigEntry {
     QString id;             // 与插件 metadata().id 匹配
     QString position;       // "left"/"center"/"right"，空则默认
     int order = 0;          // 同 position 内排序，越小越靠左
+    int width = 0;          // 插件在状态栏的宽度（像素，0=跟随内容自适应）
     QVariantMap config;     // 透传给插件的 pluginConfig
 };
 

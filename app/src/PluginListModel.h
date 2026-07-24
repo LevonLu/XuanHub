@@ -22,7 +22,8 @@ public:
         IdRole = Qt::UserRole + 1,
         PositionRole,
         QmlUrlRole,
-        ViewModelRole
+        ViewModelRole,
+        WidthRole
     };
 
     explicit PluginListModel(QObject* parent = nullptr);
@@ -38,7 +39,7 @@ public:
     QAbstractItemModel* rightPlugins()  const;
 
 private:
-    struct Item { QString id; QString position; QUrl qmlUrl; QObject* vm; };
+    struct Item { QString id; QString position; QUrl qmlUrl; QObject* vm; int width = 0; };
     QVector<Item> m_items;
 
     QPointer<PluginFilterModel> m_leftModel;

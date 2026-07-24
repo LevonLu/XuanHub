@@ -1,15 +1,15 @@
-// NetStatPlugin.h — 网络流量插件
+// SysInfoPlugin.h — 系统信息插件（CPU/内存/GPU 占用率）
 #pragma once
 #include <QObject>
 #include <QUrl>
 #include <QPointer>
 #include "barplugin/IBarPlugin.h"
 
-class NetStatWorker;
-class NetStatViewModel;
+class SysInfoWorker;
+class SysInfoViewModel;
 class QThread;
 
-class NetStatPlugin : public QObject, public xuanhub::IBarPlugin {
+class SysInfoPlugin : public QObject, public xuanhub::IBarPlugin {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID "xuanhub.BarPlugin/1.0" FILE "metadata.json")
     Q_INTERFACES(xuanhub::IBarPlugin)
@@ -22,8 +22,8 @@ public:
     void    shutdown() override;
 
 private:
-    QPointer<NetStatViewModel> m_vm;
-    QPointer<NetStatWorker>    m_worker;
+    QPointer<SysInfoViewModel> m_vm;
+    QPointer<SysInfoWorker>    m_worker;
     QPointer<QThread>          m_thread;
-    int m_intervalMs = 1000;
+    int m_intervalMs = 1500;
 };

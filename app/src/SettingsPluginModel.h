@@ -20,7 +20,7 @@ class SettingsPluginModel : public QAbstractListModel {
 public:
     enum Roles {
         IdRole = Qt::UserRole + 1, NameRole, VersionRole, AuthorRole, KindRole,
-        EnabledRole, PositionRole, OrderRole,
+        EnabledRole, PositionRole, OrderRole, WidthRole,
         ConfigRole,          // 读：QVariantMap，结构化 config 草稿（含 schema 未声明的键）
         SchemaRole,          // 读：QVariantList，sidecar 的 settings 分组声明（可空）
         SettingsQmlRole,     // 读：QUrl，sidecar 的 settingsQml 绝对路径（可空 → QVariant()）
@@ -54,6 +54,7 @@ private:
         bool discovered = false;   // 磁盘存在；config 有而磁盘缺失 → false（界面标"缺失"）
         QString position = QStringLiteral("right");
         int order = 0;
+        int width = 0;             // 插件宽度（像素，0=跟随内容自适应）
         QVariantMap config;        // 结构化 config 草稿（全量，未知键随之保留）
         QJsonArray schema;         // sidecar "settings"（可空）
         QUrl settingsQml;          // sidecar "settingsQml"（可空）

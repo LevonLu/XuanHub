@@ -129,6 +129,7 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
                     lp.id = sid;
                     lp.position = sanitizePosition(se->position, sid);
                     lp.order = se->order;
+                    lp.width = se->width;
                     lp.viewModel = sp.viewModel;
                     lp.qmlUrl = QUrl::fromLocalFile(QDir(sp.dirPath).absoluteFilePath(sp.qmlFilePath));
                     lp.iface = nullptr;   // 生命周期归 host，shutdownAll 由 host 统一 shutdown
@@ -151,6 +152,7 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
             lp.id = meta.id;
             lp.position = pos;
             lp.order = entry->order;
+            lp.width = entry->width;
             lp.viewModel = plugin->viewModel();
             lp.qmlUrl = QUrl::fromLocalFile(qmlPath);
             lp.iface = plugin;

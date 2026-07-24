@@ -528,6 +528,7 @@ Pane {
                                     "enabled": m.roleValue(currentRow, "enabled"),
                                     "position": m.roleValue(currentRow, "position"),
                                     "order": m.roleValue(currentRow, "order"),
+                                    "width": m.roleValue(currentRow, "width"),
                                     "discovered": m.roleValue(currentRow, "discovered"),
                                     "schema": m.roleValue(currentRow, "schema"),
                                     "settingsQml": m.roleValue(currentRow, "settingsQml")
@@ -650,6 +651,29 @@ Pane {
                                                 value: Number(detailPanel.rowData.order) || 0
                                                 onValueModified: settingsVM.pluginModel.setRoleValue(
                                                                      detailPanel.currentRow, "order", value)
+                                            }
+                                        }
+                                        // 插件宽度（0=跟随内容自适应，>0 固定像素宽）
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: UiMetrics.space3
+                                            Text {
+                                                text: "宽度"
+                                                color: root.c.fg
+                                                font.pixelSize: UiMetrics.fontS
+                                                Layout.preferredWidth: 120
+                                                horizontalAlignment: Text.AlignRight
+                                            }
+                                            UiSpinBox {
+                                                from: 0; to: 800
+                                                value: Number(detailPanel.rowData.width) || 0
+                                                onValueModified: settingsVM.pluginModel.setRoleValue(
+                                                                     detailPanel.currentRow, "width", value)
+                                            }
+                                            Text {
+                                                text: "0 = 跟随内容"
+                                                color: root.c.muted
+                                                font.pixelSize: UiMetrics.fontTiny
                                             }
                                         }
 

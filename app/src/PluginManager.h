@@ -23,6 +23,7 @@ public:
         QString id;
         QString position;            // left/center/right
         int order = 0;
+        int width = 0;               // 插件宽度（像素，0=跟随内容自适应）
         QObject* viewModel = nullptr;
         QUrl qmlUrl;                 // 绝对 file URL
         xuanhub::IBarPlugin* iface = nullptr;

@@ -119,6 +119,8 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
         e.id = o.value("id").toString();
         e.position = o.value("position").toString();
         e.order = o.value("order").toInt(0);
+        // 插件宽度（像素，0=跟随内容自适应）；钳到合理范围防手写越界撑爆状态栏
+        e.width = qBound(0, o.value("width").toInt(0), 800);
         e.config = o.value("config").toObject().toVariantMap();
         if (!e.id.isEmpty()) m_pluginEntries.append(e);
     }
