@@ -10,7 +10,8 @@ Item {
     id: root
     property var plugin
 
-    width: Math.max(120, barRow.implicitWidth + 16)
+    // childrenRect 取实际几何（不走 implicit 链——positioner/Rectangle 的 implicit 语义不可靠）
+    width: Math.max(120, barRow.childrenRect.width + 16)
     height: 40
 
     // 色板兜底
@@ -58,7 +59,8 @@ Item {
             }
 
             delegate: Item {
-                width: vendorWidget.implicitWidth + 4; height: 40
+                // childrenRect 取实际几何（Loader 采纳 mini 的显式 width 后即为准）
+                width: vendorWidget.childrenRect.width + 4; height: 40
 
                 Row {
                     id: vendorWidget
@@ -115,11 +117,17 @@ Item {
         id: balanceBarMini
         Column {
             spacing: 1
+            // 显式 width：Loader 无显式尺寸时采纳 item 的 width；不给的话
+            // positioner 的 implicit 链会把本组件宽度算丢（子项 implicit 语义不可靠），
+            // 导致内容溢出槽位与相邻插件重叠
+            width: Math.max(todayText.implicitWidth, balanceText.implicitWidth)
             Text {
+                id: todayText
                 text: "今日 " + (root.vval(vid, "today") || "...")
                 color: root.cSuccess; font.pixelSize: 10
             }
             Text {
+                id: balanceText
                 text: "余额 " + (root.vval(vid, "balance") || "...")
                 color: root.cFg; font.pixelSize: 10
             }
@@ -131,6 +139,9 @@ Item {
         id: planBarMini
         Column {
             spacing: 2
+            // 显式 width（= 标签16 + 间距4 + 进度条50 + 间距4 + 百分比28）：
+            // Loader 无显式尺寸时采纳 item 的 width；不给会被 implicit 链算丢
+            width: 102
             // 5h 行
             Row {
                 spacing: 4

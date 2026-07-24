@@ -16,6 +16,7 @@ class ThemeManager;
 class SettingsPluginModel;
 class SettingsPluginSortModel;
 class SettingsPluginProxy;
+class PluginListModel;
 
 class SettingsViewModel : public QObject {
     Q_OBJECT
@@ -34,7 +35,8 @@ class SettingsViewModel : public QObject {
 
 public:
     SettingsViewModel(ConfigService* config, ThemeRegistry* registry,
-                      ThemeManager* themeMgr, QString exeDir, QObject* parent = nullptr);
+                      ThemeManager* themeMgr, QString exeDir,
+                      PluginListModel* barPlugins, QObject* parent = nullptr);
 
     int barHeight() const { return m_barHeight; }
     int barOpacity() const { return m_barOpacity; }    // 0-100 百分比（QML SpinBox 友好）
@@ -65,6 +67,10 @@ public:
     // 校验 → 组装 JSON（保留未知键）→ ConfigService::save；失败置 errorMessage 返回 false
     Q_INVOKABLE bool apply();
 
+    // 部件在 bar 上的当前自然内容宽度（PluginSlot 实时上报）；
+    // 设置页「手动」宽度的初始值。无记录（插件未加载）返回 0。
+    Q_INVOKABLE int pluginContentWidth(const QString& id) const;
+
 signals:
     void barHeightChanged();
     void barOpacityChanged();
@@ -83,6 +89,7 @@ private:
     ThemeRegistry* m_registry;
     ThemeManager* m_themeMgr;   // 运行时主题状态（托盘临时切换的真实值，草稿以此对齐防回滚）
     QString m_exeDir;
+    PluginListModel* m_barPlugins;   // bar 的插件模型（部件实时内容宽度来源）
     SettingsPluginModel* m_pluginModel;
     SettingsPluginSortModel* m_sortModel;      // 排序 proxy（QML 拿到的是它）
     SettingsPluginProxy* m_pluginProxy;        // 自绘设置页的 config 草稿桥

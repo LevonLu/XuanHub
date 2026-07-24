@@ -15,6 +15,12 @@ Item {
                            : (slot.item ? slot.item.width
                                         : (slot.status === Loader.Error ? errorBadge.width : 0))
 
+    // 自然内容宽度上报：设置窗口「手动」宽度的初始值取它。
+    // 手动定宽时 slot.item.width 仍是内容自然宽度（Loader 不改 item 宽度），
+    // 故上报值不受定宽影响；保持声明式绑定，不做命令式赋值。
+    readonly property int contentWidth: slot.item ? slot.item.width : 0
+    onContentWidthChanged: pluginModel.reportContentWidth(model.id, contentWidth)
+
     Loader {
         id: slot
         // 锚定上下边：item 高度被调整为槽高（插件 QML 里写的 height 仅作回退）；

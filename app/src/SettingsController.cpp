@@ -18,9 +18,10 @@
 
 SettingsController::SettingsController(ConfigService* config, ThemeManager* theme,
                                        ThemeRegistry* registry,
-                                       const QString& exeDir, QObject* parent)
+                                       const QString& exeDir, PluginListModel* barPlugins,
+                                       QObject* parent)
     : QObject(parent), m_config(config), m_theme(theme), m_registry(registry),
-      m_exeDir(exeDir),
+      m_exeDir(exeDir), m_barPlugins(barPlugins),
       m_uitest(QCoreApplication::arguments().contains(QStringLiteral("--uitest"))) {}
 
 SettingsController::~SettingsController() {
@@ -32,7 +33,7 @@ void SettingsController::open() {
         // Basic 样式：自绘色板随主题（进程内仅设置窗口用 Controls，不影响 bar 的 QML）
         QQuickStyle::setStyle(QStringLiteral("Basic"));
 
-        m_vm = new SettingsViewModel(m_config, m_registry, m_theme, m_exeDir, this);
+        m_vm = new SettingsViewModel(m_config, m_registry, m_theme, m_exeDir, m_barPlugins, this);
         auto* w = new QQuickView();
         w->setTitle(QStringLiteral("玄枢设置 XuanHub Settings"));
         // 无边框：去掉系统标题栏，改由 QML 自绘标题栏（配色跟随主题）。

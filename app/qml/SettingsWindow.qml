@@ -653,7 +653,9 @@ Pane {
                                                                      detailPanel.currentRow, "order", value)
                                             }
                                         }
-                                        // 插件宽度（0=跟随内容自适应，>0 固定像素宽）
+                                        // 插件宽度：自适应（跟随内容，config width=0）/ 手动（固定像素）。
+                                        // 切手动时初始值取部件当前真实宽度（PluginSlot 实时上报，
+                                        // 经 settingsVM.pluginContentWidth 查询），无记录回退 100。
                                         RowLayout {
                                             Layout.fillWidth: true
                                             spacing: UiMetrics.space3
@@ -664,14 +666,31 @@ Pane {
                                                 Layout.preferredWidth: 120
                                                 horizontalAlignment: Text.AlignRight
                                             }
+                                            UiComboBox {
+                                                model: ["自适应", "手动"]
+                                                currentIndex: Number(detailPanel.rowData.width) > 0 ? 1 : 0
+                                                onActivated: {
+                                                    if (currentIndex === 0) {
+                                                        settingsVM.pluginModel.setRoleValue(
+                                                            detailPanel.currentRow, "width", 0)
+                                                    } else if (!(Number(detailPanel.rowData.width) > 0)) {
+                                                        let w = settingsVM.pluginContentWidth(pluginList.currentId)
+                                                        if (!(w > 0)) w = 100
+                                                        settingsVM.pluginModel.setRoleValue(
+                                                            detailPanel.currentRow, "width", Math.min(800, w))
+                                                    }
+                                                }
+                                            }
                                             UiSpinBox {
-                                                from: 0; to: 800
-                                                value: Number(detailPanel.rowData.width) || 0
+                                                visible: Number(detailPanel.rowData.width) > 0
+                                                from: 1; to: 800
+                                                value: Number(detailPanel.rowData.width) || 1
                                                 onValueModified: settingsVM.pluginModel.setRoleValue(
                                                                      detailPanel.currentRow, "width", value)
                                             }
                                             Text {
-                                                text: "0 = 跟随内容"
+                                                visible: !(Number(detailPanel.rowData.width) > 0)
+                                                text: "跟随内容宽度"
                                                 color: root.c.muted
                                                 font.pixelSize: UiMetrics.fontTiny
                                             }

@@ -1,5 +1,5 @@
 // UsageSettings.qml — py_usage_hub 自绘设置页（M10 settingsQml）
-// 两行布局：上行选厂商/模式/启用/操作，下行填 API Key（独占整行，不会被挤压）
+// 每厂商一张卡片三行：厂商+模式徽章+启用+排序/删除 ／ 显示名称+API Key ／ 查询间隔（秒）
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -105,13 +105,13 @@ Item {
                     anchors.margins: 10; anchors.top: parent.top
                     spacing: 6
 
-                    // ── 第一行：厂商 + 模式 + 启用 + 操作 ──────
+                    // ── 第一行：厂商 + 模式徽章 …… 启用 + 排序/删除 ──
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 6
+                        spacing: 8
 
                         ComboBox {
-                            Layout.preferredWidth: 130
+                            Layout.preferredWidth: 150
                             textRole: "name"; valueRole: "id"
                             model: root.supportedVendors
                             Component.onCompleted: {
@@ -123,11 +123,15 @@ Item {
                             }
                         }
 
-                        ComboBox {
-                            Layout.preferredWidth: 60
-                            model: { var t = root.findTemplate(modelData.id); return t ? t.modeLabels : [modelData.mode] }
-                            currentIndex: 0; enabled: false
+                        // 模式由厂商模板决定、不可改：用 muted 文字徽章展示
+                        //（原为 60px 禁用下拉框，"余额" 被裁成 "余"）
+                        Label {
+                            text: { var t = root.findTemplate(modelData.id); return t ? t.modeLabels[0] : modelData.mode }
+                            color: palette.placeholderText
+                            font.pixelSize: 11
                         }
+
+                        Item { Layout.fillWidth: true }
 
                         CheckBox {
                             text: "启用"
@@ -135,11 +139,13 @@ Item {
                             onCheckedChanged: root.updateField(index, "enabled", checked)
                         }
 
-                        Item { Layout.fillWidth: true }
-
-                        Button { text: "↑"; flat: true; enabled: index > 0; onClicked: root.moveVendor(index, -1) }
-                        Button { text: "↓"; flat: true; enabled: index < root.vendors.length - 1; onClicked: root.moveVendor(index, 1) }
-                        Button { text: "✕"; flat: true; onClicked: root.removeVendor(index) }
+                        // 紧凑操作钮（默认 Basic 按钮太宽，三个会撑出大片空当）
+                        RowLayout {
+                            spacing: 2
+                            Button { text: "↑"; flat: true; Layout.preferredWidth: 30; enabled: index > 0; onClicked: root.moveVendor(index, -1) }
+                            Button { text: "↓"; flat: true; Layout.preferredWidth: 30; enabled: index < root.vendors.length - 1; onClicked: root.moveVendor(index, 1) }
+                            Button { text: "✕"; flat: true; Layout.preferredWidth: 30; onClicked: root.removeVendor(index) }
+                        }
                     }
 
                     // ── 第二行：显示名称 + API Key ────────────
@@ -148,7 +154,7 @@ Item {
                         spacing: 6
 
                         TextField {
-                            Layout.preferredWidth: 100
+                            Layout.preferredWidth: 110
                             text: modelData.name || ""
                             placeholderText: "显示名称"
                             selectByMouse: true
@@ -165,28 +171,24 @@ Item {
                         }
                     }
 
-                    // ── 第三行：查询间隔 ────────────────────
+                    // ── 第三行：查询间隔（秒，单位内嵌输入框）─────
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 6
 
                         Label {
-                            text: "查询间隔:"
+                            text: "查询间隔"
                             color: palette.windowText
                             font.pixelSize: 11
                         }
 
                         SpinBox {
-                            Layout.preferredWidth: 80
+                            Layout.preferredWidth: 110
                             from: 30; to: 86400; stepSize: 30
                             value: modelData.intervalSec || 300
+                            textFromValue: function(v) { return v + " 秒" }
+                            valueFromText: function(t) { return parseInt(t) || 300 }
                             onValueChanged: root.updateField(index, "intervalSec", value)
-                        }
-
-                        Label {
-                            text: "秒"
-                            color: palette.windowText
-                            font.pixelSize: 11
                         }
                     }
                 }

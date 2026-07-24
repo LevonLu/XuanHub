@@ -12,6 +12,9 @@ Item {
     Row {
         id: row
         anchors.fill: parent
+        // taskbar 紧凑模式下弹性间隔归 0，各部件会紧挨在一起，留 6px 呼吸位；
+        // 空 ListView 经 visible=count>0 隐藏，positioner 不为其产生间距
+        spacing: barRoot.compact ? 6 : 0
 
         ListView {
             id: leftList
@@ -19,11 +22,13 @@ Item {
             delegate: PluginSlot {}
             orientation: ListView.Horizontal
             interactive: false
+            visible: count > 0
             height: parent.height
             width: contentWidth
         }
 
-        Item { width: barRoot.compact ? 0 : (parent.width - leftList.width - centerList.width - rightList.width) / 2; height: 1 }
+        // 弹性间隔：紧凑模式宽 0 且隐藏（否则 Row.spacing 会在其两侧产生死间隙）
+        Item { visible: !barRoot.compact; width: barRoot.compact ? 0 : (parent.width - leftList.width - centerList.width - rightList.width) / 2; height: 1 }
 
         ListView {
             id: centerList
@@ -31,11 +36,12 @@ Item {
             delegate: PluginSlot {}
             orientation: ListView.Horizontal
             interactive: false
+            visible: count > 0
             height: parent.height
             width: contentWidth
         }
 
-        Item { width: barRoot.compact ? 0 : (parent.width - leftList.width - centerList.width - rightList.width) / 2; height: 1 }
+        Item { visible: !barRoot.compact; width: barRoot.compact ? 0 : (parent.width - leftList.width - centerList.width - rightList.width) / 2; height: 1 }
 
         ListView {
             id: rightList
@@ -43,6 +49,7 @@ Item {
             delegate: PluginSlot {}
             orientation: ListView.Horizontal
             interactive: false
+            visible: count > 0
             height: parent.height
             width: contentWidth
         }

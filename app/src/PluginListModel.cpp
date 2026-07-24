@@ -71,3 +71,12 @@ void PluginListModel::setPlugins(const QVector<PluginManager::LoadedPlugin>& ite
 QAbstractItemModel* PluginListModel::leftPlugins()   const { return m_leftModel; }
 QAbstractItemModel* PluginListModel::centerPlugins() const { return m_centerModel; }
 QAbstractItemModel* PluginListModel::rightPlugins()  const { return m_rightModel; }
+
+void PluginListModel::reportContentWidth(const QString& id, int w) {
+    if (w <= 0) return;
+    m_contentWidths.insert(id, w);
+}
+
+int PluginListModel::contentWidth(const QString& id) const {
+    return m_contentWidths.value(id, 0);
+}

@@ -3,6 +3,7 @@
 // 暴露 leftPlugins / centerPlugins / rightPlugins 三个过滤子模型。
 #pragma once
 #include <QAbstractListModel>
+#include <QHash>
 #include <QVector>
 #include <QUrl>
 #include <QPointer>
@@ -38,9 +39,15 @@ public:
     QAbstractItemModel* centerPlugins() const;
     QAbstractItemModel* rightPlugins()  const;
 
+    // 插件槽（PluginSlot.qml）上报的自然内容宽度（逻辑像素）；
+    // 设置窗口切「手动」宽度时以此作初始值。与 WidthRole（config 定宽）无关。
+    Q_INVOKABLE void reportContentWidth(const QString& id, int w);
+    int contentWidth(const QString& id) const;   // 无记录返回 0
+
 private:
     struct Item { QString id; QString position; QUrl qmlUrl; QObject* vm; int width = 0; };
     QVector<Item> m_items;
+    QHash<QString, int> m_contentWidths;
 
     QPointer<PluginFilterModel> m_leftModel;
     QPointer<PluginFilterModel> m_centerModel;

@@ -2,6 +2,7 @@
 #include "SettingsViewModel.h"
 #include "AutoStart.h"
 #include "ConfigService.h"
+#include "PluginListModel.h"
 #include "SettingsPluginModel.h"
 #include "SettingsPluginProxy.h"
 #include "SettingsPluginSortModel.h"
@@ -15,9 +16,10 @@
 #include <QSet>
 
 SettingsViewModel::SettingsViewModel(ConfigService* config, ThemeRegistry* registry,
-                                     ThemeManager* themeMgr, QString exeDir, QObject* parent)
+                                     ThemeManager* themeMgr, QString exeDir,
+                                     PluginListModel* barPlugins, QObject* parent)
     : QObject(parent), m_config(config), m_registry(registry), m_themeMgr(themeMgr),
-      m_exeDir(std::move(exeDir)),
+      m_exeDir(std::move(exeDir)), m_barPlugins(barPlugins),
       m_pluginModel(new SettingsPluginModel(this)),
       m_sortModel(new SettingsPluginSortModel(this)),
       m_pluginProxy(new SettingsPluginProxy(m_pluginModel, this)) {
@@ -28,6 +30,10 @@ SettingsViewModel::SettingsViewModel(ConfigService* config, ThemeRegistry* regis
 QAbstractItemModel* SettingsViewModel::pluginModel() const { return m_sortModel; }
 
 QObject* SettingsViewModel::pluginProxy() const { return m_pluginProxy; }
+
+int SettingsViewModel::pluginContentWidth(const QString& id) const {
+    return m_barPlugins ? m_barPlugins->contentWidth(id) : 0;
+}
 
 QStringList SettingsViewModel::themePackNames() const {
     return m_registry ? m_registry->packNames() : QStringList{};

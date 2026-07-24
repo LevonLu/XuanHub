@@ -7,7 +7,9 @@ Item {
     id: root
     property var plugin
 
-    width: 200; height: 40
+    // 宽度随内容（原为固定 200，倒计时文字短时槽位大片留白，
+    // 在 bar 上会与右侧插件拉开异常间距）
+    width: label.implicitWidth + 16; height: 40
 
     readonly property color cFg:      themeManager ? themeManager.colors.fg      : "#cdd6f4"
     readonly property color cSuccess: themeManager ? themeManager.colors.success : "#a6e3a1"
@@ -23,6 +25,7 @@ Item {
     }
 
     Text {
+        id: label
         anchors.centerIn: parent
         color: root.displayColor
         font.pixelSize: 13

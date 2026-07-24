@@ -13,12 +13,14 @@ class ConfigService;
 class ThemeManager;
 class ThemeRegistry;
 class SettingsViewModel;
+class PluginListModel;
 
 class SettingsController : public QObject {
     Q_OBJECT
 public:
     SettingsController(ConfigService* config, ThemeManager* theme, ThemeRegistry* registry,
-                       const QString& exeDir, QObject* parent = nullptr);
+                       const QString& exeDir, PluginListModel* barPlugins,
+                       QObject* parent = nullptr);
     ~SettingsController() override;
 
 public slots:
@@ -34,6 +36,7 @@ private:
     ThemeManager* m_theme;
     ThemeRegistry* m_registry;   // M9：主题包枚举（设置窗口主题下拉）
     QString m_exeDir;
+    PluginListModel* m_barPlugins;   // bar 的插件模型：查询部件实时内容宽度（手动定宽初始值）
     SettingsViewModel* m_vm = nullptr;   // 与窗口一同懒建（this 父子）
     QPointer<QQuickView> m_window;
     bool m_uitest = false;               // --uitest 启动参数置位
