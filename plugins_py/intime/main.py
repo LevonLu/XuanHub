@@ -25,6 +25,7 @@ _mask_image = ""
 _mask_opacity = 0.92
 _mask_text = "休息一下"
 _text_size = 24
+_progress_style = "none"      # 锁屏进度条："none" | "bar" | "ring"
 
 
 def _fmt_time(seconds: int) -> str:
@@ -40,6 +41,7 @@ def init(config: dict):
     """注入 config.json 中本插件的 config 段。"""
     global _work_seconds, _rest_seconds, _mask_type, _mask_color
     global _mask_image, _mask_opacity, _mask_text, _text_size
+    global _progress_style
     global _phase_start, _status, _overlay_active
 
     if isinstance(config, dict):
@@ -51,6 +53,8 @@ def init(config: dict):
         _mask_opacity = max(0.1, min(1.0, float(config.get("maskOpacity", 0.92))))
         _mask_text = str(config.get("maskText", "休息一下"))
         _text_size = max(12, min(72, int(config.get("textSize", 24))))
+        ps = str(config.get("progressStyle", "none"))
+        _progress_style = ps if ps in ("none", "bar", "ring") else "none"
 
     # 重置状态：总是从工作阶段开始
     _status = "working"
@@ -104,6 +108,7 @@ def update():
         "maskOpacity": _mask_opacity,
         "maskText": _mask_text,
         "textSize": _text_size,
+        "progressStyle": _progress_style,
     }
 
 

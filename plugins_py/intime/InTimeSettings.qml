@@ -28,6 +28,7 @@ Item {
             if (v("maskOpacity") === undefined) sv("maskOpacity", 0.92)
             if (v("maskText") === undefined) sv("maskText", "休息一下")
             if (v("textSize") === undefined) sv("textSize", 24)
+            if (v("progressStyle") === undefined) sv("progressStyle", "none")
         }
     }
     Component.onCompleted: initTimer.start()
@@ -66,6 +67,31 @@ Item {
                         onTextChanged: { var n = parseInt(text); if (!isNaN(n)) sv("restSeconds", n) }
                     }
                     Label { text: "秒" }
+                }
+            }
+        }
+
+        // ── 锁屏进度条 ──────────────────────────────────────
+        GroupBox {
+            title: "锁屏进度条"
+            Layout.fillWidth: true
+            RowLayout {
+                spacing: 8
+                ComboBox {
+                    model: ["不显示", "水平进度条", "环形进度条"]
+                    currentIndex: {
+                        var t = v("progressStyle") || "none"
+                        return t === "bar" ? 1 : t === "ring" ? 2 : 0
+                    }
+                    onCurrentIndexChanged: {
+                        var vals = ["none", "bar", "ring"]
+                        sv("progressStyle", vals[currentIndex])
+                    }
+                }
+                Label {
+                    text: "显示在全屏遮罩倒计时下方"
+                    color: palette.placeholderText
+                    font.pixelSize: 11
                 }
             }
         }
