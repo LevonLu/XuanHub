@@ -27,8 +27,10 @@ Item {
             width: contentWidth
         }
 
-        // 弹性间隔：紧凑模式宽 0 且隐藏（否则 Row.spacing 会在其两侧产生死间隙）
-        Item { visible: !barRoot.compact; width: barRoot.compact ? 0 : (parent.width - leftList.width - centerList.width - rightList.width) / 2; height: 1 }
+        // 弹性间隔：紧凑模式宽 0 且隐藏（否则 Row.spacing 会在其两侧产生死间隙）。
+        // Math.max(0, ...)：三栏内容总宽超过 bar 宽（小屏/插件过多/固定宽过大）时
+        // 不 clamp 会得到负宽度，把后续栏向左拉导致插件互相重叠绘制
+        Item { visible: !barRoot.compact; width: barRoot.compact ? 0 : Math.max(0, (parent.width - leftList.width - centerList.width - rightList.width) / 2); height: 1 }
 
         ListView {
             id: centerList
@@ -41,7 +43,7 @@ Item {
             width: contentWidth
         }
 
-        Item { visible: !barRoot.compact; width: barRoot.compact ? 0 : (parent.width - leftList.width - centerList.width - rightList.width) / 2; height: 1 }
+        Item { visible: !barRoot.compact; width: barRoot.compact ? 0 : Math.max(0, (parent.width - leftList.width - centerList.width - rightList.width) / 2); height: 1 }
 
         ListView {
             id: rightList

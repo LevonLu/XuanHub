@@ -21,6 +21,9 @@ Item {
         id: initTimer
         interval: 100; repeat: false
         onTriggered: {
+            // 守卫：100ms 内用户可能已切到别的插件，proxy 已改指——
+            // 不校验会把 intime 默认值写进新选中插件的草稿
+            if (!plugin || plugin.pluginId !== "py_intime") return
             if (v("workSeconds") === undefined) sv("workSeconds", 1500)
             if (v("restSeconds") === undefined) sv("restSeconds", 300)
             if (v("maskType") === undefined) sv("maskType", "default")

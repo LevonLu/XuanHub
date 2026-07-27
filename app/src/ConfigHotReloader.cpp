@@ -11,6 +11,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 
 ConfigHotReloader::ConfigHotReloader(ConfigService* config, ThemeManager* theme,
                                      ThemeRegistry* registry,
@@ -29,19 +30,36 @@ ConfigHotReloader::ConfigHotReloader(ConfigService* config, ThemeManager* theme,
         armWatcher();
         m_debounce.start();
     });
+    // 文件缺失期退而监视父目录（见 armWatcher）：文件恢复时目录变化触发重挂 + 重载
+    connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, [this](const QString&) {
+        armWatcher();
+        m_debounce.start();
+    });
     armWatcher();
 }
 
 void ConfigHotReloader::armWatcher() {
     if (!m_watcher.files().isEmpty())
         m_watcher.removePaths(m_watcher.files());
+    if (!m_watcher.directories().isEmpty())
+        m_watcher.removePaths(m_watcher.directories());
     const QString p = m_config->activePath();
-    if (!p.isEmpty() && QFile::exists(p))
+    if (p.isEmpty()) return;
+    if (QFile::exists(p)) {
         m_watcher.addPath(p);
+    } else {
+        // 文件缺失（被删/重命名且未即刻重建）：监视父目录兜底，
+        // 否则 watcher 全空、此后再改 config 都不会触发热重载（实测失挂路径）
+        const QString dir = QFileInfo(p).absolutePath();
+        if (QDir(dir).exists())
+            m_watcher.addPath(dir);
+    }
 }
 
 void ConfigHotReloader::reload() {
     qDebug() << "[Config] reload triggered";
+    // 先重挂监视：即使本次 load 失败提前返回，也不让 watcher 停在失挂状态
+    armWatcher();
     // 解析失败（文件缺失/JSON 写坏）→ ConfigService 保留旧值，本次不动任何东西
     if (!m_config->load(m_exeDir, m_configDir)) {
         qWarning() << "[Config] reload failed, keep current settings";

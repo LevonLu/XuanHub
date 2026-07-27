@@ -422,8 +422,15 @@ Pane {
                                 // 选中项按 id 跟踪（勾选启用触发重排后行号会变）
                                 property string currentId: ""
 
-                                // 选中变化必须刷新右侧面板（refresh 不绑 currentId，靠显式触发）
-                                onCurrentIdChanged: detailPanel.refresh()
+                                // 选中变化必须刷新右侧面板（refresh 不绑 currentId，靠显式触发）。
+                                // 定序铁律：草稿桥 pluginId 必须先于面板刷新指向新插件——
+                                // 若 refresh 先跑，自绘设置页加载完成时 proxy 还指向上一个
+                                // 插件，页面的默认值回写会落进上一个插件的草稿
+                                // （sysinfo 混入 countdown 全套键的实测根因）
+                                onCurrentIdChanged: {
+                                    settingsVM.pluginProxy.pluginId = pluginList.currentId
+                                    detailPanel.refresh()
+                                }
 
                                 function ensureSelection() {
                                     if (currentId.length > 0 && model.rowForId(currentId) >= 0) return
@@ -544,12 +551,10 @@ Pane {
                                 function onRowsInserted() { detailPanel.refresh() }
                                 function onRowsRemoved() { detailPanel.refresh() }
                             }
-                            // 草稿桥始终指向当前选中插件（schema 表单与自绘页都经它读写）
-                            Binding {
-                                target: settingsVM.pluginProxy
-                                property: "pluginId"
-                                value: pluginList.currentId
-                            }
+                            // 草稿桥始终指向当前选中插件（schema 表单与自绘页都经它读写）。
+                            // 注意：pluginId 的切换在 pluginList.onCurrentIdChanged 里显式
+                            // 定序完成（必须先于 refresh），此处不再用 Binding 自动同步——
+                            // Binding 与 refresh 同挂 currentId 时求值顺序不保证（时序坑）
 
                             // 空态：居中图标字符 + 引导文案
                             Column {
@@ -987,6 +992,10 @@ Pane {
                                 TextArea {
                                     property var field: ({})
                                     property bool invalid: false
+                                    // init 守卫（同 stringFieldComp）：程序设 text 会触发
+                                    // onTextChanged 回写草稿，不守卫会把格式化后的值（或
+                                    // 时序竞态下别的插件的值）无谓写回
+                                    property bool _initializing: false
                                     Component.onDestruction: if (invalid) root.invalidFields -= 1
                                     implicitHeight: Math.min(160, contentHeight + 24)
                                     font.family: "Consolas"
@@ -998,12 +1007,14 @@ Pane {
                                     onFieldChanged: init()
                                     function init() {
                                         if (!field.key) return
+                                        _initializing = true
                                         const v = root.draftValue(field.key,
                                             field.default !== undefined ? field.default : null)
                                         text = JSON.stringify(v, null, 2)
+                                        _initializing = false
                                     }
                                     onTextChanged: {
-                                        if (!field.key) return
+                                        if (!field.key || _initializing) return
                                         let parsed = null
                                         let ok = true
                                         try { parsed = JSON.parse(text) } catch (e) { ok = false }

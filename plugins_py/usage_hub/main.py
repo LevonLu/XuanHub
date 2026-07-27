@@ -12,6 +12,7 @@ import json
 import os
 import threading
 import time
+import traceback
 
 from vendors import VendorBase
 from vendors.deepseek import DeepseekVendor
@@ -169,17 +170,22 @@ def _worker():
                 continue
 
             try:
-                data = v.query()
-            except Exception as exc:
-                v.status = "error"
-                v.error_message = str(exc)
-                v.data = {}
-            else:
-                v.data = data
+                try:
+                    data = v.query()
+                except Exception as exc:
+                    v.status = "error"
+                    v.error_message = str(exc)
+                    v.data = {}
+                else:
+                    v.data = data
 
-            with _lock:
-                _cache = _rebuild_cache()
-            _save_state()
+                with _lock:
+                    _cache = _rebuild_cache()
+                _save_state()
+            except Exception:
+                # _rebuild_cache/_save_state 等异常曾会静默杀死后台线程，
+                # UI 永久停在旧缓存——任何异常都必须进日志、线程继续跑
+                traceback.print_exc()
 
         if _stop_flag:
             break

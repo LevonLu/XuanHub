@@ -28,14 +28,29 @@ namespace {
 // 以数据符号导入 python3.dll，无法 /DELAYLOAD（LNK1194），故解释器
 // 初始化（裸 Py_Initialize，nanobind 官方不支持嵌入）与代理 VM 实现
 // 整体收进 exe 旁的 pybackend.dll，经 PyBackendApi.h 的窄函数接口调用。
-bool g_interpreterReady = false;
-
 // Python 环境检测结果（进程内只检测一次）：无 Python 3.12+ 标准库时
 // 不初始化解释器，Python 子插件整体停用，宿主与其余插件不受影响。
-bool g_pythonChecked   = false;
-bool g_pythonAvailable = false;
-bool g_pyNotifySent    = false;    // 「未检测到 Python」提示只发一次
-QString g_pythonHome;              // 发现到的 Python 安装目录（DLL 预载用）
+// 注意不能再用文件级静态量存：pybridge.dll 每次热重载都被 unload，静态量
+// 随之复位（曾导致每次保存配置都重新检测 + 重复弹"未检测到 Python"气泡）。
+// qApp 归 exe 所有、生命周期 = 进程，检测结果存它的动态属性。
+bool g_interpreterReady = false;
+
+QCoreApplication* hostApp() { return QCoreApplication::instance(); }
+
+bool pyChecked() { return hostApp() && hostApp()->property("xuanhub.pyChecked").toBool(); }
+void setPyChecked() { if (hostApp()) hostApp()->setProperty("xuanhub.pyChecked", true); }
+
+bool pyAvailable() { return hostApp() && hostApp()->property("xuanhub.pyAvailable").toBool(); }
+void setPyAvailable(bool v) { if (hostApp()) hostApp()->setProperty("xuanhub.pyAvailable", v); }
+
+QString pyHome() {
+    return hostApp() ? hostApp()->property("xuanhub.pyHome").toString() : QString();
+}
+void setPyHome(const QString& h) { if (hostApp()) hostApp()->setProperty("xuanhub.pyHome", h); }
+
+// 「未检测到 Python」提示每次进程只发一次
+bool pyNotified() { return hostApp() && hostApp()->property("xuanhub.pyNotified").toBool(); }
+void setPyNotified() { if (hostApp()) hostApp()->setProperty("xuanhub.pyNotified", true); }
 
 // 从 home 下的 python3<minor>.dll 文件名判定次版本号（不启动进程）；
 // python3.dll 是稳定 ABI 转发器、无版本号，跳过。找不到返回 -1。
@@ -163,8 +178,8 @@ bool PyBridgePlugin::init(xuanhub::BarPluginContext* ctx) {
     //   内置 Lib/（Bundle 打包，压掉用户 PYTHONHOME）→ 用户 PYTHONHOME
     //   → 构建机烧入路径兜底（开发场景）→ 注册表枚举（≥3.12 取最高）
     //   → py launcher → PATH
-    if (!g_pythonChecked) {
-        g_pythonChecked = true;
+    if (!pyChecked()) {
+        setPyChecked();
         // 调试钩子：强制走「无 Python 环境」路径（验收降级/提示行为用）
         if (qEnvironmentVariableIsSet("XUANHUB_DISABLE_PYTHON")) {
             qWarning() << "[PyBridge] XUANHUB_DISABLE_PYTHON set, python force-disabled";
@@ -183,43 +198,44 @@ bool PyBridgePlugin::init(xuanhub::BarPluginContext* ctx) {
                 if (!hasStdlib(c.home)) continue;
                 // 显式 qputenv，不依赖 CPython getpath 的隐式查找
                 qputenv("PYTHONHOME", c.home.toUtf8());
-                g_pythonHome = c.home;
-                g_pythonAvailable = true;
+                setPyHome(c.home);
+                setPyAvailable(true);
                 qDebug() << "[PyBridge] PYTHONHOME" << c.tag << "->" << c.home;
                 break;
             }
         }
-        if (!g_pythonAvailable)
+        if (!pyAvailable())
             qWarning() << "[PyBridge] no Python 3.12+ stdlib found;"
                           " python sub-plugins disabled (install Python 3.12+ to enable)";
     }
 
-    if (g_pythonAvailable && !g_interpreterReady) {
+    if (pyAvailable() && !g_interpreterReady) {
         // pybackend.dll 静态导入 python3.dll（用户安装目录通常不在 PATH）：
         // 必须先按发现的目录全路径预装解释器 DLL，再显式加载 pybackend.dll
         //（pybridge 侧 /DELAYLOAD:pybackend.dll，此处 LoadLibrary 命中后
         // 后续对导出函数的延迟加载调用即安全），任一步失败按无环境降级
-        if (!preloadPythonDlls(g_pythonHome)) {
-            qWarning() << "[PyBridge] failed to load python3.dll from" << g_pythonHome
+        if (!preloadPythonDlls(pyHome())) {
+            qWarning() << "[PyBridge] failed to load python3.dll from" << pyHome()
                        << "(arch mismatch?) - python sub-plugins disabled";
-            g_pythonAvailable = false;
+            setPyAvailable(false);
         } else if (!LoadLibraryW(reinterpret_cast<LPCWSTR>(
                        (QCoreApplication::applicationDirPath()
                         + QStringLiteral("/pybackend.dll")).utf16()))) {
             qWarning() << "[PyBridge] failed to load pybackend.dll"
                           " - python sub-plugins disabled";
-            g_pythonAvailable = false;
+            setPyAvailable(false);
         } else if (!xb_py_initialize()) {
-            g_pythonAvailable = false;
+            setPyAvailable(false);
         } else {
             g_interpreterReady = true;
         }
     }
 
     // 无 Python 环境：经 EventBus 请求宿主弹一次提示（托盘订阅 app.notify；
-    // 插件加载早于托盘事件循环，接收端需自行顺延到事件循环里再弹）
-    if (!g_pythonAvailable && !g_pyNotifySent && m_ctx.eventBus) {
-        g_pyNotifySent = true;
+    // 插件加载早于托盘事件循环，接收端需自行顺延到事件循环里再弹）。
+    // pyNotified 存 qApp（见文件头），跨热重载保持「每次进程只发一次」
+    if (!pyAvailable() && !pyNotified() && m_ctx.eventBus) {
+        setPyNotified();
         m_ctx.eventBus->publish(QStringLiteral("app.notify"), {
             {QStringLiteral("title"), QStringLiteral("XuanHub")},
             {QStringLiteral("message"), QStringLiteral(
@@ -245,7 +261,7 @@ void PyBridgePlugin::shutdown() {
 QStringList PyBridgePlugin::subPluginIds() {
     QStringList ids;
     m_dirs.clear();
-    if (!g_pythonAvailable) return ids;  // 无 Python 环境：不枚举子插件（整体停用）
+    if (!pyAvailable()) return ids;  // 无 Python 环境：不枚举子插件（整体停用）
     // 与 C++ 插件的 plugins/ 平级：<exeDir>/plugins_py/
     const QDir base(QCoreApplication::applicationDirPath() + QStringLiteral("/plugins_py"));
     if (!base.exists()) {

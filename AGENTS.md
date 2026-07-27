@@ -106,9 +106,9 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 - 目录契约：`<exeDir>/plugins_py/<name>/plugin.json + main.py + X.qml`；开发契约全文见 `plugins_py/README.md`。
 - `main.py` 约定：`update() -> dict`（必需，QTimer 持 GIL 定时拉取填入 `values` 属性袋）、`init(config)`、`invoke(name, args)`（`plugin.call()` 入口）、`stop()`（卸载/热重载前停后台线程）均可选。
 - GIL 铁律：进出 Python 一律 `py::gil_scoped_acquire`；**初始化后主线程永久 `gil_scoped_release`（有意泄漏）**——否则后台 python 线程饿死（实测踩过）。update/invoke 在 GUI 线程执行，禁止阻塞；python 后台线程只碰纯 Python 对象、绝不触达 Qt/QML，且必须实现 `stop()`。
-- 解释器是进程级单例，**任何时刻不主动 finalize**（热重载靠 `sys.modules` pop 后重新 import；进程退出由 OS 回收）；Python 异常捕获后只记日志、UI 保留旧值。
+- 解释器是进程级单例，**任何时刻不主动 finalize**（热重载靠 `sys.modules` pop 后重新 import；进程退出由 OS 回收）；卸载时代理 VM 会连带清理本插件 exec 期间 import 的子包（按 `__file__` 落在插件目录判定）并撤掉自己追加的 `sys.path` 条目（load 时先去重），改子包代码热重载同样生效。Python 异常捕获后只记日志、UI 保留旧值；`nb::python_error` 之外还抓 `std::exception` 链（`nb::cast_error` 如超 int64 的 Python int），穿透 Qt 槽会 terminate 崩宿主。
 - pybridge 目标定义 `QT_NO_KEYWORDS`（Python 头 `PyType_Spec.slots` 与 Qt `slots` 宏冲突），其源码一律用 `Q_SIGNALS`/`Q_EMIT`。
-- 标准库定位顺序：exe 旁内置 `Lib/`（Bundle 打包，压掉 `PYTHONHOME`）→ 用户 `PYTHONHOME` → cache 变量 `XUANHUB_PYTHON_HOME_FALLBACK`（默认空）→ 注册表 `PythonCore` 枚举（≥3.12 取最高）→ `py -3` → PATH。全部未命中则**不初始化解释器**（缺标准库初始化会 fatal error 拖垮宿主）：pybridge 照常 init 但 `subPluginIds()` 返回空，并经 EventBus `app.notify` 托盘提示。调试钩子 `XUANHUB_DISABLE_PYTHON=1` 强制停用。
+- 标准库定位顺序：exe 旁内置 `Lib/`（Bundle 打包，压掉 `PYTHONHOME`）→ 用户 `PYTHONHOME` → cache 变量 `XUANHUB_PYTHON_HOME_FALLBACK`（默认空）→ 注册表 `PythonCore` 枚举（≥3.12 取最高）→ `py -3` → PATH。全部未命中则**不初始化解释器**（缺标准库初始化会 fatal error 拖垮宿主）：pybridge 照常 init 但 `subPluginIds()` 返回空，并经 EventBus `app.notify` 托盘提示。调试钩子 `XUANHUB_DISABLE_PYTHON=1` 强制停用。检测结果（含"未检测到"气泡已发标记）存 `qApp` 动态属性——pybridge.dll 每次热重载都 unload，文件级静态量会复位，存 qApp 才做到进程内只检测一次、气泡只发一次。
 - **双 DLL 结构**（nanobind 以数据符号导入 `python3.dll`，`/DELAYLOAD` 只支持函数导入，规避 LNK1194）：触碰 CPython/nanobind 的代码收进 exe 旁 `pybackend.dll`（静态导入 `python3.dll`），`pybridge.dll` 外壳只经 `PyBackendApi.h` 函数接口调用、`/DELAYLOAD:pybackend.dll` 延迟到 init 全路径预装 `python3XX.dll`/`python3.dll` 之后。
 
 ### EventBus（插件间通信）
@@ -136,13 +136,13 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 
 `position` 取值 `left/center/right`（空默认 `right`）；`edge` 仅 `top/bottom`；`config` 段原样经 `ctx->pluginConfig` 传给插件。插件条目另有 `width`（像素，0=跟随内容自适应，>0 固定宽，上限 800）；设置窗口的宽度「手动」模式初始值取 `PluginSlot` 实时上报的自然内容宽度（`PluginListModel::reportContentWidth` → `SettingsViewModel::pluginContentWidth`）。
 
-**工作模式**：`bar.mode` = `appbar`（默认）/ `taskbar`。taskbar 选型：`SetParent` 嵌入 `Shell_TrayWnd` 是业界验证方案（TrafficMonitor 等；Deskband 已被 Win11 移除、顶层透明叠加有 z-order 缺陷，均未采用）。`TaskbarEmbed` 把 BarWindow `SetParent` 到 `Shell_TrayWnd`（强制 `WS_CHILD`、保留 `WS_EX_NOACTIVATE`），贴合任务栏左侧（`bar.taskbarOffsetX` 微调），高度跟随任务栏、背景全透明、宽度收缩为内容宽；500ms 轮询矫正位置与 z-order。explorer 重启时经 `TaskbarCreated` 与 `taskbarVanished` 双路触发 `recreateForTaskbar()` 重新嵌入。切换方式：改 config 热重载 / 托盘勾选项 / 设置窗口。
+**工作模式**：`bar.mode` = `appbar`（默认）/ `taskbar`。taskbar 选型：`SetParent` 嵌入 `Shell_TrayWnd` 是业界验证方案（TrafficMonitor 等；Deskband 已被 Win11 移除、顶层透明叠加有 z-order 缺陷，均未采用）。`TaskbarEmbed` 把 BarWindow `SetParent` 到 `Shell_TrayWnd`（强制 `WS_CHILD`、保留 `WS_EX_NOACTIVATE`），贴合任务栏左侧（`bar.taskbarOffsetX` 微调），高度跟随任务栏、背景全透明、宽度收缩为内容宽；500ms 轮询矫正位置与 z-order。explorer 重启时经 `TaskbarCreated` 与 `taskbarVanished` 双路触发 `recreateForTaskbar()` 重新嵌入（`TaskbarCreated` 是广播、进程内每个顶层窗口都收到，`TaskbarMonitor` 去重后顺延到事件循环只重建一次，不在消息分发栈内同步 destroy/create）。切换方式：改 config 热重载 / 托盘勾选项 / 设置窗口。
 
-**热重载**：保存 config.json 自动生效（`QFileSystemWatcher` + 300ms 防抖，重命名式保存后自动重挂），或托盘 "重新加载配置"。`reload()` 顺序：`load()`（解析失败保留旧配置）→ theme 按文件覆盖 → `setupBar()` 重协商 → `shutdownAll() → loadFrom() → setPlugins()` 全量重载（同一槽函数内完成，QML 不会碰到悬空 viewModel）。
+**热重载**：保存 config.json 自动生效（`QFileSystemWatcher` + 300ms 防抖，重命名式保存后自动重挂；文件缺失期退而监视父目录，永不失挂），或托盘 "重新加载配置"。`reload()` 顺序：`load()`（解析失败保留旧配置）→ theme 按文件覆盖 → `setupBar()` 重协商 → `shutdownAll() → loadFrom() → setPlugins()` 全量重载（同一槽函数内完成，QML 不会碰到悬空 viewModel）。
 
 **写回与设置窗口**：`ConfigService::save()` 用 QSaveFile 原子写，只改已知键、未知键不丢。设置窗口（托盘 "设置..." → `SettingsController` 懒建 + `SettingsWindow.qml`）只做一件事：校验后写 config.json，**生效全靠 watcher，不直接调 reload**。插件列表来自 config ∪ sidecar 元数据并集；`pybridge` 总开关保存时自动托管。开机自启逻辑在 `AutoStart.h`。
 
-**插件设置 schema 化**：设置窗口插件页为 master-detail。插件 config 编辑方式两种并存，**自绘优先（settingsQml > settings > 无）**：`settings` 由 sidecar 声明分组→字段（bool/int/double/string/color/enum/json），框架生成表单（契约见 `plugins_py/README.md`）；`settingsQml` 是插件自带 QML（示例 `plugins/launcher/LauncherSettings.qml`），根 Item 声明 `property var plugin`，注入 `SettingsPluginProxy` 草稿桥，经 `value(key)/setValue(key,v)` 读写草稿。草稿存于 `SettingsPluginModel` 行内（未知键保留），导出按 schema 校验，保存仍走 `apply() → save → watcher`。
+**插件设置 schema 化**：设置窗口插件页为 master-detail。插件 config 编辑方式两种并存，**自绘优先（settingsQml > settings > 无）**：`settings` 由 sidecar 声明分组→字段（bool/int/double/string/color/enum/json），框架生成表单（契约见 `plugins_py/README.md`）；`settingsQml` 是插件自带 QML（示例 `plugins/launcher/LauncherSettings.qml`），根 Item 声明 `property var plugin`，注入 `SettingsPluginProxy` 草稿桥，经 `value(key)/setValue(key,v)` 读写草稿。草稿存于 `SettingsPluginModel` 行内（未知键保留），导出按 schema 校验，保存仍走 `apply() → save → watcher`。**时序契约**：切换选中时框架保证 `pluginProxy.pluginId` 先于右侧面板刷新指向新插件（`pluginList.onCurrentIdChanged` 显式定序，不用 Binding——求值顺序不保证，曾致 countdown 默认键写进 sysinfo 条目）；自绘页读草稿初始化放 `onPluginChanged`（注入晚于 `Component.onCompleted`），异步写默认值前校验 `plugin.pluginId`。
 
 ## 6. 代码风格与约定
 

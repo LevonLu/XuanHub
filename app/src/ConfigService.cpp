@@ -73,7 +73,15 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
     const QString oldBarMode = m_barMode;
 
     const auto bar = root.value("bar").toObject();
-    if (bar.contains("height")) m_barHeight = bar.value("height").toInt(m_barHeight);
+    // height：钳到与设置窗口校验一致的范围（24–200），防手写越界（负值/超大）
+    // 直接用于 AppBar reserve 会压坏工作区
+    if (bar.contains("height")) {
+        const int h = bar.value("height").toInt(m_barHeight);
+        const int clamped = qBound(24, h, 200);
+        if (clamped != h)
+            qWarning() << "[Config] height out of range:" << h << "-> clamp" << clamped;
+        m_barHeight = clamped;
+    }
     if (bar.contains("edge"))   m_barEdge   = bar.value("edge").toString(m_barEdge);
     // opacity：0.0-1.0，越界/非法回落 1.0（不透明）。下限 0.2 防用户调成看不见
     if (bar.contains("opacity")) {
@@ -118,7 +126,7 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
         PluginConfigEntry e;
         e.id = o.value("id").toString();
         e.position = o.value("position").toString();
-        e.order = o.value("order").toInt(0);
+        e.order = qMax(0, o.value("order").toInt(0));   // 负 order 无意义，防手写越界
         // 插件宽度（像素，0=跟随内容自适应）；钳到合理范围防手写越界撑爆状态栏
         e.width = qBound(0, o.value("width").toInt(0), 800);
         e.config = o.value("config").toObject().toVariantMap();
@@ -128,7 +136,7 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
     qDebug() << "[Config] loaded" << path
              << "| height=" << m_barHeight << "edge=" << m_barEdge
              << "opacity=" << m_barOpacity
-             << "themeId=" << m_themeId << "mode=" << m_theme
+             << "themeId=" << m_themeId << "theme=" << m_theme
              << "barMode=" << m_barMode
              << "| plugins=" << m_pluginEntries.size();
 

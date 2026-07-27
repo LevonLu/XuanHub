@@ -16,9 +16,15 @@ Item {
     // items 工作副本：[{name, program}]。文本编辑原地修改（列表不重建、保住输入焦点）；
     // 增/删/上下移才整体替换数组触发 Repeater 重建。任何变更都整体写回草稿。
     property var items: []
+    // 初始化必须在 onPluginChanged：框架在 Loader.onLoaded 才注入 plugin，
+    // Component.onCompleted 里读必为 undefined（会拿默认值覆盖用户已存配置）；
+    // _loaded 防重复注入时重置用户正在编辑的工作副本
+    property bool _loaded: false
 
-    Component.onCompleted: {
-        const v = plugin ? plugin.value("items") : undefined
+    onPluginChanged: {
+        if (!plugin || _loaded) return
+        _loaded = true
+        const v = plugin.value("items")
         items = (v !== undefined && v !== null) ? v : []
     }
 

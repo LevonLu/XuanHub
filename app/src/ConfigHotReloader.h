@@ -25,7 +25,7 @@ public slots:
     void reload();   // 防抖定时器 / 托盘菜单共用入口
 
 private:
-    void armWatcher();   // （重新）挂上对 activePath 的监视
+    void armWatcher();   // （重新）挂上对 activePath 的监视；文件缺失时退而监视父目录
 
     ConfigService* m_config;
     ThemeManager* m_theme;

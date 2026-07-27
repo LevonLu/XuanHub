@@ -32,8 +32,9 @@ Item {
     property bool isDaily: currentMode === "每日重复"
 
     // ── plugin 注入后初始化默认值 ──
+    // 守卫：proxy 必须已指向本插件（防框架切换时序/异步路径把默认值写进别的插件）
     onPluginChanged: {
-        if (!plugin) return
+        if (!plugin || plugin.pluginId !== "py_countdown") return
         _loading = true
 
         if (v("mode") === undefined) sv("mode", "每日重复")

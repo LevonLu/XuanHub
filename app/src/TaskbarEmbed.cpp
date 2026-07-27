@@ -11,6 +11,8 @@ TaskbarEmbed::TaskbarEmbed(QObject* parent) : QObject(parent) {
     connect(&m_timer, &QTimer::timeout, this, &TaskbarEmbed::poll);
 }
 
+TaskbarEmbed::~TaskbarEmbed() { delete m_foreign; }
+
 bool TaskbarEmbed::attach(QWindow* win, int offsetXLogical) {
     if (!win) return false;
     HWND tray = FindWindowW(L"Shell_TrayWnd", nullptr);
@@ -23,10 +25,19 @@ bool TaskbarEmbed::attach(QWindow* win, int offsetXLogical) {
 
     // 已 attach 同一窗口：幂等更新（热重载反复走到），不重复 SetParent
     if (m_win != win) {
+        // QWindow::fromWinId 包裹任务栏为 Qt 父窗口（Qt 官方支持的嵌入外部原生窗口方式）。
+        // 每次调用都新建包装对象，缓存为成员、替换时删旧的（否则 explorer 每次
+        // 重启都泄漏一个）；失败必须直接返回——不返回的话窗口会被改成无父
+        // WS_CHILD 从桌面静默消失（由 BarWindow 的 1s 重试兜底）
+        QWindow* foreign = QWindow::fromWinId(reinterpret_cast<WId>(tray));
+        if (!foreign) {
+            qWarning() << "[TaskbarEmbed] QWindow::fromWinId failed, will retry";
+            return false;
+        }
         m_win = win;
-        // QWindow::fromWinId 包裹任务栏为 Qt 父窗口（Qt 官方支持的嵌入外部原生窗口方式）
-        if (QWindow* foreign = QWindow::fromWinId(reinterpret_cast<WId>(tray)))
-            win->setParent(foreign);
+        delete m_foreign;
+        m_foreign = foreign;
+        win->setParent(m_foreign);
         // 兜底确保 Win32 样式是 WS_CHILD：Qt 对外挂父窗口的样式转换未必可靠
         const HWND hwnd = reinterpret_cast<HWND>(win->winId());
         LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_STYLE);

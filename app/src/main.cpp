@@ -10,6 +10,7 @@
 #include <QAbstractEventDispatcher>
 #include <QPointer>
 #include <QQuickStyle>
+#include <QTimer>
 
 #include <windows.h>
 
@@ -55,15 +56,25 @@ public:
         static const UINT s_taskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");
         auto* m = static_cast<MSG*>(msg);
         if (m->message == s_taskbarCreated) {
-            // explorer 重启：托盘图标丢失需重建；taskbar 模式下我们的子窗口
-            // 随任务栏销毁，需重建平台窗口重新嵌入（非 taskbar 模式内部忽略）
-            if (m_tray) m_tray->recreate();
-            if (m_window) m_window->recreateForTaskbar();
+            // TaskbarCreated 是广播：进程内每个顶层窗口（bar、设置窗口、插件
+            // 弹窗）都会收到一份，不去重一次 explorer 重启会触发 N 次完整重建；
+            // 且在消息分发栈内同步 destroy/create 平台窗口属重入。
+            // 合并到事件循环里只执行一次。
+            if (m_pending) return true;
+            m_pending = true;
+            QTimer::singleShot(0, qApp, [this] {
+                m_pending = false;
+                // explorer 重启：托盘图标丢失需重建；taskbar 模式下我们的子窗口
+                // 随任务栏销毁，需重建平台窗口重新嵌入（非 taskbar 模式内部忽略）
+                if (m_tray) m_tray->recreate();
+                if (m_window) m_window->recreateForTaskbar();
+            });
             return true;
         }
         return false;
     }
 private:
+    bool m_pending = false;
     QPointer<TrayIcon> m_tray;
     QPointer<BarWindow> m_window;
 };

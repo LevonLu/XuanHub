@@ -68,6 +68,10 @@ plugins_py/
   声明 `property var plugin`——但注入的是 **config 草稿桥**（不是运行中的代理 VM）：
   `plugin.value(key)` 读草稿、`plugin.setValue(key, v)` 写草稿（值须可 JSON 序列化）。
   自绘页只碰草稿，应用/保存/取消由设置窗口统一，热重载后才真正生效。
+  **时序契约（违反会把配置写进别的插件）**：`plugin` 在 `Loader.onLoaded` 才注入，
+  晚于页面 `Component.onCompleted`——读草稿初始化必须放 `onPluginChanged`；
+  注入时框架保证 `plugin.pluginId` 已指向本插件，异步写默认值（Timer 等）前
+  仍须校验 `plugin.pluginId` 未变（范式见 `countdown/CountdownSettings.qml`）。
 
 ## main.py 模块级约定
 

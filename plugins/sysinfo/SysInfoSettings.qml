@@ -24,11 +24,16 @@ Item {
     // items 工作副本：[{metric, prefix, color}]
     property var items: []
     property int itemsPerColumn: 5
+    // 初始化必须在 onPluginChanged（同 LauncherSettings：onCompleted 时 plugin
+    // 必为 undefined，会拿默认值覆盖用户已存配置）；_loaded 防重复注入重置副本
+    property bool _loaded: false
 
-    Component.onCompleted: {
-        const c = plugin ? plugin.value("itemsPerColumn") : undefined
+    onPluginChanged: {
+        if (!plugin || _loaded) return
+        _loaded = true
+        const c = plugin.value("itemsPerColumn")
         itemsPerColumn = (c !== undefined && c !== null) ? c : 5
-        const v = plugin ? plugin.value("items") : undefined
+        const v = plugin.value("items")
         items = (v !== undefined && v !== null) ? v : defaultItems()
     }
 

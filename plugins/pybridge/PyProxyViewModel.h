@@ -41,4 +41,5 @@ private:
     QVariantMap m_values;
     QTimer m_timer;
     nb::object m_module;    // 已导入的 main.py 模块对象；一切访问必须持 GIL
+    bool m_appendedPath = false;  // load() 是否向 sys.path 追加过插件目录（析构时精确移除）
 };

@@ -15,6 +15,7 @@ class TaskbarEmbed : public QObject {
     Q_OBJECT
 public:
     explicit TaskbarEmbed(QObject* parent = nullptr);
+    ~TaskbarEmbed() override;
 
     // 把 win 嵌入主屏任务栏左侧；offsetXLogical 为距任务栏左缘的偏移（逻辑像素）。
     // 幂等：已 attach 时重复调用只做参数更新 + 重新定位（热重载路径会反复走到）。
@@ -39,6 +40,7 @@ private:
     void poll();   // 轮询矫正：任务栏矩形变化 / 自身被压底 / 任务栏失效检测
 
     QPointer<QWindow> m_win;
+    QWindow* m_foreign = nullptr;  // fromWinId 的任务栏包装（每次新建，attach 时替换防泄漏）
     QTimer m_timer;
     void* m_trayHwnd = nullptr;  // HWND，头文件不引入 windows.h
     int m_offsetX = 0;           // 逻辑像素
