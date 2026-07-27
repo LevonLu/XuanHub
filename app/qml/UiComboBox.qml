@@ -44,6 +44,9 @@ ComboBox {
         id: item
         width: ListView.view ? ListView.view.width : control.width
         highlighted: control.highlightedIndex === index
+        // 注意：popup 是独立顶层窗口，palette 继承链在窗口边界断裂，
+        // item.palette 会回落到系统 palette（深色模式下是深文字配深背景，
+        // 实测几乎不可见）——弹出项一律用主窗口内 control 的 palette
         contentItem: Text {
             // 本窗口模型均为字符串列表（JS 数组 / QStringList），modelData 即显示文本；
             // textRole 分支仅作完整性兜底
@@ -51,14 +54,14 @@ ComboBox {
                   ? (Array.isArray(control.model) ? modelData[control.textRole] : model[control.textRole])
                   : modelData
             font: control.font
-            color: item.palette.buttonText
+            color: control.palette.buttonText
             elide: Text.ElideRight
             verticalAlignment: Text.AlignVCenter
         }
         background: Rectangle {
             radius: UiMetrics.radiusS - 2
-            readonly property color acc: item.palette.highlight
-            readonly property color fg: item.palette.buttonText
+            readonly property color acc: control.palette.highlight
+            readonly property color fg: control.palette.buttonText
             color: item.highlighted ? Qt.rgba(acc.r, acc.g, acc.b, 0.16)
                  : item.hovered ? Qt.rgba(fg.r, fg.g, fg.b, 0.06) : "transparent"
             Behavior on color { ColorAnimation { duration: UiMetrics.animFast } }
