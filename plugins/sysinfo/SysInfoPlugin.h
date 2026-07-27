@@ -25,5 +25,5 @@ private:
     QPointer<SysInfoViewModel> m_vm;
     QPointer<SysInfoWorker>    m_worker;
     QPointer<QThread>          m_thread;
-    int m_intervalMs = 1500;
+    int m_intervalMs = 1000;
 };

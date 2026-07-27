@@ -1,7 +1,0 @@
-{
-    "id": "launcher",
-    "name": "Launcher",
-    "version": "0.1.0",
-    "author": "XuanHub",
-    "settingsQml": "LauncherSettings.qml"
-}

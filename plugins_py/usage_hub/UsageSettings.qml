@@ -3,6 +3,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import XuanHub   // UiComboBox：裸 ComboBox 的 popup 是独立顶层窗口，palette 继承断裂
 
 Item {
     id: root
@@ -30,18 +31,15 @@ Item {
     // ── 工作副本 ─────────────────────────────────────────────
     property var vendors: []
 
-    Component.onCompleted: loadTimer.start()
-
-    Timer {
-        id: loadTimer
-        interval: 200; repeat: false
-        onTriggered: {
-            if (!plugin) return
-            var v = plugin.value("vendors")
-            if (v !== undefined && v !== null) {
-                // JSON 深拷贝：将 QVariantList 转成纯 JS 数组，后续修改才能正确序列化回 C++
-                vendors = JSON.parse(JSON.stringify(v))
-            }
+    // 初始化必须在 onPluginChanged（onCompleted 时 plugin 必为 undefined）；
+    // 守卫 pluginId——注入晚到时 proxy 可能已改指别的插件，不校验会把别的
+    // 插件的 vendors 读进来、后续 commit 也会写进别人草稿（契约见 plugins_py/README）
+    onPluginChanged: {
+        if (!plugin || plugin.pluginId !== "py_usage_hub") return
+        var v = plugin.value("vendors")
+        if (v !== undefined && v !== null) {
+            // JSON 深拷贝：将 QVariantList 转成纯 JS 数组，后续修改才能正确序列化回 C++
+            vendors = JSON.parse(JSON.stringify(v))
         }
     }
 
@@ -110,7 +108,7 @@ Item {
                         Layout.fillWidth: true
                         spacing: 8
 
-                        ComboBox {
+                        UiComboBox {
                             Layout.preferredWidth: 150
                             textRole: "name"; valueRole: "id"
                             model: root.supportedVendors

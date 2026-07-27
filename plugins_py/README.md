@@ -22,11 +22,15 @@ plugins_py/
     "id": "py_hello",
     "name": "PyHello",
     "version": "0.1.0",
-    "author": "you"
+    "author": "you",
+    "qml": "Hello.qml"
 }
 ```
 
 - `id` 全局唯一，约定 `py_` 前缀（与 DLL 插件的 id 命名空间区分，去重是全局的）。
+- `qml`（可选）：显式声明 bar 视图 QML 文件名。目录里放了辅助组件（被视图
+  import 的其它 .qml）时**必须**声明——未声明时框架按「排除 settingsQml 后
+  字母序第一个 .qml」的启发式选择，组件名排在视图前就会被误选。
 - 启用/布局在 `config.json` 里配置，与 C++ 插件同规则：
 
 ```json
@@ -67,6 +71,10 @@ plugins_py/
   适合列表/表格等复杂设置；与 `settings` 并存时**自绘优先**。页面契约：根 `Item`
   声明 `property var plugin`——但注入的是 **config 草稿桥**（不是运行中的代理 VM）：
   `plugin.value(key)` 读草稿、`plugin.setValue(key, v)` 写草稿（值须可 JSON 序列化）。
+  `plugin.revision` 是草稿修订号，每次 `setValue` 后递增并触发 `valuesChanged`——
+  `value()` 是函数调用、自身无通知，预览类绑定（如实时预览 Label）在求值表达式里
+  引用一次 `plugin.revision` 建立依赖即可随编辑实时刷新（范式见
+  `countdown/CountdownSettings.qml` 的 `v()`）。
   自绘页只碰草稿，应用/保存/取消由设置窗口统一，热重载后才真正生效。
   **时序契约（违反会把配置写进别的插件）**：`plugin` 在 `Loader.onLoaded` 才注入，
   晚于页面 `Component.onCompleted`——读草稿初始化必须放 `onPluginChanged`；

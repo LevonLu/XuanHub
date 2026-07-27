@@ -7,7 +7,7 @@
 **玄枢（XuanHub）** 是一个基于 **Qt6 / QML 的 Windows 插件化状态栏框架**（对标 polybar / waybar / Rainmeter），当前版本 0.1.0。
 
 - `XuanHub.exe`：无边框、置顶、`Qt::Tool` 的 `QQuickView`，两种形态（`bar.mode`）：`appbar`（默认，Win32 AppBar 占住主屏顶部/底部工作区）；`taskbar`（`SetParent` 嵌入原生任务栏左侧，透明、不占工作区）。
-- 插件是独立 DLL（`QPluginLoader` 加载），自带 QML 界面，框架只负责发现、加载、布局。内置示例插件：`clock`、`netstat`、`launcher`。
+- 插件是独立 DLL（`QPluginLoader` 加载），自带 QML 界面，框架只负责发现、加载、布局。内置示例插件：`clock`、`sysinfo`。
 - 仅支持 Windows，直接用 Win32 API，不做跨平台抽象。
 - `pybridge` 桥接插件内嵌 CPython（nanobind + 稳定 ABI，通吃 Python 3.12+），承载 `plugins_py/` 下的 Python 子插件；分发默认不内置标准库，依赖用户自装 CPython ≥3.12，未安装时 pybridge 自动停用并托盘提示（见 §5）；打包脚本可选 Bundle 策略做成免安装包（见 §8）。
 
@@ -60,7 +60,7 @@ XuanHub/
 │   │                                    # / SettingsWindow.qml / Ui*.qml（设计令牌 + 自绘控件库）
 │   └── resources/default_config.json    # qrc 内置默认配置（首运行播种用）
 ├── plugins/
-│   ├── clock/  netstat/  launcher/      # 三个示例插件（各含 Plugin + ViewModel + QML）
+│   ├── clock/  sysinfo/                 # 两个示例插件（各含 Plugin + ViewModel + QML）
 │   └── pybridge/                        # PyBridgePlugin 外壳 + pybackend.dll（内嵌 CPython）
 ├── plugins_py/                          # Python 子插件（hello / intime / usage_hub；README 即开发契约）
 ├── themes/                              # 主题包（ThemeRegistry 扫描；README 即开发契约；xuanhub-default 兜底勿删）
@@ -97,7 +97,7 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 
 ### 线程模型（铁律）
 
-- 后台采集用 `QObject` worker + `moveToThread` + `QTimer`（参照 `NetStatWorker`）；**不用** `std::thread`/`QThreadPool`。
+- 后台采集用 `QObject` worker + `moveToThread` + `QTimer`（参照 `SysInfoWorker`）；**不用** `std::thread`/`QThreadPool`。
 - Worker 只算数和 `emit` 信号，**不碰** ViewModel/QML；跨线程靠 `Qt::AutoConnection` 排队到 GUI 线程。
 - `shutdown()` 必须先 `workerThread->quit(); wait();` 再销毁对象；`shutdownAll` 顺序：先各插件 `shutdown()`（删光 DLL 出身的 QObject），再 `unload()`。
 
@@ -142,7 +142,7 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 
 **写回与设置窗口**：`ConfigService::save()` 用 QSaveFile 原子写，只改已知键、未知键不丢。设置窗口（托盘 "设置..." → `SettingsController` 懒建 + `SettingsWindow.qml`）只做一件事：校验后写 config.json，**生效全靠 watcher，不直接调 reload**。插件列表来自 config ∪ sidecar 元数据并集；`pybridge` 总开关保存时自动托管。**草稿过期保护**：打开窗口时快照配置指纹（bar 已知键 + plugins 数组原文，紧凑 JSON），apply 前重算比对，不一致（窗口打开期间被热重载/手动编辑改动）拒绝保存并提示重开窗口，防旧草稿静默覆盖外部改动；保存成功后更新指纹。插件条目草稿行内存原始 QJsonObject，导出以其为底只覆盖已知键（条目级手写未知键不丢）。开机自启逻辑在 `AutoStart.h`。设置窗口把 `themeManager.colors` 灌进根 `palette.*` 驱动全部自绘控件（`Ui*.qml` 只引用 palette）；**Popup/ComboBox 下拉是独立顶层窗口，palette 继承在窗口边界断裂**——弹出层内必须用主窗口控件的 `control.palette`（用 delegate 自身 `item.palette` 会回落系统 palette，深色模式下深文字配深背景，实测踩过）。
 
-**插件设置 schema 化**：设置窗口插件页为 master-detail。插件 config 编辑方式两种并存，**自绘优先（settingsQml > settings > 无）**：`settings` 由 sidecar 声明分组→字段（bool/int/double/string/color/enum/json），框架生成表单（契约见 `plugins_py/README.md`）；`settingsQml` 是插件自带 QML（示例 `plugins/launcher/LauncherSettings.qml`），根 Item 声明 `property var plugin`，注入 `SettingsPluginProxy` 草稿桥，经 `value(key)/setValue(key,v)` 读写草稿。草稿存于 `SettingsPluginModel` 行内（未知键保留），导出按 schema 校验，保存仍走 `apply() → save → watcher`。**时序契约**：切换选中时框架保证 `pluginProxy.pluginId` 先于右侧面板刷新指向新插件（`pluginList.onCurrentIdChanged` 显式定序，不用 Binding——求值顺序不保证，曾致 countdown 默认键写进 sysinfo 条目）；自绘页读草稿初始化放 `onPluginChanged`（注入晚于 `Component.onCompleted`），异步写默认值前校验 `plugin.pluginId`。
+**插件设置 schema 化**：设置窗口插件页为 master-detail。插件 config 编辑方式两种并存，**自绘优先（settingsQml > settings > 无）**：`settings` 由 sidecar 声明分组→字段（bool/int/double/string/color/enum/json），框架生成表单（契约见 `plugins_py/README.md`）；`settingsQml` 是插件自带 QML（示例 `plugins/sysinfo/SysInfoSettings.qml`），根 Item 声明 `property var plugin`，注入 `SettingsPluginProxy` 草稿桥，经 `value(key)/setValue(key,v)` 读写草稿；`revision` 属性随 `setValue` 递增并触发 `valuesChanged`——`value()` 是函数调用无通知，预览类绑定在表达式里引用一次 `plugin.revision` 建立依赖即可实时刷新。草稿存于 `SettingsPluginModel` 行内（未知键保留），导出按 schema 校验，保存仍走 `apply() → save → watcher`。**时序契约**：切换选中时框架保证 `pluginProxy.pluginId` 先于右侧面板刷新指向新插件（`pluginList.onCurrentIdChanged` 显式定序，不用 Binding——求值顺序不保证，曾致 countdown 默认键写进 sysinfo 条目）；自绘页读草稿初始化放 `onPluginChanged`（注入晚于 `Component.onCompleted`），异步写默认值前校验 `plugin.pluginId`。
 
 ## 6. 代码风格与约定
 
@@ -161,7 +161,7 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 - 窗口与工作区：贴顶置顶；最大化其他窗口不遮挡；正常退出立即归还工作区（强杀依赖系统延迟清理，已知行为）。
 - 插件加载：增删 `plugins/<id>/` 后重启验证出现/消失与日志 `[Plugin] loaded: <id>`；IID 不符的 DLL 应 qWarning 跳过不崩溃。
 - 布局/热重载：改 config.json 的 position/order/height/theme、增删插件条目，保存后 ~300ms 内生效；写坏 JSON 应告警且保留旧配置。
-- 采集与交互：netstat 大流量时刷新且 UI 不卡；launcher 点击能拉起进程。
+- 采集与交互：sysinfo 大流量时刷新且 UI 不卡。
 - 设置窗口：改主题/高度保存即时生效；勾选插件即时上下线；非法输入保存被拒并红字提示；自启勾选与注册表 Run 键、托盘菜单同步。
 - 托盘：菜单各项逐一点验；重启 Explorer 后托盘自动重建。
 - taskbar 模式：勾选后嵌入任务栏左侧、背景透出、宽度随内容收缩；切回 appbar 工作区 reserve 无残留；重启 explorer 自动重新嵌入；100%/150% DPI 各验一次。
@@ -195,8 +195,8 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 - 插件扫描/生命周期：`app/src/PluginManager.cpp`；QML 注入契约：`app/qml/PluginSlot.qml`
 - 三栏布局：`app/qml/Bar.qml`；模型：`app/src/PluginListModel.h` + `PluginFilterModel`
 - 配置解析：`app/src/ConfigService.cpp`；热重载：`app/src/ConfigHotReloader.{h,cpp}`
-- 设置窗口：`app/src/SettingsController/SettingsViewModel/SettingsPluginModel/SettingsPluginSortModel/SettingsPluginProxy.{h,cpp}` + `app/qml/SettingsWindow.qml`；自绘设置页示例 `plugins/launcher/LauncherSettings.qml`
+- 设置窗口：`app/src/SettingsController/SettingsViewModel/SettingsPluginModel/SettingsPluginSortModel/SettingsPluginProxy.{h,cpp}` + `app/qml/SettingsWindow.qml`；自绘设置页示例 `plugins/sysinfo/SysInfoSettings.qml`
 - 工作区/AppBar：`app/src/AppBarWin32.cpp`、`WorkAreaGuard.{h,cpp}`；任务栏嵌入：`TaskbarEmbed.{h,cpp}`
-- 线程范式样例：`plugins/netstat/NetStatWorker.{h,cpp}`；新插件 CMake 模板：`plugins/clock/CMakeLists.txt`
+- 线程范式样例：`plugins/sysinfo/SysInfoWorker.{h,cpp}`；新插件 CMake 模板：`plugins/clock/CMakeLists.txt`
 - Python 桥接：`plugins/pybridge/PyBridgePlugin.{h,cpp}`（外壳）、`PyBackendApi.h` + `PyBackend.cpp`（pybackend.dll）、`PyProxyViewModel.{h,cpp}`
 - Python 子插件契约：`plugins_py/README.md`；示例 `hello/`（参考样例）、`intime/`（定时提醒）、`usage_hub/`（用量看板）

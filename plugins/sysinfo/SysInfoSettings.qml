@@ -5,11 +5,11 @@
 // 控件配色经 palette 继承自设置窗口（Basic 样式），无需自取 themeManager。
 //
 // 布局：列数 SpinBox + 指标项列表（每行：metric 下拉 + 前缀 + 颜色 + ↑↓✕）+ 添加按钮。
-// items 工作副本范式照搬 LauncherSettings：文本编辑原地改（不重建保焦点），
-// 增删移才整体替换数组触发 Repeater 重建。
+// items 工作副本范式：文本编辑原地改（不重建保焦点），增删移才整体替换数组触发 Repeater 重建。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import XuanHub   // UiComboBox：裸 ComboBox 的 popup 是独立顶层窗口，palette 继承断裂
 
 Item {
     id: root
@@ -24,15 +24,15 @@ Item {
     // items 工作副本：[{metric, prefix, color}]
     property var items: []
     property int itemsPerColumn: 5
-    // 初始化必须在 onPluginChanged（同 LauncherSettings：onCompleted 时 plugin
-    // 必为 undefined，会拿默认值覆盖用户已存配置）；_loaded 防重复注入重置副本
+    // 初始化必须在 onPluginChanged（onCompleted 时 plugin 必为 undefined，
+    // 会拿默认值覆盖用户已存配置）；_loaded 防重复注入重置副本
     property bool _loaded: false
 
     onPluginChanged: {
         if (!plugin || _loaded) return
         _loaded = true
         const c = plugin.value("itemsPerColumn")
-        itemsPerColumn = (c !== undefined && c !== null) ? c : 5
+        itemsPerColumn = (c !== undefined && c !== null) ? c : 1
         const v = plugin.value("items")
         items = (v !== undefined && v !== null) ? v : defaultItems()
     }
@@ -125,7 +125,7 @@ Item {
                 // value 一次性设（Component.onCompleted），不绑 modelData：
                 // Repeater 的 modelData 是瞬态引用，原地改 items[i] 后不会重发，
                 // 绑定会把显示值"拉回"旧值——故沿用 schema 表单的 init 范式
-                ComboBox {
+                UiComboBox {
                     Layout.preferredWidth: 100
                     model: root.metricLabels
                     Component.onCompleted: {

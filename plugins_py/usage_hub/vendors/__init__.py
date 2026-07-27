@@ -36,6 +36,10 @@ class VendorBase(ABC):
         self.status: str = "pending"  # "pending" | "ok" | "error"
         self.error_message: str = ""
         self.last_update_ts: float = 0.0
+        # 展示数据（query() 返回值）。必须在基类初始化——子类（如 GLM）只在
+        # load_state() 里赋值时，全新机器（无状态文件）上访问会 AttributeError，
+        # 异常穿透 init() 导致整个插件加载失败
+        self.data: dict = {}
 
         # 内部节流计时（非持久化）
         self._last_query_ts: float = 0.0

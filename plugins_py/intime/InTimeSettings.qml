@@ -2,14 +2,18 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import XuanHub   // UiComboBox：裸 ComboBox 的 popup 是独立顶层窗口，palette 继承断裂
 
 Item {
     id: root
     property var plugin
     implicitHeight: col.implicitHeight
 
+    // 读 plugin.revision 建立绑定依赖：value() 是函数调用、自身无通知，
+    // 引用 revision 后 setValue 触发的 valuesChanged 会让调用 v() 的绑定重算（预览实时刷新）
     function v(key) {
         if (!plugin) return undefined
+        void plugin.revision
         return plugin.value(key)
     }
     function sv(key, val) {
@@ -80,7 +84,7 @@ Item {
             Layout.fillWidth: true
             RowLayout {
                 spacing: 8
-                ComboBox {
+                UiComboBox {
                     model: ["不显示", "水平进度条", "环形进度条"]
                     currentIndex: {
                         var t = v("progressStyle") || "none"
@@ -105,7 +109,7 @@ Item {
             Layout.fillWidth: true
             RowLayout {
                 spacing: 8
-                ComboBox {
+                UiComboBox {
                     id: maskTypeCombo
                     model: ["默认 (跟随主题)", "纯色", "图片"]
                     currentIndex: {

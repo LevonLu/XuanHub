@@ -19,7 +19,7 @@ _stop_flag = False
 _lock = threading.Lock()
 
 # 配置项（由 init 注入）
-_mask_type = "color"
+_mask_type = "default"        # "default"(跟随主题) | "color" | "image"，与设置页缺省一致
 _mask_color = "#1e1e2e"
 _mask_image = ""
 _mask_opacity = 0.92
@@ -47,7 +47,7 @@ def init(config: dict):
     if isinstance(config, dict):
         _work_seconds = max(10, min(86400, int(config.get("workSeconds", 1500))))
         _rest_seconds = max(10, min(3600, int(config.get("restSeconds", 300))))
-        _mask_type = str(config.get("maskType", "color"))
+        _mask_type = str(config.get("maskType", "default"))
         _mask_color = str(config.get("maskColor", "#1e1e2e"))
         _mask_image = str(config.get("maskImage", ""))
         _mask_opacity = max(0.1, min(1.0, float(config.get("maskOpacity", 0.92))))

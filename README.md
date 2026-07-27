@@ -63,8 +63,7 @@
     "theme": "dark"
   },
   "plugins": [
-    { "id": "launcher", "position": "left",  "order": 0, "config": { "items": [{"name":"Terminal","program":"wt.exe"}] } },
-    { "id": "netstat",  "position": "right", "order": 0, "config": { "intervalMs": 1000 } },
+    { "id": "sysinfo",  "position": "right", "order": 0, "config": { "intervalMs": 1000 } },
     { "id": "clock",    "position": "right", "order": 1, "config": { "format": "HH:mm:ss" } },
     { "id": "py_hello", "position": "right", "order": 2, "config": { "intervalMs": 1000, "prefix": "Py" } }
   ]
@@ -360,7 +359,7 @@ add_custom_command(TARGET myplugin POST_BUILD
 )
 ```
 
-然后在顶层 `CMakeLists.txt` 加 `add_subdirectory(plugins/myplugin)`。需要系统库就在 `target_link_libraries` 里加（如网络类插件链接 `iphlpapi ws2_32`，参考 `plugins/netstat/`）。
+然后在顶层 `CMakeLists.txt` 加 `add_subdirectory(plugins/myplugin)`。需要系统库就在 `target_link_libraries` 里加（如网络类插件链接 `iphlpapi ws2_32`，参考 `plugins/sysinfo/`）。
 
 ## QML 运行环境
 
@@ -379,7 +378,7 @@ add_custom_command(TARGET myplugin POST_BUILD
 
 ## 线程模型（铁律）
 
-后台采集（网络、系统指标等耗时操作）必须用 Qt 惯用法，参照 `plugins/netstat/NetStatWorker.{h,cpp}`：
+后台采集（网络、系统指标等耗时操作）必须用 Qt 惯用法，参照 `plugins/sysinfo/SysInfoWorker.{h,cpp}`：
 
 - `QObject` 派生 worker + `moveToThread` + `QTimer` 驱动；**禁用** `std::thread` / `QThreadPool`；
 - worker 只算数和 `emit` 信号，**绝不触碰**任何 ViewModel / QML 对象；跨线程靠 `Qt::AutoConnection` 自动排队到 GUI 线程，由 ViewModel 的 slot 更新 `Q_PROPERTY`；
@@ -390,7 +389,7 @@ add_custom_command(TARGET myplugin POST_BUILD
 `metadata.json` 里可声明该插件在设置窗口中的设置区（可选）：
 
 - `settings`：分组 → 字段两级的 schema，框架自动生成表单。字段类型：`bool` / `int`（min/max/step）/ `double` / `string` / `color` / `enum`（options）/ `json`；完整契约见 `plugins_py/README.md` 的「设置项声明」一节（两种插件共用同一 schema）；
-- `settingsQml`：声明插件自绘设置页（相对 DLL 目录的 QML 文件），适合列表/表格等复杂设置；与 `settings` 并存时**自绘优先**。示例见 `plugins/launcher/LauncherSettings.qml`：根 Item 声明 `property var plugin`，注入的是 config 草稿桥，经 `plugin.value(key)` / `plugin.setValue(key, v)` 读写草稿，保存/取消由设置窗口统一。
+- `settingsQml`：声明插件自绘设置页（相对 DLL 目录的 QML 文件），适合列表/表格等复杂设置；与 `settings` 并存时**自绘优先**。示例见 `plugins/sysinfo/SysInfoSettings.qml`：根 Item 声明 `property var plugin`，注入的是 config 草稿桥，经 `plugin.value(key)` / `plugin.setValue(key, v)` 读写草稿，保存/取消由设置窗口统一。
 
 编辑结果写入 `config.json` 的本插件 config 段，保存后热重载生效——即插件会在 `init()` 里拿到新值。
 
@@ -567,7 +566,7 @@ cmake --build --preset default-debug   # Debug
 ```
 app/            # 宿主 XuanHub.exe（栏窗口、AppBar、配置、设置窗口、托盘、主题）
 lib/barplugin/  # 插件接口共享库（IBarPlugin / BarPluginContext / EventBus）
-plugins/        # C++ 插件：clock / netstat / launcher / pybridge
+plugins/        # C++ 插件：clock / sysinfo / pybridge
 plugins_py/     # Python 子插件（README.md 即开发契约）
 themes/         # 主题包（README.md 即开发契约）
 config/         # 开发用示例配置

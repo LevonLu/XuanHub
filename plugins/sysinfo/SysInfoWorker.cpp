@@ -31,10 +31,10 @@ struct SysInfoCollector {
     PDH_HQUERY cpuQuery = nullptr;
     PDH_HCOUNTER cpuCounter = nullptr;
 
-    // GPU 引擎利用率：通配实例计数器（一个 GPU 有多个引擎节点，需展开后逐个求和）
-    // 用 path 列表 + 多计数器；每帧 collect 一次主查询即可（所有 counter 共享 query）
+    // GPU 引擎利用率：单个通配实例计数器（PdhAddEnglishCounterW 支持通配路径，
+    // 读取时用 PdhGetFormattedCounterArrayW 展开全部实例逐个过滤求和）
     PDH_HQUERY gpuQuery = nullptr;
-    std::vector<PDH_HCOUNTER> gpuCounters;   // 仅含物理 3D 引擎节点
+    PDH_HCOUNTER gpuCounter = nullptr;
     bool gpuPdhAvailable = false;            // Win10<1809 或无 GPU 时为 false → 走 DXGI 显存回落
 
     // DXGI 显存回落：首适配器的 IDXGIAdapter3（lazy 初始化，采集失败不重试到死）
@@ -60,10 +60,12 @@ void SysInfoWorker::start(int intervalMs) {
     // ── 初始化 CPU 计数器 ──
     // \Processor(_Total)\% Processor Time：所有逻辑核心平均占用（与任务管理器底部总数一致）
     if (PdhOpenQuery(nullptr, 0, &m_collector->cpuQuery) == ERROR_SUCCESS) {
-        // 计数器路径固定，失败说明系统极不正常（罕见）→ CPU 项持续返回 -1
-        if (PdhAddCounter(m_collector->cpuQuery,
-                          L"\\Processor(_Total)\\% Processor Time",
-                          0, &m_collector->cpuCounter) != ERROR_SUCCESS) {
+        // 必须用 PdhAddEnglishCounterW：PDH 计数器名按系统 locale 本地化，
+        // PdhAddCounter 拿英文路径在非英文 Windows 上返回 PDH_CSTATUS_NO_COUNTER，
+        // CPU 项会永久失效；English 变体接受英文路径、与 locale 无关（Vista+）
+        if (PdhAddEnglishCounterW(m_collector->cpuQuery,
+                                  L"\\Processor(_Total)\\% Processor Time",
+                                  0, &m_collector->cpuCounter) != ERROR_SUCCESS) {
             m_collector->cpuCounter = nullptr;
         }
     } else {
@@ -71,38 +73,17 @@ void SysInfoWorker::start(int intervalMs) {
         m_collector->cpuCounter = nullptr;
     }
 
-    // ── 初始化 GPU 计数器（通配实例展开）──
+    // ── 初始化 GPU 计数器（通配实例）──
     // \GPU Engine(*)\Utilization Percentage 的实例名形如 pid_xxx_luid_0x..._phys_N_engtype_3D_eng_N
-    // 只取含 "engtype_3D" 的物理 3D 引擎（过滤 VideoDecode/Encode/Copy 等非中文本避免双计）；
-    // 进程级实例（pid_xxx）也过滤——任务管理器底部 GPU% 是所有进程的物理引擎总和
+    // 单个通配计数器加入查询，读取时 PdhGetFormattedCounterArrayW 展开；
+    // 实例名 token（pid_ / engtype_3D）由 GPU 计数器提供方生成，与 locale 无关
     if (PdhOpenQuery(nullptr, 0, &m_collector->gpuQuery) == ERROR_SUCCESS) {
-        DWORD bufLen = 8192;
-        std::wstring buf(bufLen, L'\0');
-        // 展开通配路径得到完整计数器路径列表（dwFlags=0 即常规展开，含通配实例）
-        PDH_STATUS st = PdhExpandWildCardPathW(
-            nullptr, L"\\GPU Engine(*)\\Utilization Percentage",
-            buf.data(), &bufLen, 0);
-        if (st == PDH_MORE_DATA) {
-            buf.resize(bufLen);
-            st = PdhExpandWildCardPathW(
-                nullptr, L"\\GPU Engine(*)\\Utilization Percentage",
-                buf.data(), &bufLen, 0);
-        }
-        if (st == ERROR_SUCCESS) {
-            // buf 是 \0 分隔的路径列表，以双 \0 结尾
-            for (size_t i = 0; i < buf.size() && buf[i] != L'\0'; ) {
-                std::wstring path(&buf[i]);
-                i += path.size() + 1;
-                // 仅留物理 3D 引擎节点；含 "engtype_3D" 且不含 "pid_"（排除进程级实例）
-                if (path.find(L"engtype_3D") != std::wstring::npos &&
-                    path.find(L"pid_") == std::wstring::npos) {
-                    PDH_HCOUNTER c = nullptr;
-                    if (PdhAddCounterW(m_collector->gpuQuery, path.c_str(), 0, &c) == ERROR_SUCCESS)
-                        m_collector->gpuCounters.push_back(c);
-                }
-            }
-            m_collector->gpuPdhAvailable = !m_collector->gpuCounters.empty();
-        }
+        m_collector->gpuPdhAvailable =
+            PdhAddEnglishCounterW(m_collector->gpuQuery,
+                                  L"\\GPU Engine(*)\\Utilization Percentage",
+                                  0, &m_collector->gpuCounter) == ERROR_SUCCESS;
+        if (!m_collector->gpuPdhAvailable)
+            m_collector->gpuCounter = nullptr;
     }
     if (!m_collector->gpuPdhAvailable) {
         // PDH 不可用（Win10<1809 或无 GPU）→ 标记走 DXGI 显存回落
@@ -173,22 +154,42 @@ void SysInfoWorker::tick() {
     if (m_collector && m_collector->gpuPdhAvailable) {
         // 与 CPU 共用同一轮 collect 逻辑：gpuQuery 独立 collect
         if (PdhCollectQueryData(m_collector->gpuQuery) == ERROR_SUCCESS) {
-            double sum = 0.0;
-            bool any = false;
-            for (PDH_HCOUNTER c : m_collector->gpuCounters) {
-                PDH_FMT_COUNTERVALUE fmt{};
-                if (PdhGetFormattedCounterValue(c, PDH_FMT_DOUBLE | PDH_FMT_NOCAP100,
-                                                nullptr, &fmt) == ERROR_SUCCESS) {
-                    // 各引擎节点的 utilization 是 0-100（任务管理器语义），取所有 3D 引擎之和
-                    // 并钳到 100（多 GPU/多引擎叠加极少超 100，钳制保险）
-                    sum += fmt.doubleValue;
-                    any = true;
+            // 通配计数器用 PdhGetFormattedCounterArrayW 取全部实例；
+            // 两次调用：先取所需缓冲区大小，再取数据
+            DWORD bufSize = 0, itemCount = 0;
+            PDH_STATUS st = PdhGetFormattedCounterArrayW(
+                m_collector->gpuCounter, PDH_FMT_DOUBLE | PDH_FMT_NOCAP100,
+                &bufSize, &itemCount, nullptr);
+            if (st == PDH_MORE_DATA && bufSize > 0) {
+                std::vector<unsigned char> buf(bufSize);
+                auto* items = reinterpret_cast<PDH_FMT_COUNTERVALUE_ITEM_W*>(buf.data());
+                st = PdhGetFormattedCounterArrayW(
+                    m_collector->gpuCounter, PDH_FMT_DOUBLE | PDH_FMT_NOCAP100,
+                    &bufSize, &itemCount, items);
+                if (st == ERROR_SUCCESS) {
+                    double sum = 0.0;
+                    bool any = false;
+                    for (DWORD i = 0; i < itemCount; ++i) {
+                        const std::wstring name = items[i].szName;
+                        // 仅留物理 3D 引擎节点；含 "engtype_3D" 且不含 "pid_"
+                        // （排除进程级实例——任务管理器底部 GPU% 是所有进程的物理引擎总和；
+                        // 同时过滤 VideoDecode/Encode/Copy 等非 3D 引擎避免双计）
+                        if (name.find(L"engtype_3D") == std::wstring::npos ||
+                            name.find(L"pid_") != std::wstring::npos)
+                            continue;
+                        if (items[i].FmtValue.CStatus == ERROR_SUCCESS) {
+                            sum += items[i].FmtValue.doubleValue;
+                            any = true;
+                        }
+                    }
+                    if (any) {
+                        // 各引擎节点的 utilization 是 0-100（任务管理器语义），
+                        // 取所有 3D 引擎之和并钳到 100（多 GPU/多引擎叠加极少超 100，钳制保险）
+                        gpuPct = sum;
+                        if (gpuPct < 0.0) gpuPct = 0.0;
+                        if (gpuPct > 100.0) gpuPct = 100.0;
+                    }
                 }
-            }
-            if (any) {
-                gpuPct = sum;
-                if (gpuPct < 0.0) gpuPct = 0.0;
-                if (gpuPct > 100.0) gpuPct = 100.0;
             }
         }
     }

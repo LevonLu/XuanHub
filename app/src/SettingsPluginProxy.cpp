@@ -22,9 +22,11 @@ QVariant SettingsPluginProxy::value(const QString& key) const {
 void SettingsPluginProxy::setValue(const QString& key, const QVariant& v) {
     if (!m_model || m_pluginId.isEmpty()) return;
     // QML 传来的 JS 数组/对象可能是 QJSValue 包装（未深转），直接存草稿会在
-    // 导出 JSON 时变成 null（launcher items 实测踩过）——先深转为 QVariantList/Map
+    // 导出 JSON 时变成 null（列表型配置如实测的 items 数组踩过）——先深转为 QVariantList/Map
     QVariant nv = v;
     if (nv.userType() == qMetaTypeId<QJSValue>())
         nv = nv.value<QJSValue>().toVariant();
     m_model->setConfigValue(m_pluginId, key, nv);
+    ++m_revision;
+    emit valuesChanged();
 }

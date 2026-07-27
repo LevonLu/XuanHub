@@ -25,7 +25,6 @@ set(XUANHUB_BIN_DIR "${CMAKE_BINARY_DIR}/dist/$<CONFIG>" CACHE INTERNAL "runtime
 add_subdirectory(lib/barplugin)
 add_subdirectory(app)
 add_subdirectory(plugins/clock)
-add_subdirectory(plugins/launcher)
 add_subdirectory(plugins/sysinfo)
 
 # pybridge（Python 桥接）为可选组件：依赖构建机的 Python ≥3.12 开发包

@@ -65,8 +65,8 @@ void recordPythonHomeEnv() {
 
 // 恢复 init 期临时设置的 PYTHONHOME：CPython 只在初始化路径解析阶段读它，
 // 之后模块搜索路径已固化进 sys.path，运行期不再读取；不恢复的话该变量会
-// 被 launcher 等插件启动的子进程继承（Bundle 打包时子进程拿到内置裁剪版
-// 路径必报错）。一次性：恢复后清标记，避免热重载重复覆盖用户后来改的值
+// 被插件启动的子进程继承（Bundle 打包时子进程拿到内置裁剪版路径必报错）。
+// 一次性：恢复后清标记，避免热重载重复覆盖用户后来改的值
 void restorePythonHomeEnv() {
     QCoreApplication* app = hostApp();
     if (!app || !app->property("xuanhub.pyHomeEnvRecorded").toBool()) return;
@@ -342,15 +342,26 @@ xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const 
     }
     const QDir d(dirPath);
     const QJsonObject obj = readPluginJson(d);
-    auto qmls = d.entryList({QStringLiteral("*.qml")}, QDir::Files);
-    // settingsQml 是设置窗口的自绘页、不是 bar 视图：entryList 按字母序，
-    // 不排除时命名排序在前的 Settings 页会被 first() 误选为视图
-    const QString settingsQml = obj.value(QStringLiteral("settingsQml")).toString();
-    if (!settingsQml.isEmpty())
-        qmls.removeAll(QFileInfo(settingsQml).fileName());
-    if (qmls.isEmpty()) {
-        qWarning() << "[PyBridge] skip" << id << ": 目录内无 .qml";
-        return info;
+    // 视图 QML 选择：优先 plugin.json 显式声明的 "qml" 字段（目录里放辅助组件时
+    // 字母序启发式会选错）；未声明时回落「排除 settingsQml 后按字母序取第一个」
+    QString viewQml = obj.value(QStringLiteral("qml")).toString();
+    if (!viewQml.isEmpty() && !d.exists(viewQml)) {
+        qWarning() << "[PyBridge]" << id << ": plugin.json 声明的 qml" << viewQml
+                   << "不存在，回落启发式选择";
+        viewQml.clear();
+    }
+    if (viewQml.isEmpty()) {
+        auto qmls = d.entryList({QStringLiteral("*.qml")}, QDir::Files);
+        // settingsQml 是设置窗口的自绘页、不是 bar 视图：entryList 按字母序，
+        // 不排除时命名排序在前的 Settings 页会被 first() 误选为视图
+        const QString settingsQml = obj.value(QStringLiteral("settingsQml")).toString();
+        if (!settingsQml.isEmpty())
+            qmls.removeAll(QFileInfo(settingsQml).fileName());
+        if (qmls.isEmpty()) {
+            qWarning() << "[PyBridge] skip" << id << ": 目录内无 .qml";
+            return info;
+        }
+        viewQml = qmls.first();
     }
     QObject* vm = xb_py_vm_load(id, dirPath, cfg, this);
     if (!vm) return info;  // 脚本语法错误/缺 update()：工厂内已记日志，跳过不影响其他插件
@@ -360,7 +371,7 @@ xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const 
                  obj.value(QStringLiteral("version")).toString(),
                  obj.value(QStringLiteral("author")).toString()};
     info.viewModel = vm;
-    info.qmlFilePath = qmls.first();
+    info.qmlFilePath = viewQml;
     info.dirPath = dirPath;
     return info;
 }

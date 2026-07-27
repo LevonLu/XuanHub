@@ -24,6 +24,7 @@ _cache: dict = {"summary": "初始化中..."}
 _lock = threading.Lock()
 _stop_flag = False
 _refresh_event = threading.Event()
+_worker_thread: threading.Thread | None = None
 
 # 厂商类注册表：user_config.json 中的 mode 字段 → Vendor 子类
 _VENDOR_REGISTRY = {
@@ -81,7 +82,8 @@ def _load_state():
 
 
 def _save_state():
-    """将各厂商状态落盘。"""
+    """将各厂商状态落盘。先写临时文件再 os.replace 原子替换：
+    进程在写盘途中被杀不会留下半截 JSON（旧文件保持完整）。"""
     snap = {}
     for v in _vendors:
         state = v.save_state()
@@ -89,9 +91,12 @@ def _save_state():
             snap[v.id] = state
     if not snap:
         return
+    path = _state_path()
+    tmp = path + ".tmp"
     try:
-        with open(_state_path(), "w", encoding="utf-8") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(snap, f, ensure_ascii=False)
+        os.replace(tmp, path)
     except OSError:
         pass
 
@@ -181,6 +186,10 @@ def _worker():
 
                 with _lock:
                     _cache = _rebuild_cache()
+                # stop() 后不再落盘：热重载时旧线程若在 query 中（最长 timeoutSec），
+                # 醒来后写盘会与新线程并发甚至用旧数据覆盖新数据
+                if _stop_flag:
+                    break
                 _save_state()
             except Exception:
                 # _rebuild_cache/_save_state 等异常曾会静默杀死后台线程，
@@ -230,7 +239,13 @@ def init(config):
         cls = _VENDOR_REGISTRY.get(mode)
         if cls is None:
             continue
-        vendor = cls(vc)
+        try:
+            vendor = cls(vc)
+        except Exception:
+            # 单条配置非法（如 intervalSec 写成非数字）不能拖垮其余厂商——
+            # 异常穿透 init() 会让整个插件加载失败
+            traceback.print_exc()
+            continue
         _vendors.append(vendor)
 
     # 恢复持久化状态
@@ -258,9 +273,10 @@ def init(config):
         _cache = _rebuild_cache()
 
     # 启动后台线程
-    global _stop_flag
+    global _stop_flag, _worker_thread
     _stop_flag = False
-    threading.Thread(target=_worker, daemon=True).start()
+    _worker_thread = threading.Thread(target=_worker, daemon=True)
+    _worker_thread.start()
 
 
 def update():
@@ -290,7 +306,15 @@ def invoke(name, args):
 
 
 def stop():
-    """卸载/热重载前由宿主调用，停掉后台线程。"""
+    """卸载/热重载前由宿主调用，停掉后台线程。
+
+    join(timeout=2)：正常路径线程阻塞在 _refresh_event.wait 上，set 后立即
+    退出，join 几乎不阻塞 GUI 线程；若线程正在 query()（网络 IO），最多等
+    2 秒兜底——线程是 daemon，进程退出也会被回收。worker 侧在落盘前检查
+    _stop_flag，保证 join 超时放行的旧线程也不会再写状态文件。"""
     global _stop_flag
     _stop_flag = True
     _refresh_event.set()
+    t = _worker_thread
+    if t is not None and t.is_alive():
+        t.join(timeout=2)

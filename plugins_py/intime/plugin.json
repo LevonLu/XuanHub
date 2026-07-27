@@ -3,5 +3,6 @@
     "name": "InTime",
     "version": "0.1.0",
     "author": "XuanHub",
+    "qml": "InTime.qml",
     "settingsQml": "InTimeSettings.qml"
 }

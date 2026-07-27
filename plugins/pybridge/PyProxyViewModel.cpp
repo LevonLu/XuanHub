@@ -114,7 +114,14 @@ PyProxyViewModel::~PyProxyViewModel() {
         try {
             nb::object sysModules = nb::module_::import_("sys").attr("modules");
             std::vector<std::string> toPop;
-            const QString dirNorm = QDir::fromNativeSeparators(m_dirPath);
+            const QString dirNorm = [&] {
+            QString s = QDir::fromNativeSeparators(m_dirPath);
+            // 补结尾分隔符：startsWith 前缀比较必须按完整目录名匹配，
+            // 否则兄弟目录名互为前缀时（intime vs intime2）会误清别人
+            // 正在运行的模块
+            if (!s.endsWith(u'/')) s += u'/';
+            return s;
+        }();
             for (auto item : nb::cast<nb::dict>(sysModules)) {
                 nb::handle mod = item.second;
                 if (!mod.is_valid() || mod.is_none() || !nb::hasattr(mod, "__file__"))
@@ -211,6 +218,9 @@ bool PyProxyViewModel::load() {
     tick();  // 立即拉一次，不等首个 tick 周期
     int interval = m_cfg.value(QStringLiteral("intervalMs")).toInt();
     if (interval <= 0) interval = 1000;
+    // 钳下限：intervalMs=1 这类合法正数会让 QTimer 每 1ms 持 GIL 调 Python
+    // update()，GUI 线程直接卡死（schema 里 min 是表单级约束，挡不住手写 config）
+    interval = qMax(interval, 50);
     connect(&m_timer, &QTimer::timeout, this, [this] { tick(); });
     m_timer.start(interval);
     return true;

@@ -18,7 +18,9 @@ Item {
     id: root
     property var plugin
 
-    width: 130
+    // 宽度跟随内容：format 可配（如 yyyy-MM-dd HH:mm:ss），写死宽度会被槽位
+    // clip:true 静默截断；留 24px 水平内边距保持视觉留白
+    width: timeText.implicitWidth + 24
     height: 40
 
     // 注意：不用 Screen attached 取屏幕几何。弹窗先开在屏幕外时其窗口未挂到任何
@@ -44,6 +46,7 @@ Item {
     }
 
     Text {
+        id: timeText
         anchors.centerIn: parent
         color: root.colors.fg
         font.pixelSize: 16

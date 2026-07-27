@@ -4,6 +4,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import XuanHub   // UiComboBox：裸 ComboBox 的 popup 是独立顶层窗口，palette 继承断裂
 
 Item {
     id: root
@@ -14,7 +15,9 @@ Item {
     // 初始化守卫：防 TextField 初始化时触发 commit 回写循环
     property bool _loading: false
 
-    function v(key) { return plugin ? plugin.value(key) : undefined }
+    // 读 plugin.revision 建立绑定依赖：value() 是函数调用、自身无通知，
+    // 引用 revision 后 setValue 触发的 valuesChanged 会让调用 v() 的绑定重算（预览实时刷新）
+    function v(key) { if (!plugin) return undefined; void plugin.revision; return plugin.value(key) }
     function sv(key, val) { if (plugin) plugin.setValue(key, val) }
 
     // 解析 "HH:MM" → {h, m}
@@ -111,7 +114,7 @@ Item {
             RowLayout {
                 spacing: 8
                 Label { text: "模式:"; Layout.preferredWidth: 70 }
-                ComboBox {
+                UiComboBox {
                     id: modeCombo
                     model: ["每日重复", "指定日期"]
                     currentIndex: root.isDaily ? 0 : 1

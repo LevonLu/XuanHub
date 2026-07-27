@@ -42,7 +42,9 @@ PluginMetadata SysInfoPlugin::metadata() const { return kMeta; }
 
 bool SysInfoPlugin::init(BarPluginContext* ctx) {
     const auto cfg = ctx ? ctx->pluginConfig : QVariantMap();
-    m_intervalMs = cfg.value(QStringLiteral("intervalMs"), 1000).toInt();
+    // 钳制采样间隔：0 会让 worker 线程每事件循环都 tick（PDH collect + GetIfTable2）
+    // 占满一个核并狂发跨线程信号；负值 QTimer 直接不启动。200ms 下限兼顾流畅与开销
+    m_intervalMs = qBound(200, cfg.value(QStringLiteral("intervalMs"), 1000).toInt(), 60000);
     const int itemsPerColumn = cfg.value(QStringLiteral("itemsPerColumn"), 1).toInt();
 
     // 解析 items 布局（config 无则播种默认 5 项）；颜色校验非法→空串（跟随主题）
