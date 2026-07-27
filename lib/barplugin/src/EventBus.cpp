@@ -11,7 +11,18 @@ EventBus::EventBus(QObject* parent) : QObject(parent) {}
 void EventBus::subscribe(const QString& topic, QObject* receiver, const char* slot) {
     if (!receiver || !slot) return;
     m_subs[topic].removeIf([](const Sub& s) { return !s.receiver; });
-    m_subs[topic].append({receiver, slot});
+    // 去重：同 receiver 同 slot 重复订阅会导致同一事件重复投递；
+    // 订阅记录是 receiver + 方法签名字符串，逐项比较即可
+    const QByteArray member(slot);
+    for (const auto& s : m_subs[topic]) {
+        if (s.receiver == receiver && s.member == member) {
+            qDebug() << "[EventBus] duplicate subscription ignored:" << topic
+                     << "->" << receiver->metaObject()->className()
+                     << "::" << member.constData();
+            return;
+        }
+    }
+    m_subs[topic].append({receiver, member});
 }
 
 void EventBus::unsubscribe(const QString& topic, QObject* receiver) {

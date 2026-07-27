@@ -52,6 +52,32 @@ void setPyHome(const QString& h) { if (hostApp()) hostApp()->setProperty("xuanhu
 bool pyNotified() { return hostApp() && hostApp()->property("xuanhub.pyNotified").toBool(); }
 void setPyNotified() { if (hostApp()) hostApp()->setProperty("xuanhub.pyNotified", true); }
 
+// qputenv("PYTHONHOME") 前记录原值：存在性单独用 recorded 标记表达
+//（空串也是合法原值，且属性值为无效 QVariant 等价于未设置，不能靠
+// toString().isEmpty() 区分「原本未设置」）。存 qApp 动态属性原因见文件头
+void recordPythonHomeEnv() {
+    QCoreApplication* app = hostApp();
+    if (!app || app->property("xuanhub.pyHomeEnvRecorded").toBool()) return;
+    app->setProperty("xuanhub.pyHomeEnvRecorded", true);
+    if (qEnvironmentVariableIsSet("PYTHONHOME"))
+        app->setProperty("xuanhub.pyHomeEnvOrig", qEnvironmentVariable("PYTHONHOME"));
+}
+
+// 恢复 init 期临时设置的 PYTHONHOME：CPython 只在初始化路径解析阶段读它，
+// 之后模块搜索路径已固化进 sys.path，运行期不再读取；不恢复的话该变量会
+// 被 launcher 等插件启动的子进程继承（Bundle 打包时子进程拿到内置裁剪版
+// 路径必报错）。一次性：恢复后清标记，避免热重载重复覆盖用户后来改的值
+void restorePythonHomeEnv() {
+    QCoreApplication* app = hostApp();
+    if (!app || !app->property("xuanhub.pyHomeEnvRecorded").toBool()) return;
+    app->setProperty("xuanhub.pyHomeEnvRecorded", false);
+    const QVariant orig = app->property("xuanhub.pyHomeEnvOrig");
+    if (orig.isValid())
+        qputenv("PYTHONHOME", orig.toString().toUtf8());
+    else
+        qunsetenv("PYTHONHOME");   // 原本未设置：撤掉，恢复未设置状态
+}
+
 // 从 home 下的 python3<minor>.dll 文件名判定次版本号（不启动进程）；
 // python3.dll 是稳定 ABI 转发器、无版本号，跳过。找不到返回 -1。
 int pythonMinorVersion(const QString& home) {
@@ -141,6 +167,9 @@ QString pathPythonHome() {
 // 显式全路径预装解释器 DLL：用户安装目录通常不在 PATH，
 // 直接 LoadLibrary("python3.dll") 会失败。先装版本化 python3XX.dll，
 // 再装 python3.dll——其导出转发到前者，按名命中已加载模块，不依赖搜索路径。
+// 用 LoadLibraryExW + LOAD_WITH_ALTERED_SEARCH_PATH（而非 LoadLibraryW）：
+// 标准搜索顺序解析 DLL 依赖时不含被加载 DLL 所在目录，python3XX.dll 依赖的
+// vcruntime140.dll 等就在 Python 安装目录里，用户机器该目录通常不在 PATH。
 // 返回两个 DLL 是否都加载成功（架构不匹配等会失败）。
 bool preloadPythonDlls(const QString& home) {
     const QDir d(home);
@@ -149,10 +178,13 @@ bool preloadPythonDlls(const QString& home) {
     for (const QString& f : dlls) {
         if (f.compare(QStringLiteral("python3.dll"), Qt::CaseInsensitive) == 0) continue;
         const QString full = d.absoluteFilePath(f);
-        if (LoadLibraryW(reinterpret_cast<LPCWSTR>(full.utf16()))) versioned = true;
+        if (LoadLibraryExW(reinterpret_cast<LPCWSTR>(full.utf16()), nullptr,
+                           LOAD_WITH_ALTERED_SEARCH_PATH))
+            versioned = true;
     }
     const QString sabi = d.absoluteFilePath(QStringLiteral("python3.dll"));
-    const bool sabiOk = LoadLibraryW(reinterpret_cast<LPCWSTR>(sabi.utf16())) != nullptr;
+    const bool sabiOk = LoadLibraryExW(reinterpret_cast<LPCWSTR>(sabi.utf16()), nullptr,
+                                       LOAD_WITH_ALTERED_SEARCH_PATH) != nullptr;
     return versioned && sabiOk;
 }
 
@@ -196,7 +228,10 @@ bool PyBridgePlugin::init(xuanhub::BarPluginContext* ctx) {
             };
             for (const auto& c : cands) {
                 if (!hasStdlib(c.home)) continue;
-                // 显式 qputenv，不依赖 CPython getpath 的隐式查找
+                // 显式 qputenv，不依赖 CPython getpath 的隐式查找。
+                // 先记原值：解释器初始化完成后即恢复（见 restorePythonHomeEnv），
+                // 避免进程全局环境污染插件启动的子进程
+                recordPythonHomeEnv();
                 qputenv("PYTHONHOME", c.home.toUtf8());
                 setPyHome(c.home);
                 setPyAvailable(true);
@@ -229,6 +264,9 @@ bool PyBridgePlugin::init(xuanhub::BarPluginContext* ctx) {
         } else {
             g_interpreterReady = true;
         }
+        // 无论成败都恢复 PYTHONHOME：成功时路径已固化进 sys.path，CPython
+        // 运行期不再读它；失败时更不应把临时值留给整个进程及其子进程
+        restorePythonHomeEnv();
     }
 
     // 无 Python 环境：经 EventBus 请求宿主弹一次提示（托盘订阅 app.notify；
@@ -304,7 +342,12 @@ xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const 
     }
     const QDir d(dirPath);
     const QJsonObject obj = readPluginJson(d);
-    const auto qmls = d.entryList({QStringLiteral("*.qml")}, QDir::Files);
+    auto qmls = d.entryList({QStringLiteral("*.qml")}, QDir::Files);
+    // settingsQml 是设置窗口的自绘页、不是 bar 视图：entryList 按字母序，
+    // 不排除时命名排序在前的 Settings 页会被 first() 误选为视图
+    const QString settingsQml = obj.value(QStringLiteral("settingsQml")).toString();
+    if (!settingsQml.isEmpty())
+        qmls.removeAll(QFileInfo(settingsQml).fileName());
     if (qmls.isEmpty()) {
         qWarning() << "[PyBridge] skip" << id << ": 目录内无 .qml";
         return info;

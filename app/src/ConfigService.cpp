@@ -20,6 +20,13 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
             if (QFile::exists(userPath)) {
                 path = userPath;  // 已有用户配置，直接用
             } else {
+                // 文件曾成功加载过（运行中被删/改名）：不播种，保留当前设置——
+                // 热重载期重新播种会把 bar 整体翻成默认主题/模式（实测踩过）
+                if (m_everLoadedFromFile) {
+                    qWarning() << "[Config] config.json missing at" << path
+                               << "-> keep current settings (loaded before)";
+                    return false;
+                }
                 // 初次运行：尝试播种到 exeDir（便携友好），不行再播种到 configDir
                 const QString seedPath = QDir(exeDir).absoluteFilePath(QStringLiteral("config.json"));
                 QFile::copy(QStringLiteral(":/qt/qml/XuanHub/resources/default_config.json"),
@@ -146,6 +153,8 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
     if (m_theme != oldTheme) emit themeChanged();
     if (m_themeId != oldThemeId) emit themeIdChanged();
     if (m_barMode != oldBarMode) emit barModeChanged();
+    // 已成功从真实文件加载：此后文件缺失时不再播种默认配置（见上方缺失分支）
+    m_everLoadedFromFile = true;
     return true;
 }
 
@@ -160,7 +169,11 @@ bool ConfigService::save(const QJsonObject& root) {
         qWarning() << "[Config] save failed: cannot open" << m_activePath << "-" << f.errorString();
         return false;
     }
-    f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    const QByteArray json = QJsonDocument(root).toJson(QJsonDocument::Indented);
+    if (f.write(json) != json.size()) {
+        qWarning() << "[Config] save write failed:" << m_activePath << "-" << f.errorString();
+        return false;
+    }
     if (!f.commit()) {
         qWarning() << "[Config] save commit failed:" << m_activePath << "-" << f.errorString();
         return false;

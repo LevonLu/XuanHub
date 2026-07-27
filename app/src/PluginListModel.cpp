@@ -46,7 +46,9 @@ void PluginListModel::setPlugins(const QVector<PluginManager::LoadedPlugin>& ite
     m_items.clear();
 
     auto sorted = items;
-    std::sort(sorted.begin(), sorted.end(),
+    // stable_sort：同 position 同 order 的插件保持加载顺序——std::sort 对等价
+    // 元素相对顺序不定，热重载（重新加载）后同 order 插件排位会随机互换
+    std::stable_sort(sorted.begin(), sorted.end(),
               [](const PluginManager::LoadedPlugin& a,
                  const PluginManager::LoadedPlugin& b) {
                   static const QString posOrder[] = {

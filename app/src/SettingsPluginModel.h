@@ -36,8 +36,10 @@ public:
     Qt::ItemFlags flags(const QModelIndex& index) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    // 重建：config 条目 ∪ exeDir 下磁盘发现
-    void reload(const QList<PluginConfigEntry>& entries, const QString& exeDir);
+    // 重建：config 条目 ∪ exeDir 下磁盘发现；rawEntries 为 config.json 的 plugins
+    // 数组原文（行内存原始对象，导出以其为底覆盖已知键，手写未知键不丢）
+    void reload(const QList<PluginConfigEntry>& entries, const QJsonArray& rawEntries,
+                const QString& exeDir);
 
     // 按 id 读写 config 草稿单字段（SettingsPluginProxy 用，绕过 QModelIndex）
     QVariant configValue(const QString& id, const QString& key) const;
@@ -56,6 +58,8 @@ private:
         int order = 0;
         int width = 0;             // 插件宽度（像素，0=跟随内容自适应）
         QVariantMap config;        // 结构化 config 草稿（全量，未知键随之保留）
+        QJsonObject raw;           // config 条目原始 JSON（导出以其为底，未知键保留；
+                                   // 磁盘发现行无原始对象，为空则全新组装）
         QJsonArray schema;         // sidecar "settings"（可空）
         QUrl settingsQml;          // sidecar "settingsQml"（可空）
     };

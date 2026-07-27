@@ -30,7 +30,8 @@ public:
     explicit ConfigService(QObject* parent = nullptr);
 
     // 解析顺序：exeDir/config.json（便携/开发优先）→ configDir/config.json；
-    // 都不存在则把内置默认配置落地到 configDir 后读取。返回是否读到外部配置。
+    // 都不存在时：首运行（尚未成功加载过）把内置默认配置播种落地后读取；
+    // 已加载过（运行中文件被删/改名）则保留当前设置返回 false，不再播种。
     // 可重入（M7）：解析失败时保留旧值返回 false；成功时仅对变化项 emit NOTIFY。
     bool load(const QString& exeDir, const QString& configDir);
 
@@ -70,4 +71,7 @@ private:
     QList<PluginConfigEntry> m_pluginEntries;
     QString m_activePath;
     QJsonObject m_raw;   // load() 时留存的原始 JSON（M8 save 的组装底稿）
+    // 首次从真实文件成功加载后置 true：之后文件缺失不再播种默认配置
+    //（运行中文件被删/改名时热重载若重新播种，bar 会整体翻成默认主题/模式）
+    bool m_everLoadedFromFile = false;
 };

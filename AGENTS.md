@@ -113,7 +113,7 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 
 ### EventBus（插件间通信）
 
-`xuanhub::EventBus`（宿主 main 栈上单例，经 `BarPluginContext` 下发）：`subscribe(topic, receiver, slot)` / `publish(topic, QVariantMap)`，slot 形如 `onPayload(QVariantMap)`；订阅者以 `QPointer` 持有防悬空。插件间不直接互调。现有 topic：`theme.changed`；`app.notify`（插件 → 托盘气泡，为此 `TrayIcon` 在 `loadFrom` **之前**创建——订阅必须先于发布）。`EventBus.h` 用 `Q_SIGNALS` 而非 `signals`（`QT_NO_KEYWORDS` 插件也要包含它）。
+`xuanhub::EventBus`（宿主 main 栈上单例，经 `BarPluginContext` 下发）：`subscribe(topic, receiver, slot)` / `publish(topic, QVariantMap)`，slot 形如 `onPayload(QVariantMap)`；订阅者以 `QPointer` 持有防悬空；同 (receiver, slot) 重复订阅会被去重忽略（publish 不重复投递）。插件间不直接互调。**插件 `shutdown()` 必须删光自己订阅过 EventBus 的对象**——泄漏的订阅对象在 DLL unload 后 QPointer 仍非空，下次 publish 会对已卸载代码 invoke → 宿主崩溃。现有 topic：`theme.changed`；`app.notify`（插件 → 托盘气泡，为此 `TrayIcon` 在 `loadFrom` **之前**创建——订阅必须先于发布）。`EventBus.h` 用 `Q_SIGNALS` 而非 `signals`（`QT_NO_KEYWORDS` 插件也要包含它）。
 
 ### 主题系统（多主题包 × 双模式）
 
@@ -138,9 +138,9 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 
 **工作模式**：`bar.mode` = `appbar`（默认）/ `taskbar`。taskbar 选型：`SetParent` 嵌入 `Shell_TrayWnd` 是业界验证方案（TrafficMonitor 等；Deskband 已被 Win11 移除、顶层透明叠加有 z-order 缺陷，均未采用）。`TaskbarEmbed` 把 BarWindow `SetParent` 到 `Shell_TrayWnd`（强制 `WS_CHILD`、保留 `WS_EX_NOACTIVATE`），贴合任务栏左侧（`bar.taskbarOffsetX` 微调），高度跟随任务栏、背景全透明、宽度收缩为内容宽；500ms 轮询矫正位置与 z-order。explorer 重启时经 `TaskbarCreated` 与 `taskbarVanished` 双路触发 `recreateForTaskbar()` 重新嵌入（`TaskbarCreated` 是广播、进程内每个顶层窗口都收到，`TaskbarMonitor` 去重后顺延到事件循环只重建一次，不在消息分发栈内同步 destroy/create）。切换方式：改 config 热重载 / 托盘勾选项 / 设置窗口。
 
-**热重载**：保存 config.json 自动生效（`QFileSystemWatcher` + 300ms 防抖，重命名式保存后自动重挂；文件缺失期退而监视父目录，永不失挂），或托盘 "重新加载配置"。`reload()` 顺序：`load()`（解析失败保留旧配置）→ theme 按文件覆盖 → `setupBar()` 重协商 → `shutdownAll() → loadFrom() → setPlugins()` 全量重载（同一槽函数内完成，QML 不会碰到悬空 viewModel）。
+**热重载**：保存 config.json 自动生效（`QFileSystemWatcher` + 300ms 防抖，重命名式保存后自动重挂；文件缺失期退而监视父目录，永不失挂）。`reload()` 顺序：`load()`（解析失败保留旧配置；**运行中文件丢失同样保留当前设置**——qrc 播种仅限首运行从未成功加载过时）→ theme 按文件覆盖 → `setupBar()` 重协商 → plugins 段指纹比对：**未变则跳过插件重载**（改主题/高度不再摧毁插件状态），变了才 `shutdownAll() → loadFrom() → setPlugins()` 全量重载（同一槽函数内完成，QML 不会碰到悬空 viewModel）。托盘 "重新加载配置" 走 `forceReload()` 无条件全量（插件 DLL 更新后用它）。
 
-**写回与设置窗口**：`ConfigService::save()` 用 QSaveFile 原子写，只改已知键、未知键不丢。设置窗口（托盘 "设置..." → `SettingsController` 懒建 + `SettingsWindow.qml`）只做一件事：校验后写 config.json，**生效全靠 watcher，不直接调 reload**。插件列表来自 config ∪ sidecar 元数据并集；`pybridge` 总开关保存时自动托管。开机自启逻辑在 `AutoStart.h`。
+**写回与设置窗口**：`ConfigService::save()` 用 QSaveFile 原子写，只改已知键、未知键不丢。设置窗口（托盘 "设置..." → `SettingsController` 懒建 + `SettingsWindow.qml`）只做一件事：校验后写 config.json，**生效全靠 watcher，不直接调 reload**。插件列表来自 config ∪ sidecar 元数据并集；`pybridge` 总开关保存时自动托管。**草稿过期保护**：打开窗口时快照配置指纹（bar 已知键 + plugins 数组原文，紧凑 JSON），apply 前重算比对，不一致（窗口打开期间被热重载/手动编辑改动）拒绝保存并提示重开窗口，防旧草稿静默覆盖外部改动；保存成功后更新指纹。插件条目草稿行内存原始 QJsonObject，导出以其为底只覆盖已知键（条目级手写未知键不丢）。开机自启逻辑在 `AutoStart.h`。
 
 **插件设置 schema 化**：设置窗口插件页为 master-detail。插件 config 编辑方式两种并存，**自绘优先（settingsQml > settings > 无）**：`settings` 由 sidecar 声明分组→字段（bool/int/double/string/color/enum/json），框架生成表单（契约见 `plugins_py/README.md`）；`settingsQml` 是插件自带 QML（示例 `plugins/launcher/LauncherSettings.qml`），根 Item 声明 `property var plugin`，注入 `SettingsPluginProxy` 草稿桥，经 `value(key)/setValue(key,v)` 读写草稿。草稿存于 `SettingsPluginModel` 行内（未知键保留），导出按 schema 校验，保存仍走 `apply() → save → watcher`。**时序契约**：切换选中时框架保证 `pluginProxy.pluginId` 先于右侧面板刷新指向新插件（`pluginList.onCurrentIdChanged` 显式定序，不用 Binding——求值顺序不保证，曾致 countdown 默认键写进 sysinfo 条目）；自绘页读草稿初始化放 `onPluginChanged`（注入晚于 `Component.onCompleted`），异步写默认值前校验 `plugin.pluginId`。
 

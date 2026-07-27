@@ -135,8 +135,15 @@ void BarWindow::setupBar() {
     // 不能只用"屏幕边缘 - 高度"的理想位置，否则窗口会压在任务栏上
     const QRect rcPhys = m_guard->lastRect();
     if (rcPhys.height() > 0) {
-        setGeometry(sg.x(), sg.y() + qRound(qreal(rcPhys.top()) / dpr),
-                    sg.width(), qRound(qreal(rcPhys.height()) / dpr));
+        // 统一从物理矩形的 top/bottom 两条边各自换算再取差得高度：
+        // 125%/175% 分数缩放下 round(h*dpr)（ABM 协商用）与
+        // round(h/dpr) 两个方向取整不互逆，若再对 height 单独取整，
+        // bar 底边与工作区边界会出现 1px 缝隙/压盖（实测）
+        const int yLog = qRound(qreal(rcPhys.top()) / dpr);
+        // 排他底边：QRect::bottom() 是含端点语义（top+height-1），直接用会少 1px
+        const int bottomLog = qRound(qreal(rcPhys.top() + rcPhys.height()) / dpr);
+        setGeometry(sg.x(), sg.y() + yLog,
+                    sg.width(), bottomLog - yLog);
     } else {
         const int y = top ? sg.y() : (sg.bottom() - h + 1);
         setGeometry(sg.x(), y, sg.width(), h);

@@ -4,6 +4,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QRegularExpression>
+#include <QtMath>
 
 #include <exception>
 #include <vector>
@@ -20,7 +21,17 @@ nb::object variantToPy(const QVariant& v) {
     case QMetaType::LongLong:  return nb::int_(v.toLongLong());
     case QMetaType::UInt:
     case QMetaType::ULongLong: return nb::int_(static_cast<qlonglong>(v.toULongLong()));
-    case QMetaType::Double:    return nb::float_(v.toDouble());
+    case QMetaType::Double: {
+        const double d = v.toDouble();
+        // QJsonDocument 数字没有整型概念，一律以 double 进 QVariant；能无损
+        // 表示为整数的按 int 传给 Python，否则 config 里 "intervalSec": 300
+        // 在 Python 侧收到 300.0，isinstance(x, int) 为 False。
+        // int64 边界用双端区间判断（2^63 可精确表示为 double），避免把越界
+        // double static_cast 成 qlonglong 的未定义行为
+        if (qFloor(d) == d && d >= -9223372036854775808.0 && d < 9223372036854775808.0)
+            return nb::int_(static_cast<qlonglong>(d));
+        return nb::float_(d);
+    }
     case QMetaType::QString:   return nb::str(v.toString().toStdString().c_str());
     case QMetaType::QStringList: {
         nb::list l;
@@ -145,12 +156,32 @@ bool PyProxyViewModel::load() {
     bool hasUpdate = false;
     try {
         nb::gil_scoped_acquire gil;
+        // 模块名查重：id 清洗（[^A-Za-z0-9_]→_）后可能撞名——"py-foo" 与
+        // "py_foo" 都洗成 xuanhub_py_foo；直接注册会静默覆盖 sys.modules
+        // 里的现存模块。热重载路径析构先 pop 自身再重新 load，不会误判自身
+        nb::object sysModules = nb::module_::import_("sys").attr("modules");
+        const std::string modNameKey = m_modName.toStdString();
+        if (nb::cast<bool>(sysModules.attr("__contains__")(modNameKey.c_str()))) {
+            // 取现存模块的 __file__ 指出冲突对象；拿不到就留空（内置模块等）
+            QString existing;
+            try {
+                nb::handle mod = sysModules[modNameKey.c_str()];
+                if (nb::hasattr(mod, "__file__") && !mod.attr("__file__").is_none())
+                    existing = QString::fromStdString(
+                        nb::cast<std::string>(mod.attr("__file__")));
+            } catch (...) {
+            }
+            qWarning() << "[PyBridge]" << m_id << ": module name" << m_modName
+                       << "conflicts with already-loaded module" << existing
+                       << "(id 清洗后撞名，如 py-foo vs py_foo) - skip load";
+            return false;
+        }
         // 按文件路径导入（子插件目录不在 sys.path 上；模块名全局唯一防冲突）
         nb::object util = nb::module_::import_("importlib.util");
-        nb::object spec = util.attr("spec_from_file_location")(m_modName.toStdString().c_str(),
+        nb::object spec = util.attr("spec_from_file_location")(modNameKey.c_str(),
                                                                filePath.toStdString().c_str());
         m_module = util.attr("module_from_spec")(spec);
-        nb::module_::import_("sys").attr("modules")[m_modName.toStdString().c_str()] = m_module;
+        sysModules[modNameKey.c_str()] = m_module;
         // 子插件目录挂到 sys.path 末尾（必须在 exec_module 之前，使 main.py 可导入
         // 同目录子包）；去重防热重载反复追加导致 sys.path 无界增长
         nb::object sysPath = nb::module_::import_("sys").attr("path");

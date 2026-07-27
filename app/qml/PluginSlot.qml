@@ -16,8 +16,10 @@ Item {
     // 宽度：config 的 width>0 时用固定宽（用户在设置里为该插件指定），
     // 否则跟随加载的插件 QML 根 Item 宽度（自适应，即默认行为）。
     // 注意：固定宽模式下 Loader 内容会被裁剪/留白，由插件 QML 自行处理对齐。
+    // slot.item.width 用 Math.max(0, ...) 防御：插件忘声明 width 时为 0，
+    // 负值会扰乱 ListView contentWidth（零宽不可见的情形由 onLoaded 告警提示）
     width: model.width > 0 ? model.width
-                           : (slot.item ? slot.item.width
+                           : (slot.item ? Math.max(0, slot.item.width)
                                         : (slot.status === Loader.Error ? errorBadge.width : 0))
 
     // 自然内容宽度上报：设置窗口「手动」宽度的初始值取它。
@@ -37,6 +39,12 @@ Item {
         onLoaded: {
             if (slot.item)
                 slot.item.plugin = model.viewModel
+            // 零宽/负宽告警：插件根 Item 忘声明正 width 时槽位宽 0，加载
+            // 成功却完全不可见且无任何日志——此处显式提示（模型里有插件 id）
+            if (slot.item && slot.item.width <= 0)
+                console.warn("[PluginSlot]", model.id,
+                             "item width =", slot.item.width,
+                             "（插件根 Item 必须声明正宽度，否则槽位不可见）")
             // 注意：不要在这里给 wrapper.width 赋值——命令式赋值会销毁
             // 上面的声明式绑定，item 宽度后续变化将无法跟踪
         }
@@ -54,7 +62,9 @@ Item {
         width: badgeText.implicitWidth + 12
         height: wrapper.height
         // colors 里的值是字符串：先经 color 属性隐式转换再拆通道（字符串无 .r/.g/.b）
-        property color dangerColor: themeManager.colors.danger
+        // themeManager/colors.danger 缺失时给 fallback（参照 main.qml 的空值防御）
+        property color dangerColor: (themeManager && themeManager.colors.danger !== undefined)
+                                    ? themeManager.colors.danger : "#f38ba8"
         // danger 配 25% alpha 当底色（淡红告警感，不打扰）
         color: Qt.rgba(dangerColor.r, dangerColor.g, dangerColor.b, 0.25)
         radius: 4
@@ -63,7 +73,8 @@ Item {
             id: badgeText
             anchors.centerIn: parent
             text: "⚠ " + model.id
-            color: themeManager.colors.danger
+            // 自定义属性不能跨 item 裸名引用，必须经 id 限定（实测 ReferenceError）
+            color: errorBadge.dangerColor
             font.pixelSize: 12
         }
     }

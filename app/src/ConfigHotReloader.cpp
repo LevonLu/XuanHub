@@ -12,6 +12,27 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+
+namespace {
+// plugins 段指纹：条目按文件序序列化为紧凑 JSON。
+// 用于判断"这次保存到底动没动插件配置"——没动就不做全量重载
+QString pluginsFingerprint(const QList<PluginConfigEntry>& entries) {
+    QJsonArray arr;
+    for (const auto& e : entries) {
+        QJsonObject o;
+        o.insert(QStringLiteral("id"), e.id);
+        o.insert(QStringLiteral("position"), e.position);
+        o.insert(QStringLiteral("order"), e.order);
+        o.insert(QStringLiteral("width"), e.width);
+        o.insert(QStringLiteral("config"), QJsonObject::fromVariantMap(e.config));
+        arr.append(o);
+    }
+    return QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
+}
+} // namespace
 
 ConfigHotReloader::ConfigHotReloader(ConfigService* config, ThemeManager* theme,
                                      ThemeRegistry* registry,
@@ -36,6 +57,9 @@ ConfigHotReloader::ConfigHotReloader(ConfigService* config, ThemeManager* theme,
         m_debounce.start();
     });
     armWatcher();
+    // 构造晚于 main() 的首次 loadFrom：以当前生效的插件配置为基准指纹，
+    // 之后 watcher 触发的 reload 才能识别"plugins 段其实没变"
+    m_pluginsFingerprint = pluginsFingerprint(m_config->pluginEntries());
 }
 
 void ConfigHotReloader::armWatcher() {
@@ -56,8 +80,12 @@ void ConfigHotReloader::armWatcher() {
     }
 }
 
-void ConfigHotReloader::reload() {
-    qDebug() << "[Config] reload triggered";
+void ConfigHotReloader::reload() { reloadImpl(false); }
+
+void ConfigHotReloader::forceReload() { reloadImpl(true); }
+
+void ConfigHotReloader::reloadImpl(bool force) {
+    qDebug() << "[Config] reload triggered" << (force ? "(force)" : "");
     // 先重挂监视：即使本次 load 失败提前返回，也不让 watcher 停在失挂状态
     armWatcher();
     // 解析失败（文件缺失/JSON 写坏）→ ConfigService 保留旧值，本次不动任何东西
@@ -82,9 +110,17 @@ void ConfigHotReloader::reload() {
     // 高度/边缘：重新协商 AppBar 并定位窗口（幂等；值没变也无副作用）
     m_window->setupBar();
 
-    // 插件全量重载：先 shutdown 删光插件对象再 load，
+    // 插件全量重载：仅在 plugins 段真的变了（或托盘强制）时执行——改主题色、
+    // 高度这类无关变更不再摧毁所有插件状态（打开的弹窗、内部计时、Python
+    // 子插件运行时）。顺序铁律：先 shutdown 删光插件对象再 load，
     // 全程在同一槽函数内完成（不经事件循环），QML 不会访问悬空 viewModel；
     // setPlugins 内部 begin/endResetModel 驱动 ListView 重建 delegate
+    const QString fp = pluginsFingerprint(m_config->pluginEntries());
+    if (!force && fp == m_pluginsFingerprint) {
+        qDebug() << "[Config] plugins section unchanged, skip plugin reload";
+        return;
+    }
+    m_pluginsFingerprint = fp;
     m_pm->shutdownAll();
     m_pm->loadFrom(QDir(m_exeDir).absoluteFilePath(QStringLiteral("plugins")),
                    m_config->pluginEntries());

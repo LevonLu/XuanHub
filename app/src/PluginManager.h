@@ -35,7 +35,7 @@ public:
     void loadFrom(const QString& pluginsDir, const QList<PluginConfigEntry>& enabled);
 
     const QVector<LoadedPlugin>& loaded() const { return m_loaded; }
-    void shutdownAll();
+    void shutdownAll();   // 重载周期约定：必须先 shutdownAll() 再 loadFrom()（入口有重入保护）
 
 private:
     xuanhub::EventBus* m_bus;

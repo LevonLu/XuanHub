@@ -88,6 +88,11 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
 
 void TrayIcon::show() { m_tray->show(); }
 
+TrayIcon::~TrayIcon() {
+    // m_menu 以无父方式创建（setContextMenu 不接管所有权），须显式释放
+    delete m_menu;
+}
+
 void TrayIcon::refreshIcon() {
     // 从当前主题色板取色绘制托盘图标（底色=bg，边框=accent，文字=fg）
     // 主题不存在或缺字段时给深色兜底

@@ -15,6 +15,7 @@ class TrayIcon : public QObject {
 public:
     explicit TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
                       ConfigService* config, QObject* parent = nullptr);
+    ~TrayIcon() override;   // m_menu 无父对象（setContextMenu 不接管所有权），需手动释放
 
     void show();
     void recreate();               // Explorer 重启后重建托盘图标

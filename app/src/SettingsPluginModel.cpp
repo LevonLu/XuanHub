@@ -4,7 +4,9 @@
 #include <QColor>
 #include <QDir>
 #include <QFile>
+#include <QHash>
 #include <QJsonDocument>
+#include <QtMath>
 
 namespace {
 QJsonObject readJsonFile(const QString& path) {
@@ -17,10 +19,19 @@ QJsonObject readJsonFile(const QString& path) {
 bool validateField(const QJsonObject& f, const QVariant& v, QString* why) {
     const QString type = f.value(QStringLiteral("type")).toString();
     if (type == QStringLiteral("int")) {
-        bool ok = false;
-        const int n = v.toInt(&ok);
         const int lo = f.value(QStringLiteral("min")).toInt(INT_MIN);
         const int hi = f.value(QStringLiteral("max")).toInt(INT_MAX);
+        // double 经 toInt 会静默截断且 ok=true（1.9→1），非整数 double 直接判非法；
+        // 字符串数字（如 "12"）维持 toInt 解析可过
+        if (v.metaType().id() == QMetaType::Double) {
+            const double dv = v.toDouble();
+            if (qFloor(dv) != dv) {
+                *why = QStringLiteral("应为 %1-%2 的整数").arg(lo).arg(hi);
+                return false;
+            }
+        }
+        bool ok = false;
+        const int n = v.toInt(&ok);
         if (!ok || n < lo || n > hi) {
             *why = QStringLiteral("应为 %1-%2 的整数").arg(lo).arg(hi);
             return false;
@@ -133,9 +144,18 @@ QHash<int, QByteArray> SettingsPluginModel::roleNames() const {
     };
 }
 
-void SettingsPluginModel::reload(const QList<PluginConfigEntry>& entries, const QString& exeDir) {
+void SettingsPluginModel::reload(const QList<PluginConfigEntry>& entries,
+                                 const QJsonArray& rawEntries, const QString& exeDir) {
     beginResetModel();
     m_rows.clear();
+
+    // 原始条目按 id 索引：导出时以其为底只覆盖已知键，手写未知键（如 "note"）不丢
+    QHash<QString, QJsonObject> rawById;
+    for (const auto& v : rawEntries) {
+        const QJsonObject o = v.toObject();
+        const QString id = o.value(QStringLiteral("id")).toString();
+        if (!id.isEmpty()) rawById.insert(id, o);
+    }
 
     // 1) config 条目（跳过 pybridge：基础设施总开关，导出时自动托管）
     for (const auto& e : entries) {
@@ -147,6 +167,7 @@ void SettingsPluginModel::reload(const QList<PluginConfigEntry>& entries, const 
         r.order = e.order;
         r.width = e.width;
         r.config = e.config;   // 结构化草稿直接入行（未知键随之保留）
+        r.raw = rawById.value(e.id);
         // kind 先按 id 前缀猜，磁盘发现命中后会被纠正
         r.kind = e.id.startsWith(QStringLiteral("py_")) ? QStringLiteral("python")
                                                         : QStringLiteral("dll");
@@ -251,7 +272,9 @@ bool SettingsPluginModel::toPluginEntriesJson(QJsonArray* out, QString* err) con
                 }
             }
         }
-        QJsonObject o;
+        // 以原始条目为底（手写未知键如 "note" 保留），只覆盖框架已知键；
+        // 磁盘发现行无原始对象（raw 为空），退化为全新组装
+        QJsonObject o = r.raw;
         o[QStringLiteral("id")] = r.id;
         o[QStringLiteral("position")] = r.position;
         o[QStringLiteral("order")] = r.order;

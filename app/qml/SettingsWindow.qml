@@ -523,22 +523,39 @@ Pane {
                             property int currentRow: -1
                             property var rowData: ({})
 
+                            // 重入守卫：自绘设置页注入后写默认值 → setConfigValue →
+                            // dataChanged → 本函数被重入 → rowData 重赋 → customPage.source
+                            // 重评估 → 页面重载又写值（日志刷 binding loop 噪音）。重入调用
+                            // 只记标记，收尾后经 callLater 顺延一次（跳出当前调用栈断链）
+                            property bool _refreshing: false
+                            property bool _pendingRefresh: false
+
                             function refresh() {
+                                if (_refreshing) { _pendingRefresh = true; return }
+                                _refreshing = true
                                 const m = settingsVM.pluginModel
                                 currentRow = m.rowForId(pluginList.currentId)
-                                if (currentRow < 0) { rowData = ({}); return }
-                                rowData = {
-                                    "name": m.roleValue(currentRow, "name"),
-                                    "version": m.roleValue(currentRow, "version"),
-                                    "author": m.roleValue(currentRow, "author"),
-                                    "kind": m.roleValue(currentRow, "kind"),
-                                    "enabled": m.roleValue(currentRow, "enabled"),
-                                    "position": m.roleValue(currentRow, "position"),
-                                    "order": m.roleValue(currentRow, "order"),
-                                    "width": m.roleValue(currentRow, "width"),
-                                    "discovered": m.roleValue(currentRow, "discovered"),
-                                    "schema": m.roleValue(currentRow, "schema"),
-                                    "settingsQml": m.roleValue(currentRow, "settingsQml")
+                                if (currentRow < 0) {
+                                    rowData = ({})
+                                } else {
+                                    rowData = {
+                                        "name": m.roleValue(currentRow, "name"),
+                                        "version": m.roleValue(currentRow, "version"),
+                                        "author": m.roleValue(currentRow, "author"),
+                                        "kind": m.roleValue(currentRow, "kind"),
+                                        "enabled": m.roleValue(currentRow, "enabled"),
+                                        "position": m.roleValue(currentRow, "position"),
+                                        "order": m.roleValue(currentRow, "order"),
+                                        "width": m.roleValue(currentRow, "width"),
+                                        "discovered": m.roleValue(currentRow, "discovered"),
+                                        "schema": m.roleValue(currentRow, "schema"),
+                                        "settingsQml": m.roleValue(currentRow, "settingsQml")
+                                    }
+                                }
+                                _refreshing = false
+                                if (_pendingRefresh) {
+                                    _pendingRefresh = false
+                                    Qt.callLater(refresh)
                                 }
                             }
                             Component.onCompleted: refresh()

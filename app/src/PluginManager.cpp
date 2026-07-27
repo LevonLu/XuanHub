@@ -31,6 +31,12 @@ PluginManager::~PluginManager() {
 }
 
 void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfigEntry>& enabled) {
+    // 重入保护：必须先 shutdownAll() 再 loadFrom()——直接重入会把新 id 追加进
+    // m_loaded（旧 id 靠 m_loadedIds 挡住刷 duplicate 告警），模型与 manager 状态分裂
+    if (!m_loaded.isEmpty() || !m_loaders.isEmpty()) {
+        qWarning() << "[Plugin] loadFrom called without prior shutdownAll, ignored";
+        return;
+    }
     m_shut = false;   // 复位闩锁，支持 shutdownAll() → loadFrom() 热重载周期
 
     QHash<QString, const PluginConfigEntry*> enabledMap;
@@ -143,25 +149,27 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
 
             const QString pos = sanitizePosition(entry->position, meta.id);
 
-            // qmlUrl：插件返回相对 DLL 目录的文件名，拼成绝对 file URL
+            // qmlUrl：契约是相对 DLL 目录的文件名，拼成绝对 file URL；
+            // 绝对 URL 原样采用——旧实现对 file:///C:/... 取 rel.path() 得到带
+            // 前导斜杠的 "/C:/..."，再 fromLocalFile 会拼出损坏路径静默红占位
             const QUrl rel = plugin->qmlUrl();
-            const QString qmlPath = rel.isRelative()
-                ? d.absoluteFilePath(rel.path())
-                : rel.path();
+            const QUrl qmlUrl = rel.isRelative()
+                ? QUrl::fromLocalFile(d.absoluteFilePath(rel.path()))
+                : rel;
             LoadedPlugin lp;
             lp.id = meta.id;
             lp.position = pos;
             lp.order = entry->order;
             lp.width = entry->width;
             lp.viewModel = plugin->viewModel();
-            lp.qmlUrl = QUrl::fromLocalFile(qmlPath);
+            lp.qmlUrl = qmlUrl;
             lp.iface = plugin;
 
             m_loaders.append(loader);
             m_loaded.append(lp);
             m_loadedIds.insert(meta.id);
             qDebug() << "[Plugin] loaded:" << meta.id
-                     << "pos=" << lp.position << "qml=" << qmlPath;
+                     << "pos=" << lp.position << "qml=" << qmlUrl.toString();
         }
     }
 }
@@ -180,7 +188,11 @@ void PluginManager::shutdownAll() {
     }
     m_hosts.clear();
     for (auto* loader : m_loaders) {
-        loader->unload();
+        // unload 失败（如插件残留存活对象）时 DLL 实际未卸载——框架已清空
+        // m_loaded 认为卸了，下次 loadFrom 会加载第二份，必须告警
+        if (!loader->unload())
+            qWarning() << "[Plugin] unload failed:" << loader->fileName()
+                       << loader->errorString();
         delete loader;
     }
     m_loaders.clear();

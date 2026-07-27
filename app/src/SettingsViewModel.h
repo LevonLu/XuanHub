@@ -84,6 +84,10 @@ signals:
 
 private:
     void setErrorMessage(const QString& m);
+    // 配置指纹：设置窗口关心的内容（bar 段已知键 + plugins 数组原始 JSON）
+    // 序列化为紧凑字符串。打开窗口时快照进 m_openFingerprint，apply 前重算比对，
+    // 不一致说明窗口打开期间配置被外部改动（草稿是旧快照，保存会静默覆盖外部改动）
+    QString currentFingerprint() const;
 
     ConfigService* m_config;
     ThemeRegistry* m_registry;
@@ -101,4 +105,5 @@ private:
     QString m_themeId = QStringLiteral("xuanhub-default"); // 主题包 id
     bool m_autoStart = false;
     QString m_errorMessage;
+    QString m_openFingerprint;   // 打开窗口/上次成功保存时的配置指纹（草稿过期判定）
 };

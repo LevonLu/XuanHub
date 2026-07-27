@@ -12,6 +12,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QSet>
 
@@ -110,11 +111,35 @@ void SettingsViewModel::reloadFromConfig() {
     setTheme(m_themeMgr ? m_themeMgr->mode() : m_config->theme());
     setThemeId(m_themeMgr ? m_themeMgr->themeId() : m_config->themeId());
     setAutoStart(autostart::isEnabled());
-    m_pluginModel->reload(m_config->pluginEntries(), m_exeDir);
+    m_pluginModel->reload(m_config->pluginEntries(),
+                          m_config->rawConfig().value(QStringLiteral("plugins")).toArray(),
+                          m_exeDir);
+    // 快照配置指纹：窗口打开期间的草稿以此为底，apply 前据此判定外部改动
+    m_openFingerprint = currentFingerprint();
     setErrorMessage({});
 }
 
+QString SettingsViewModel::currentFingerprint() const {
+    // 只取本窗口会写回的内容：bar 段已知键 + plugins 数组原始 JSON（含手写未知键，
+    // 外部只改未知键同样算外部改动）。bar 未知键（如 monitor）本窗口不动，不入指纹
+    const QJsonObject root = m_config->rawConfig();
+    const QJsonObject bar = root.value(QStringLiteral("bar")).toObject();
+    QJsonObject barKeys;
+    for (const char* k : {"height", "edge", "mode", "opacity", "theme", "themeId"})
+        barKeys.insert(QString::fromLatin1(k), bar.value(QString::fromLatin1(k)));
+    QJsonObject fp;
+    fp[QStringLiteral("bar")] = barKeys;
+    fp[QStringLiteral("plugins")] = root.value(QStringLiteral("plugins")).toArray();
+    return QString::fromUtf8(QJsonDocument(fp).toJson(QJsonDocument::Compact));
+}
+
 bool SettingsViewModel::apply() {
+    // 草稿过期保护：窗口打开后配置被外部改动（热重载/手动编辑）则拒绝保存——
+    // 草稿是打开时的快照，继续保存会用旧草稿把外部改动整体覆盖、静默回滚
+    if (currentFingerprint() != m_openFingerprint) {
+        setErrorMessage(QStringLiteral("配置已被外部修改（热重载/手动编辑），请关闭设置窗口重开后再保存"));
+        return false;
+    }
     // 校验（QML 控件已限范围，这里双保险——草稿也可能被外部代码改动）
     if (m_barHeight < 24 || m_barHeight > 200) {
         setErrorMessage(QStringLiteral("状态栏高度需在 24–200 之间"));
@@ -159,6 +184,9 @@ bool SettingsViewModel::apply() {
         return false;
     }
     autostart::setEnabled(m_autoStart);
+    // 更新指纹到刚保存的状态：本次保存触发的热重载不算外部修改
+    //（save() 已把 m_raw 更新为同一内容，此处重算即新快照）
+    m_openFingerprint = currentFingerprint();
     setErrorMessage({});
     qDebug() << "[Settings] applied:"
              << "height=" << m_barHeight << "edge=" << m_barEdge

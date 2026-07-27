@@ -159,10 +159,11 @@ int main(int argc, char* argv[]) {
     window.setupBar();
     window.show();
 
-    // 配置热重载（M7）：文件监听自动触发 + 托盘 "重新加载配置" 手动触发
+    // 配置热重载（M7）：文件监听自动触发（plugins 段未变则跳过插件重载），
+    // 托盘 "重新加载配置" 手动触发走 forceReload（无条件全量，插件 DLL 更新后用）
     ConfigHotReloader reloader(&config, &theme, &registry, &pm, &model, &window, exeDir, configDir);
     QObject::connect(&tray, &TrayIcon::reloadRequested,
-                     &reloader, &ConfigHotReloader::reload);
+                     &reloader, &ConfigHotReloader::forceReload);
 
     // 设置窗口（M8）：托盘 "设置..." 打开（懒建，关闭=隐藏不销毁）
     SettingsController settingsCtl(&config, &theme, &registry, exeDir, &model);
@@ -173,11 +174,21 @@ int main(int argc, char* argv[]) {
     if (QCoreApplication::arguments().contains(QStringLiteral("--settings")))
         settingsCtl.open();
 
-    auto* monitor = new TaskbarMonitor(&tray, &window);
-    QAbstractEventDispatcher::instance()->installNativeEventFilter(monitor);
+    // 栈对象而非堆分配：进程退出时随 main 栈帧析构，避免泄漏；
+    // exec() 返回后必须先从事件分发器摘除过滤器（分发器是进程级单例，
+    // 不摘除则后续静态析构期的事件分发会回调到已销毁的栈对象）
+    TaskbarMonitor monitor(&tray, &window);
+    QAbstractEventDispatcher::instance()->installNativeEventFilter(&monitor);
 
     const int code = app.exec();
 
+    QAbstractEventDispatcher::instance()->removeNativeEventFilter(&monitor);
+
     qDebug() << "=== XuanHub exit code=" << code;
+    // 日志收尾：g_logFile 是 static，其析构发生在 main 返回之后——
+    // 不先摘除 message handler，此后静态对象析构里打的日志会访问
+    // 已析构的 g_logFile（UB）
+    qInstallMessageHandler(nullptr);
+    g_logFile.close();
     return code;
 }
