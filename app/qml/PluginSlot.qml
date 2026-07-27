@@ -8,6 +8,11 @@ Item {
     // 高度跟随所属 ListView（即 bar 实际高度），与 config.barHeight 联动；
     // 脱离 ListView 使用时的回退值 40
     height: ListView.view ? ListView.view.height : 40
+    // 裁剪是框架级硬保证：任何插件（固定宽内容溢出、或根 Item 宽度小于实际
+    // 内容）都不允许画出槽位边界——ListView 只裁剪整列不裁剪单个 delegate，
+    // 不裁剪溢出内容会直接画到相邻插件上（实测 usage_hub 固定宽 260 溢出
+    // 盖住 countdown）。固定宽模式下留白/截断后的对齐由插件 QML 自行处理。
+    clip: true
     // 宽度：config 的 width>0 时用固定宽（用户在设置里为该插件指定），
     // 否则跟随加载的插件 QML 根 Item 宽度（自适应，即默认行为）。
     // 注意：固定宽模式下 Loader 内容会被裁剪/留白，由插件 QML 自行处理对齐。
