@@ -22,6 +22,11 @@ Item {
 
     // 进度条样式："none"（不显示）| "bar"（水平）| "ring"（环形），由设置页 progressStyle 控制
     readonly property string progressStyle: (plugin && plugin.values && plugin.values.progressStyle) || "none"
+    // 遮罩进入/退出动画时长（ms，0=瞬变），由设置页 enterDurationMs/exitDurationMs 控制
+    readonly property int enterDuration: (plugin && plugin.values && plugin.values.enterDurationMs !== undefined)
+                                         ? plugin.values.enterDurationMs : 400
+    readonly property int exitDuration: (plugin && plugin.values && plugin.values.exitDurationMs !== undefined)
+                                        ? plugin.values.exitDurationMs : 400
     // 进度 0..1：total/remaining 由 main.py update() 提供
     readonly property real progress: {
         if (!plugin || !plugin.values) return 0
@@ -228,7 +233,8 @@ Item {
             }
         }
 
-        // 滑落动画（变更 clipRect.height，而非 Window 尺寸）
+        // 滑落动画（变更 clipRect.height，而非 Window 尺寸）；
+        // duration 由 showOverlay/hideOverlay 在 start 前按进入/退出分别赋值
         NumberAnimation {
             id: slideAnim
             target: clipRect
@@ -269,6 +275,7 @@ Item {
         overlay._animating = true
         snapProgress()   // 开场即归位到休息起点进度（此时 progress 已为 0），防"满格回落"
         clipRect.height = 0
+        slideAnim.duration = root.enterDuration
         slideAnim.from = 0
         slideAnim.to = gh
         overlay.show()
@@ -279,6 +286,7 @@ Item {
     function hideOverlay() {
         if (overlay._animating) return
         overlay._animating = true
+        slideAnim.duration = root.exitDuration
         slideAnim.from = clipRect.height
         slideAnim.to = 0
         slideAnim.start()

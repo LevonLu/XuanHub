@@ -36,6 +36,8 @@ Item {
             if (v("maskText") === undefined) sv("maskText", "休息一下")
             if (v("textSize") === undefined) sv("textSize", 24)
             if (v("progressStyle") === undefined) sv("progressStyle", "none")
+            if (v("enterDurationMs") === undefined) sv("enterDurationMs", 400)
+            if (v("exitDurationMs") === undefined) sv("exitDurationMs", 400)
         }
     }
     Component.onCompleted: initTimer.start()
@@ -74,6 +76,45 @@ Item {
                         onTextChanged: { var n = parseInt(text); if (!isNaN(n)) sv("restSeconds", n) }
                     }
                     Label { text: "秒" }
+                }
+            }
+        }
+
+        // ── 动画 ────────────────────────────────────────────
+        GroupBox {
+            title: "动画"
+            Layout.fillWidth: true
+            ColumnLayout {
+                spacing: 8
+                RowLayout {
+                    spacing: 8
+                    Label { text: "进入时长:"; Layout.preferredWidth: 70 }
+                    SpinBox {
+                        Layout.preferredWidth: 140
+                        from: 0; to: 3000; stepSize: 100
+                        value: v("enterDurationMs") !== undefined ? v("enterDurationMs") : 400
+                        onValueModified: sv("enterDurationMs", value)
+                    }
+                    Label {
+                        text: "ms（0 = 瞬间落下）"
+                        color: palette.placeholderText
+                        font.pixelSize: 11
+                    }
+                }
+                RowLayout {
+                    spacing: 8
+                    Label { text: "退出时长:"; Layout.preferredWidth: 70 }
+                    SpinBox {
+                        Layout.preferredWidth: 140
+                        from: 0; to: 3000; stepSize: 100
+                        value: v("exitDurationMs") !== undefined ? v("exitDurationMs") : 400
+                        onValueModified: sv("exitDurationMs", value)
+                    }
+                    Label {
+                        text: "ms（0 = 瞬间收起）"
+                        color: palette.placeholderText
+                        font.pixelSize: 11
+                    }
                 }
             }
         }

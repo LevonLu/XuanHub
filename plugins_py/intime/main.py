@@ -26,6 +26,8 @@ _mask_opacity = 0.92
 _mask_text = "休息一下"
 _text_size = 24
 _progress_style = "none"      # 锁屏进度条："none" | "bar" | "ring"
+_enter_duration_ms = 400      # 遮罩进入动画时长（0=瞬变）
+_exit_duration_ms = 400       # 遮罩退出动画时长（0=瞬变）
 
 
 def _fmt_time(seconds: int) -> str:
@@ -41,7 +43,7 @@ def init(config: dict):
     """注入 config.json 中本插件的 config 段。"""
     global _work_seconds, _rest_seconds, _mask_type, _mask_color
     global _mask_image, _mask_opacity, _mask_text, _text_size
-    global _progress_style
+    global _progress_style, _enter_duration_ms, _exit_duration_ms
     global _phase_start, _status, _overlay_active
 
     if isinstance(config, dict):
@@ -55,6 +57,8 @@ def init(config: dict):
         _text_size = max(12, min(72, int(config.get("textSize", 24))))
         ps = str(config.get("progressStyle", "none"))
         _progress_style = ps if ps in ("none", "bar", "ring") else "none"
+        _enter_duration_ms = max(0, min(3000, int(config.get("enterDurationMs", 400))))
+        _exit_duration_ms = max(0, min(3000, int(config.get("exitDurationMs", 400))))
 
     # 重置状态：总是从工作阶段开始
     _status = "working"
@@ -109,6 +113,8 @@ def update():
         "maskText": _mask_text,
         "textSize": _text_size,
         "progressStyle": _progress_style,
+        "enterDurationMs": _enter_duration_ms,
+        "exitDurationMs": _exit_duration_ms,
     }
 
 
