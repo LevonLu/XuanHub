@@ -19,7 +19,12 @@ Item {
         { "id": "glm", "name": "GLM (智谱)",
           "modes": ["plan"], "modeLabels": ["Plan"],
           "apiUrl": "https://open.bigmodel.cn",
-          "keyHint": "Auth Token" }
+          "keyHint": "Auth Token" },
+        { "id": "opencode_go", "name": "OpenCode Go",
+          "modes": ["go"], "modeLabels": ["Go"],
+          "apiUrl": "https://opencode.ai",
+          "keyHint": "Cookie",
+          "hasWorkspace": true }
     ]
 
     function findTemplate(vid) {
@@ -52,7 +57,7 @@ Item {
         vendors[i][key] = val
         if (key === "id") {
             var t = findTemplate(val)
-            if (t) { vendors[i].name = t.name; vendors[i].mode = t.modes[0]; vendors[i].apiUrl = t.apiUrl }
+            if (t) { vendors[i].name = t.name; vendors[i].mode = t.modes[0]; vendors[i].apiUrl = t.apiUrl; vendors[i].workspace = "" }
             // 切换厂商是结构性变化，需要重建 Repeater
             vendors = vendors.slice()
         }
@@ -64,7 +69,7 @@ Item {
         var f = supportedVendors[0]
         vendors = vendors.concat([{ "id": f.id, "name": f.name, "mode": f.modes[0],
             "enabled": true, "apiKey": "", "apiUrl": f.apiUrl,
-            "intervalSec": 300, "startHour": 8, "startMin": 30 }])
+            "intervalSec": 300, "startHour": 8, "startMin": 30, "workspace": "" }])
         commit()
     }
 
@@ -187,6 +192,27 @@ Item {
                             textFromValue: function(v) { return v + " 秒" }
                             valueFromText: function(t) { return parseInt(t) || 300 }
                             onValueChanged: root.updateField(index, "intervalSec", value)
+                        }
+                    }
+
+                    // ── 第四行：Workspace（仅 hasWorkspace 厂商需要，如 OpenCode Go）──
+                    RowLayout {
+                        Layout.fillWidth: true
+                        visible: { var t = root.findTemplate(modelData.id); return t ? !!t.hasWorkspace : false }
+                        spacing: 6
+
+                        Label {
+                            text: "Workspace"
+                            color: palette.windowText
+                            font.pixelSize: 11
+                        }
+
+                        TextField {
+                            Layout.fillWidth: true
+                            text: modelData.workspace || ""
+                            placeholderText: "留空使用默认"
+                            selectByMouse: true
+                            onTextChanged: root.updateField(index, "workspace", text)
                         }
                     }
                 }

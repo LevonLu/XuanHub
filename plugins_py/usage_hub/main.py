@@ -17,6 +17,7 @@ import traceback
 from vendors import VendorBase
 from vendors.deepseek import DeepseekVendor
 from vendors.glm import GLMVendor
+from vendors.opencode_go import OpenCodeGoVendor
 
 # ================= 模块级状态 =================
 _vendors: list[VendorBase] = []
@@ -30,6 +31,7 @@ _worker_thread: threading.Thread | None = None
 _VENDOR_REGISTRY = {
     "balance": DeepseekVendor,
     "plan": GLMVendor,
+    "go": OpenCodeGoVendor,
 }
 
 # ================= 配置加载 =================
@@ -138,6 +140,13 @@ def _rebuild_cache():
                 bar_5h = _make_mini_bar(pct_5h)
                 bar_w = _make_mini_bar(pct_w)
                 parts.append(f"[{v.name}] 5h:{bar_5h}{pct_5h}% W:{bar_w}{pct_w}%")
+            elif v.mode == "go":
+                # 摘要取滚动 + 月度两个代表性窗口（周窗口在弹窗卡片里看）
+                pct_r = v.data.get("go_rolling_pct", 0)
+                pct_m = v.data.get("go_monthly_pct", 0)
+                bar_r = _make_mini_bar(pct_r)
+                bar_m = _make_mini_bar(pct_m)
+                parts.append(f"[{v.name}] R:{bar_r}{pct_r}% M:{bar_m}{pct_m}%")
         elif v.status == "error":
             parts.append(f"[{v.name}] ERR")
         else:
@@ -265,7 +274,8 @@ def init(config):
                 "balance": "%.2f" % v.current_balance,
             }
             v.status = "ok"
-        elif isinstance(v, GLMVendor) and v.data:
+        elif v.mode in ("plan", "go") and v.data:
+            # plan/go 模式 data 即展示数据，非空即可恢复显示
             v.status = "ok"
 
     # 构建初始缓存

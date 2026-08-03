@@ -87,7 +87,9 @@ Item {
                         property string vid: modelData
                         sourceComponent: {
                             var mode = root.vval(vid, "mode")
-                            return (mode === "plan") ? planBarMini : balanceBarMini
+                            if (mode === "go") return goBarMini
+                            if (mode === "plan") return planBarMini
+                            return balanceBarMini
                         }
                     }
                 }
@@ -190,6 +192,49 @@ Item {
                         return (v !== undefined ? v : 0) + "%"
                     }
                     color: root.cMuted; font.pixelSize: 9; width: 28
+                }
+            }
+        }
+    }
+
+    // ── Mini Go（三行进度条：滚动/每周/每月）───────────
+    // 复用 planBarMini 的 16+4+50+4+28 行式布局，标签用单字
+    Component {
+        id: goBarMini
+        Column {
+            spacing: 2
+            // 显式 width：Loader 无显式尺寸时采纳 item 的 width；不给的话
+            // positioner 的 implicit 链会把本组件宽度算丢
+            width: 102
+            Repeater {
+                model: [
+                    { "key": "rolling", "label": "滚" },
+                    { "key": "weekly", "label": "周" },
+                    { "key": "monthly", "label": "月" }
+                ]
+                delegate: Row {
+                    spacing: 4
+                    Text { text: modelData.label; color: root.cFg; font.pixelSize: 9; width: 16 }
+                    Rectangle {
+                        width: 50; height: 10; radius: 5; color: root.cBg
+                        anchors.verticalCenter: parent.verticalCenter
+                        Rectangle {
+                            height: 10; radius: 5
+                            readonly property real pct: {
+                                var v = root.vval(vid, "go_" + modelData.key + "_pct")
+                                return (v !== undefined) ? Math.min(100, Math.max(0, Number(v))) : 0
+                            }
+                            width: Math.max(0, 50 * pct / 100)
+                            color: pct < 50 ? root.cSuccess : pct < 80 ? root.cWarning : root.cDanger
+                        }
+                    }
+                    Text {
+                        text: {
+                            var v = root.vval(vid, "go_" + modelData.key + "_pct")
+                            return (v !== undefined ? v : 0) + "%"
+                        }
+                        color: root.cMuted; font.pixelSize: 9; width: 28
+                    }
                 }
             }
         }
@@ -334,7 +379,9 @@ Item {
         for (let i = 0; i < ids.length; i++) {
             const vid = ids[i]
             const mode = pv[vid + "_mode"] || "balance"
-            const comp = (mode === "plan") ? planCardComp : balanceCardComp
+            let comp = balanceCardComp
+            if (mode === "plan") comp = planCardComp
+            else if (mode === "go") comp = goCardComp
             const obj = comp.createObject(cardContainer, {
                 "vendorId": vid
             })
@@ -767,6 +814,179 @@ Item {
                             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 if (plugin) plugin.call("refresh_vendor", [planCard.vendorId])
+                                Qt.callLater(rebuildCards)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── OpenCode Go 卡片 ────────────────────────────────────────
+    // 三个窗口（滚动/每周/每月）结构相同，用 Repeater + goWindowBox 渲染；
+    // 窗口定义数组只存 key 与标题，其余字段按 go_<key>_* 约定从 values 取
+    Component {
+        id: goCardComp
+        Rectangle {
+            id: goCard
+            property string vendorId: ""
+
+            Layout.fillWidth: true
+            implicitHeight: goCol.implicitHeight + 20
+            radius: 8; color: root.cPanel
+            border.width: 1; border.color: root.cBorder
+
+            ColumnLayout {
+                id: goCol; anchors.fill: parent; anchors.margins: 10; spacing: 6
+
+                // 标题行
+                RowLayout {
+                    Layout.fillWidth: true
+                    Rectangle {
+                        implicitWidth: 8; implicitHeight: 8; radius: 4
+                        color: root.vendorVal(goCard.vendorId, "status") === "ok" ? root.cSuccess
+                             : root.vendorVal(goCard.vendorId, "status") === "error" ? root.cDanger
+                             : root.cWarning
+                    }
+                    Text {
+                        text: root.vendorVal(goCard.vendorId, "name") || goCard.vendorId
+                        color: root.cFg; font.pixelSize: 13; font.bold: true
+                    }
+                    Item { Layout.fillWidth: true }
+                    Text { text: "Go"; color: root.cMuted; font.pixelSize: 10 }
+                }
+
+                // 数据区
+                Loader {
+                    Layout.fillWidth: true
+                    sourceComponent: {
+                        const st = root.vendorVal(goCard.vendorId, "status")
+                        return st === "ok" ? goDataOk : goDataErr
+                    }
+                }
+
+                Component {
+                    id: goDataErr
+                    Text {
+                        text: {
+                            const st = root.vendorVal(goCard.vendorId, "status")
+                            if (st === "error") return "错误: " + (root.vendorVal(goCard.vendorId, "error") || "未知")
+                            return "查询中..."
+                        }
+                        color: root.vendorVal(goCard.vendorId, "status") === "error" ? root.cDanger : root.cMuted
+                        font.pixelSize: 11
+                    }
+                }
+
+                Component {
+                    id: goDataOk
+                    ColumnLayout {
+                        spacing: 8
+
+                        // 订阅状态 + Zen 余额兜底（页面级全局信息）
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: 6
+                            Text {
+                                text: root.vendorVal(goCard.vendorId, "go_subscribed") ? "已订阅 OpenCode Go" : "未订阅"
+                                color: root.vendorVal(goCard.vendorId, "go_subscribed") ? root.cSuccess : root.cMuted
+                                font.pixelSize: 11; font.bold: true
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                text: "Zen 余额兜底: " + (root.vendorVal(goCard.vendorId, "go_use_balance") ? "开启" : "关闭")
+                                color: root.cMuted; font.pixelSize: 10
+                            }
+                        }
+
+                        // 三个窗口
+                        Repeater {
+                            model: [
+                                { "key": "rolling", "title": "滚动窗口" },
+                                { "key": "weekly", "title": "每周窗口" },
+                                { "key": "monthly", "title": "每月窗口" }
+                            ]
+                            delegate: goWindowBox
+                        }
+                    }
+                }
+
+                // 单个窗口块：标题 + 用量金额 + 重置倒计时 + 进度条
+                Component {
+                    id: goWindowBox
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: goWinCol.implicitHeight + 12
+                        radius: 6; color: root.cBg
+                        border.width: 1; border.color: root.cBorder
+
+                        ColumnLayout {
+                            id: goWinCol
+                            anchors.fill: parent; anchors.margins: 8; spacing: 4
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text {
+                                    text: modelData.title
+                                    color: root.cFg; font.pixelSize: 11; font.bold: true
+                                }
+                                Text {
+                                    text: root.vendorVal(goCard.vendorId, "go_" + modelData.key + "_detail") || "-"
+                                    color: root.cMuted; font.pixelSize: 10
+                                }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: "重置: " + (root.vendorVal(goCard.vendorId, "go_" + modelData.key + "_reset") || "-")
+                                    color: root.cMuted; font.pixelSize: 10
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true; spacing: 6
+
+                                Rectangle {
+                                    Layout.fillWidth: true; Layout.preferredHeight: 14
+                                    radius: 7; color: root.cPanel
+
+                                    Rectangle {
+                                        id: goWinBar
+                                        anchors.left: parent.left
+                                        anchors.top: parent.top; anchors.bottom: parent.bottom
+                                        radius: 7
+                                        readonly property real pct: {
+                                            var v = root.vendorVal(goCard.vendorId, "go_" + modelData.key + "_pct")
+                                            return (v !== undefined && v !== null) ? Math.min(100, Math.max(0, Number(v))) : 0
+                                        }
+                                        width: Math.max(goWinBar.radius * 2, parent.width * goWinBar.pct / 100)
+                                        color: goWinBar.pct < 50 ? root.cSuccess : goWinBar.pct < 80 ? root.cWarning : root.cDanger
+                                    }
+                                }
+
+                                Text {
+                                    text: (root.vendorVal(goCard.vendorId, "go_" + modelData.key + "_pct") || 0) + "%"
+                                    color: root.cFg; font.pixelSize: 12; font.bold: true
+                                    Layout.preferredWidth: 35
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.cBorder }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        text: "更新: " + (root.vendorVal(goCard.vendorId, "last_update") || "...")
+                        color: root.cMuted; font.pixelSize: 10
+                    }
+                    Item { Layout.fillWidth: true }
+                    Text {
+                        text: "⟳"; color: root.cAccent; font.pixelSize: 14
+                        MouseArea {
+                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (plugin) plugin.call("refresh_vendor", [goCard.vendorId])
                                 Qt.callLater(rebuildCards)
                             }
                         }
