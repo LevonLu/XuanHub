@@ -25,6 +25,16 @@
       Bundle   - Copy Lib/ (excluding site-packages) and DLLs/ from system
                  Python install (~30 MB); Python 子插件开箱即用，无需用户安装。
 
+.PARAMETER BundlePipPackages
+    Comma-separated package name prefixes to inject from the packaging machine's
+    site-packages into the bundle's Lib/site-packages (Bundle strategy only).
+    Default empty. site-packages is excluded wholesale EXCEPT these explicitly
+    named packages — for plugins that need third-party deps out of the box
+    (e.g. heartrate 插件依赖 bleak + winrt 后端).
+    Prefix matching copies the top-level entry (dir/file) and its *.dist-info,
+    so a namespace package like winrt (winrt/ + winrt_*.dist-info) is covered
+    by the single prefix "winrt".
+
 .PARAMETER NoPrune
     Skip pruning of unnecessary files.
 #>
@@ -48,6 +58,9 @@ param(
     [string]$PythonStrategy = "None",
 
     [Parameter(Mandatory = $false)]
+    [string]$BundlePipPackages = "",
+
+    [Parameter(Mandatory = $false)]
     [switch]$NoPrune
 )
 
@@ -62,9 +75,10 @@ function Resolve-PythonHome {
         Get-ChildItem $root -ErrorAction SilentlyContinue | ForEach-Object {
             $ver = $_.PSChildName   # 形如 "3.13"（32 位安装带 "-32" 后缀）
             if ($ver -match '^3\.(\d+)') {
-                $home = (Get-ItemProperty "$root\$ver\InstallPath" -ErrorAction SilentlyContinue).'(default)'
-                if ($home -and (Test-Path (Join-Path $home 'python.exe'))) {
-                    $candidates += [pscustomobject]@{ Minor = [int]$Matches[1]; Home = $home.TrimEnd('\', '/') }
+                # 注意：不能用 $home（PowerShell 只读自动变量，赋值即抛异常）
+                $pyHome = (Get-ItemProperty "$root\$ver\InstallPath" -ErrorAction SilentlyContinue).'(default)'
+                if ($pyHome -and (Test-Path (Join-Path $pyHome 'python.exe'))) {
+                    $candidates += [pscustomobject]@{ Minor = [int]$Matches[1]; Home = $pyHome.TrimEnd('\', '/') }
                 }
             }
         }
@@ -317,6 +331,36 @@ if ($PythonStrategy -eq "Bundle") {
             } else {
                 $dllsSize = (Get-ChildItem $dstDlls -Recurse -File | Measure-Object -Property Length -Sum).Sum
                 Write-Host ("        DLLs/ done, size: {0:N1} MB" -f ($dllsSize / 1MB))
+            }
+        }
+
+        # BundlePipPackages：显式点名的第三方包注入包内 Lib/site-packages
+        #（site-packages 整体排除的唯一例外，供依赖第三方库的插件开箱即用）。
+        # 按前缀匹配顶层条目（目录/文件 + *.dist-info 一并拷贝）：
+        # winrt 是共享命名空间包（winrt/ + winrt_*.dist-info），单个前缀 "winrt" 全覆盖。
+        if ($BundlePipPackages) {
+            $sp = Join-Path $pythonHome "Lib\site-packages"
+            $dstSp = Join-Path $DistDir "Lib\site-packages"
+            if (-not (Test-Path $sp)) {
+                Write-Warning "site-packages not found: $sp (BundlePipPackages ignored)"
+            } else {
+                New-Item -ItemType Directory -Path $dstSp -Force -ErrorAction SilentlyContinue | Out-Null
+                foreach ($pkg in ($BundlePipPackages -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+                    $matched = @(Get-ChildItem $sp -Filter "$pkg*" -ErrorAction SilentlyContinue)
+                    if ($matched.Count -eq 0) {
+                        Write-Warning "BundlePipPackages: '$pkg' not found in site-packages"
+                        continue
+                    }
+                    foreach ($item in $matched) {
+                        Copy-Item $item.FullName (Join-Path $dstSp $item.Name) -Recurse -Force
+                    }
+                    $size = ($matched | ForEach-Object {
+                        if ($_.PSIsContainer) {
+                            (Get-ChildItem $_.FullName -Recurse -File | Measure-Object -Property Length -Sum).Sum
+                        } else { $_.Length }
+                    } | Measure-Object -Sum).Sum
+                    Write-Host ("        + site-packages/{0}* ({1} 项, {2:N1} MB)" -f $pkg, $matched.Count, ($size / 1MB))
+                }
             }
         }
     }
