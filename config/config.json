@@ -9,6 +9,7 @@
     { "id": "py_heartrate", "position": "right", "order": 4, "config": { "intervalMs": 1000, "autoReconnect": true, "staleSeconds": 10 } },
     { "id": "py_intime", "position": "right", "order": 5, "config": { "intervalMs": 1000, "workSeconds": 1500, "restSeconds": 300 } },
     { "id": "py_countdown", "position": "right", "order": 6, "config": { "intervalMs": 1000, "mode": "每日重复", "targetTime": "18:00", "prefix": "下班", "suffix": "剩余", "reachedText": "下班啦🎉", "reachedColor": "" } },
-    { "id": "py_todo", "position": "right", "order": 7, "config": { "intervalMs": 1000, "prefix": "📝", "barMode": "数量" } }
+    { "id": "py_todo", "position": "right", "order": 7, "config": { "intervalMs": 1000, "prefix": "📝", "barMode": "数量" } },
+    { "id": "py_pet", "position": "right", "order": 8, "config": { "intervalMs": 1000, "petType": "猫", "petName": "宠物" } },
   ]
 }
