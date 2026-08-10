@@ -2,6 +2,7 @@
 // 契约：加载的插件 QML 根 Item 必须声明 `property var plugin`；
 // 框架加载后把 viewModel 注入到该属性。
 import QtQuick
+import XuanHub
 
 Item {
     id: wrapper
@@ -67,7 +68,7 @@ Item {
                                     ? themeManager.colors.danger : "#f38ba8"
         // danger 配 25% alpha 当底色（淡红告警感，不打扰）
         color: Qt.rgba(dangerColor.r, dangerColor.g, dangerColor.b, 0.25)
-        radius: 4
+        radius: UiMetrics.radiusS
 
         Text {
             id: badgeText

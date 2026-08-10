@@ -20,11 +20,11 @@
     "bg":      "#faf4ed",
     "panel":   "#fffaf3",
     "fg":      "#575279",
-    "muted":   "#9893a5",
+    "muted":   "#7d7890",
     "accent":  "#907aa9",
     "danger":  "#b4637a",
     "success": "#56949f",
-    "warning": "#ea9d34",
+    "warning": "#b06d15",
     "hover":   "#f2e9e1",
     "border":  "#e8e0db",
     "onAccent":"#faf4ed"

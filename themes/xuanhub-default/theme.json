@@ -21,12 +21,12 @@
     "panel":   "#e6e6e6",
     "fg":      "#313244",
     "muted":   "#6c7086",
-    "accent":  "#89b4fa",
-    "danger":  "#f38ba8",
-    "success": "#40a02b",
-    "warning": "#df8e1d",
-    "hover":   "#dcdcdc",
-    "border":  "#cccccc",
+    "accent":  "#2456d6",
+    "danger":  "#c1122f",
+    "success": "#348a33",
+    "warning": "#b5710f",
+    "hover":   "#dce0e8",
+    "border":  "#ccd0da",
     "onAccent":"#ffffff"
   }
 }

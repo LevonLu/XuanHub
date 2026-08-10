@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
+import XuanHub
 
 Item {
     id: root
@@ -318,7 +319,7 @@ Item {
             tip.x = x; tip.y = y
         }
         Rectangle {
-            anchors.fill: parent; radius: 5; color: root.cPanel
+            anchors.fill: parent; radius: UiMetrics.radiusS; color: root.cBg
             border.width: 1; border.color: root.cBorder
             Text {
                 id: tipText; anchors.centerIn: parent
@@ -497,7 +498,7 @@ Item {
                     Item { Layout.fillWidth: true }
                     Rectangle {
                         implicitWidth: refreshBtnText.implicitWidth + 24
-                        implicitHeight: 30; radius: 6
+                        implicitHeight: UiMetrics.controlHeightS; radius: UiMetrics.radiusS
                         color: refreshMa.containsMouse ? root.cBorder : root.cPanel
                         border.width: 1; border.color: root.cBorder
                         Text {

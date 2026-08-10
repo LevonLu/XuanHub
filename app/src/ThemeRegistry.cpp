@@ -71,12 +71,12 @@ ThemeRegistry::ThemeRegistry(QObject* parent) : QObject(parent) {
         {QStringLiteral("panel"),   QStringLiteral("#e6e6e6")},
         {QStringLiteral("fg"),      QStringLiteral("#313244")},
         {QStringLiteral("muted"),   QStringLiteral("#6c7086")},
-        {QStringLiteral("accent"),  QStringLiteral("#89b4fa")},
-        {QStringLiteral("danger"),  QStringLiteral("#f38ba8")},
-        {QStringLiteral("success"), QStringLiteral("#40a02b")},
-        {QStringLiteral("warning"), QStringLiteral("#df8e1d")},
-        {QStringLiteral("hover"),   QStringLiteral("#dcdcdc")},
-        {QStringLiteral("border"),  QStringLiteral("#cccccc")},
+        {QStringLiteral("accent"),  QStringLiteral("#2456d6")},
+        {QStringLiteral("danger"),  QStringLiteral("#c1122f")},
+        {QStringLiteral("success"), QStringLiteral("#348a33")},
+        {QStringLiteral("warning"), QStringLiteral("#b5710f")},
+        {QStringLiteral("hover"),   QStringLiteral("#dce0e8")},
+        {QStringLiteral("border"),  QStringLiteral("#ccd0da")},
         {QStringLiteral("onAccent"),QStringLiteral("#ffffff")},
     };
 }

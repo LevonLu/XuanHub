@@ -120,7 +120,7 @@ Pane {
                     Text {
                         anchors.centerIn: parent
                         text: "×"
-                        color: closeMa.containsMouse ? "#ffffff" : root.c.fg
+                        color: closeMa.containsMouse ? root.c.onAccent : root.c.fg
                         font.pixelSize: 18
                     }
                     MouseArea {
