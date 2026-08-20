@@ -1,7 +1,8 @@
 # Python 子插件开发契约（M6）
 
-> 由 `pybridge` 桥接插件承载：它内嵌 CPython 解释器，扫描本目录下的子插件，
-> 为每个子插件创建一个通用代理 ViewModel 注入 QML。写 Python 子插件**不需要**碰 C++。
+> 由 `pybridge` 桥接插件承载：每个子插件运行在独立的 `python.exe` worker 进程中，
+> 宿主只保留异步代理 ViewModel 注入 QML。Python 崩溃、GIL 卡死和扩展模块异常不会进入
+> XuanHub 进程。写 Python 子插件**不需要**碰 C++。
 
 ## 目录结构
 
@@ -91,15 +92,17 @@ def stop():          # 可选。卸载/热重载前调用，用来停后台线�
 ```
 
 - 刷新节拍：`config.intervalMs`（毫秒，缺省 1000）。
-- `invoke()` 返回后框架会立即再拉一次 `update()`，交互反馈不用等下个 tick。
+- `invoke()` 会异步排队；worker 返回后框架立即再拉一次 `update()`，交互反馈不用等下个 tick。
+  `plugin.call()` 的同步返回值仅表示是否成功入队，不能依赖 Python `invoke()` 的返回值。
 - `update()` 返回的 dict 值支持：str / int / float / bool / list / dict（嵌套），其他类型转字符串。
 - main.py 所在目录会追加到 `sys.path` 末尾，可导入同目录的辅助模块。
 - 抛异常不会拖垮宿主：traceback 记入日志，UI 保留上一次的值。
 
 ## 网络请求与后台线程
 
-**`update()/invoke()` 内禁止阻塞**（它们在宿主 GUI 线程执行且持 GIL，`requests.get()` 之类会卡死整个 bar）。
-但**允许**自己起 Python 线程做后台 IO——CPython 在标准库阻塞 IO 和 `sleep` 时会释放 GIL，不影响界面。
+**`update()/invoke()` 内仍禁止阻塞**。它们现在在各自 worker 中执行，不会卡住宿主 GUI，
+但同一插件的 IPC 请求串行：`requests.get()` 之类会让该插件的显示与点击反馈停滞，直到超时或
+worker 被桥接层回收。允许自己起 Python 线程做后台 IO；线程只碰纯 Python 状态即可。
 规则：线程只碰纯 Python 对象（**绝不触达任何 Qt/QML 对象**），结果写进模块级缓存，`update()` 只瞬读缓存；
 
 ```python
@@ -130,11 +133,13 @@ def update():
     return dict(_cache)
 ```
 
-**必须实现 `stop()`**：热重载（如设置窗口保存配置）会销毁旧模块并重新 import，旧线程若不停下会泄漏运行。
+**应实现 `stop()`**：热重载、宿主关闭或 IPC 断开时 worker 会尽力调用它；若插件代码卡死，
+桥接层会在短暂宽限后终止整个 worker，避免旧线程或原生扩展残留在宿主进程中。
 `urllib`（含 HTTPS）开箱即用；`requests` 等第三方库装进用户自装的 Python 即可直接 import
 （解释器指向用户自装的 Python，其 `site-packages` 对插件可见）。
-运行前提：机器装有 CPython ≥3.12（python.org 或任意渠道）；未安装时 pybridge 整体停用并弹托盘提示，
-宿主与其他插件不受影响（打包脚本可选 `-PythonStrategy Bundle` 内置标准库做成免安装包）。
+运行前提：机器装有 CPython ≥3.12（必须含 `python.exe`、标准库与 `python3XX.dll`）；未安装时
+pybridge 整体停用并弹托盘提示，宿主与其他插件不受影响。打包脚本的 `-PythonStrategy Bundle`
+会一并带上 `python.exe`、标准库与 DLL，做成免安装包。
 
 ## QML 契约
 
@@ -149,12 +154,13 @@ Item {
 ```
 
 - 数据：`plugin.values.<key>`（dict 属性袋，整体替换触发刷新）。
-- 行为：`plugin.call(name, args)` → main.py 的 `invoke(name, args)`。
+- 行为：`plugin.call(name, args)` → 异步 IPC → main.py 的 `invoke(name, args)`；不要依赖其同步返回值。
 
 ## 调试
 
 - 日志：`%APPDATA%/XuanHub/xuanhub.log`（Python traceback 也在其中）。
 - 改 main.py / *.qml 后**重新构建**（POST_BUILD 会同步到 dist）再重启宿主即生效，免重编 DLL。
+  `bridge_worker.py` 是桥接协议实现，必须随 `plugins_py/` 一同部署，勿单独删除或修改其协议。
 - 参考实现：`hello/`（时间刷新 + 点击计数）。
 
 ## 已知限制（后续里程碑）

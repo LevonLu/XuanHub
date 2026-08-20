@@ -113,7 +113,7 @@ void SettingsViewModel::reloadFromConfig() {
     setAutoStart(autostart::isEnabled());
     m_pluginModel->reload(m_config->pluginEntries(),
                           m_config->rawConfig().value(QStringLiteral("plugins")).toArray(),
-                          m_exeDir);
+                          m_exeDir, m_config->activePath());
     // 快照配置指纹：窗口打开期间的草稿以此为底，apply 前据此判定外部改动
     m_openFingerprint = currentFingerprint();
     setErrorMessage({});

@@ -7,6 +7,7 @@
 #pragma once
 #include <QObject>
 #include <QPointer>
+#include <QRect>
 #include <QTimer>
 
 class QWindow;
@@ -45,4 +46,5 @@ private:
     void* m_trayHwnd = nullptr;  // HWND，头文件不引入 windows.h
     int m_offsetX = 0;           // 逻辑像素
     int m_contentWidth = 0;      // 逻辑像素
+    QRect m_lastTarget;          // 上次已应用的父窗口客户区目标矩形，避免 500ms 重复 SetWindowPos
 };

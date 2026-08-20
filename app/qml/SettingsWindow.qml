@@ -921,6 +921,7 @@ Pane {
                                     // 防止切换插件时 pluginId 时序竞态把字段写到上一个插件
                                     property bool _initializing: false
                                     placeholderText: field.placeholder || ""
+                                    echoMode: field.secret === true ? TextInput.Password : TextInput.Normal
                                     Component.onCompleted: init()
                                     onFieldChanged: init()
                                     function init() {

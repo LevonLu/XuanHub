@@ -22,6 +22,7 @@ bool TaskbarEmbed::attach(QWindow* win, int offsetXLogical) {
     }
     m_trayHwnd = tray;
     m_offsetX = offsetXLogical;
+    m_lastTarget = {};
 
     // 已 attach 同一窗口：幂等更新（热重载反复走到），不重复 SetParent
     if (m_win != win) {
@@ -70,11 +71,13 @@ void TaskbarEmbed::detach() {
         qDebug() << "[TaskbarEmbed] detached";
     }
     m_trayHwnd = nullptr;
+    m_lastTarget = {};
 }
 
 void TaskbarEmbed::setContentWidth(int wLogical) {
     if (wLogical == m_contentWidth) return;
     m_contentWidth = wLogical;
+    m_lastTarget = {};
     if (isAttached()) relayout();
 }
 
@@ -98,10 +101,13 @@ void TaskbarEmbed::relayout() {
     ScreenToClient(tray, &pt);
 
     const HWND hwnd = reinterpret_cast<HWND>(m_win->winId());
-    // HWND_TOP：任务栏重绘/布局变化（Win11 居中图标、小组件按钮）会把我们压到
-    // 兄弟窗口之下，每次矫正顺带抬回顶层；SWP_NOACTIVATE 维持不抢焦点
+    const QRect target(pt.x, pt.y, w, trayH);
+    if (target == m_lastTarget) return;
+    // HWND_TOP：仅在几何变化时把窗口抬回兄弟窗口顶层；此前每 500ms 无条件调用会
+    // 造成无谓窗口消息与电量唤醒，任务栏矩形/内容宽变化仍会立即失效缓存。
     SetWindowPos(hwnd, HWND_TOP, pt.x, pt.y, w, trayH,
                  SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    m_lastTarget = target;
 }
 
 void TaskbarEmbed::poll() {

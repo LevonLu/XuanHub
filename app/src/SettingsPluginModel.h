@@ -39,7 +39,7 @@ public:
     // 重建：config 条目 ∪ exeDir 下磁盘发现；rawEntries 为 config.json 的 plugins
     // 数组原文（行内存原始对象，导出以其为底覆盖已知键，手写未知键不丢）
     void reload(const QList<PluginConfigEntry>& entries, const QJsonArray& rawEntries,
-                const QString& exeDir);
+                const QString& exeDir, const QString& configPath);
 
     // 按 id 读写 config 草稿单字段（SettingsPluginProxy 用，绕过 QModelIndex）
     QVariant configValue(const QString& id, const QString& key) const;
@@ -67,4 +67,5 @@ private:
     void mergeDiscovered(const QJsonObject& meta, const QString& kind, const QString& dir);
 
     QVector<Row> m_rows;
+    QString m_secretDir;  // secrets.json 与当前 config.json 同目录（便携模式也成立）
 };

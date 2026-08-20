@@ -44,6 +44,9 @@ QHash<int, QByteArray> PluginListModel::roleNames() const {
 void PluginListModel::setPlugins(const QVector<PluginManager::LoadedPlugin>& items) {
     beginResetModel();
     m_items.clear();
+    // 设置窗口的「自然宽度」只能代表当前已加载插件；保留旧 id 会让移除后
+    // 再启用的插件继承过期尺寸。
+    m_contentWidths.clear();
 
     auto sorted = items;
     // stable_sort：同 position 同 order 的插件保持加载顺序——std::sort 对等价

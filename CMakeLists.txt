@@ -5,6 +5,8 @@ project(XuanHub
     DESCRIPTION "玄枢 / XuanHub — Qt6/QML Windows 插件化状态栏框架"
     LANGUAGES CXX)
 
+include(CTest)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -27,24 +29,13 @@ add_subdirectory(app)
 add_subdirectory(plugins/clock)
 add_subdirectory(plugins/sysinfo)
 
-# pybridge（Python 桥接）为可选组件：依赖构建机的 Python ≥3.12 开发包
-#（稳定 ABI 头文件 + python3.lib）与 third_party/nanobind 子模块，
-# 缺任一则跳过该插件而非让整个配置失败——其余功能不受影响，
-# 运行时 Python 子插件整体不可用而已
-find_package(Python 3.12 QUIET COMPONENTS Interpreter Development Development.SABIModule)
-if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/nanobind/cmake/nanobind-config.cmake")
-    set(_nanobind_ok TRUE)
-else()
-    set(_nanobind_ok FALSE)
-endif()
-if(Python_FOUND AND _nanobind_ok)
-    add_subdirectory(plugins/pybridge)
-elseif(NOT Python_FOUND)
-    message(WARNING "未找到 Python >=3.12 开发包，跳过 pybridge 插件"
-        "（Python 子插件将不可用；安装 python.org 发行版后重新 configure 即可启用）")
-else()
-    message(WARNING "third_party/nanobind 子模块未初始化，跳过 pybridge 插件"
-        "（执行 git submodule update --init --recursive 后重新 configure 即可启用）")
+# pybridge 不再内嵌 CPython：只需 Qt 网络组件启动独立 python.exe worker，
+# 因而构建机无需 Python 开发包或 nanobind 子模块。运行时找不到 Python 3.12+
+# 时插件自行降级，不影响宿主与其他插件。
+add_subdirectory(plugins/pybridge)
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
 endif()
 
 # ── 便携打包目标 ─────────────────────────────────────────────

@@ -1,9 +1,11 @@
 // SettingsPluginModel.cpp
 #include "SettingsPluginModel.h"
+#include "SecretStore.h"
 
 #include <QColor>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QHash>
 #include <QJsonDocument>
 #include <QtMath>
@@ -145,9 +147,11 @@ QHash<int, QByteArray> SettingsPluginModel::roleNames() const {
 }
 
 void SettingsPluginModel::reload(const QList<PluginConfigEntry>& entries,
-                                 const QJsonArray& rawEntries, const QString& exeDir) {
+                                  const QJsonArray& rawEntries, const QString& exeDir,
+                                  const QString& configPath) {
     beginResetModel();
     m_rows.clear();
+    m_secretDir = QFileInfo(configPath).absolutePath();
 
     // 原始条目按 id 索引：导出时以其为底只覆盖已知键，手写未知键（如 "note"）不丢
     QHash<QString, QJsonObject> rawById;
@@ -245,6 +249,7 @@ bool SettingsPluginModel::setConfigValue(const QString& id, const QString& key,
 bool SettingsPluginModel::toPluginEntriesJson(QJsonArray* out, QString* err) const {
     QJsonArray arr;
     bool anyPython = false;
+    const SecretStore secrets(m_secretDir);
     for (const auto& r : m_rows) {
         if (!r.enabled) continue;
         if (r.position != QStringLiteral("left") && r.position != QStringLiteral("center")
@@ -254,6 +259,10 @@ bool SettingsPluginModel::toPluginEntriesJson(QJsonArray* out, QString* err) con
         }
         if (r.order < 0) {
             *err = r.id + QStringLiteral("：order 不能为负");
+            return false;
+        }
+        if (r.width < 0 || r.width > 800) {
+            *err = r.id + QStringLiteral("：width 需在 0-800 之间");
             return false;
         }
         // schema 声明字段的导出校验（双保险；QML 控件是第一道）
@@ -275,11 +284,39 @@ bool SettingsPluginModel::toPluginEntriesJson(QJsonArray* out, QString* err) con
         // 以原始条目为底（手写未知键如 "note" 保留），只覆盖框架已知键；
         // 磁盘发现行无原始对象（raw 为空），退化为全新组装
         QJsonObject o = r.raw;
+        QVariantMap config = r.config;
+        const QJsonObject rawConfig = r.raw.value(QStringLiteral("config")).toObject();
+        // schema 中显式标记 secret 的字段不写入 config.json，而是存 DPAPI 密文库；
+        // config 仅保留不可跨插件复用的引用。旧版明文会在用户下一次保存设置时迁移。
+        for (const auto& gv : r.schema) {
+            const auto fields = gv.toObject().value(QStringLiteral("fields")).toArray();
+            for (const auto& fv : fields) {
+                const auto f = fv.toObject();
+                if (!f.value(QStringLiteral("secret")).toBool()) continue;
+                const QString key = f.value(QStringLiteral("key")).toString();
+                if (key.isEmpty()) continue;
+                const QString secretId = SecretStore::idForPluginField(r.id, key);
+                if (!config.contains(key)) {
+                    // 解密失败时不能把已有引用静默删掉，保留它供用户修复凭据环境后重试。
+                    if (SecretStore::referenceId(rawConfig.value(key)) == secretId)
+                        config.insert(key, SecretStore::referenceValue(secretId).toVariant());
+                    continue;
+                }
+                const QString plaintext = config.value(key).toString();
+                if (!secrets.write(secretId, plaintext)) {
+                    *err = r.id + QStringLiteral("：无法安全保存 ")
+                           + f.value(QStringLiteral("label")).toString(key);
+                    return false;
+                }
+                if (plaintext.isEmpty()) config.remove(key);
+                else config.insert(key, SecretStore::referenceValue(secretId).toVariant());
+            }
+        }
         o[QStringLiteral("id")] = r.id;
         o[QStringLiteral("position")] = r.position;
         o[QStringLiteral("order")] = r.order;
         o[QStringLiteral("width")] = r.width;   // 0=自适应，>0 固定像素宽
-        o[QStringLiteral("config")] = QJsonObject::fromVariantMap(r.config);
+        o[QStringLiteral("config")] = QJsonObject::fromVariantMap(config);
         arr.append(o);
         if (r.kind == QStringLiteral("python")) anyPython = true;
     }

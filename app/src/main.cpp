@@ -11,6 +11,8 @@
 #include <QPointer>
 #include <QQuickStyle>
 #include <QTimer>
+#include <QMutex>
+#include <QMutexLocker>
 
 #include <windows.h>
 
@@ -27,8 +29,12 @@
 
 // ── 日志系统 ──────────────────────────────────────────────
 static QFile g_logFile;
+static QMutex g_logMutex;
 
 static void logToFile(QtMsgType type, const QMessageLogContext&, const QString& msg) {
+    // Qt 日志可能来自 SysInfo worker 或 Python 后台回调；同一 QFile 不能无锁并发
+    // 写入，否则行内容会交错且 QTextStream 状态不可靠。
+    QMutexLocker locker(&g_logMutex);
     if (g_logFile.isOpen()) {
         QTextStream s(&g_logFile);
         const QString now = QDateTime::currentDateTime()

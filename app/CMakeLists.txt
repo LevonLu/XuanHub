@@ -17,6 +17,9 @@ qt_add_executable(XuanHub WIN32
     src/ConfigService.h
     src/ConfigService.cpp
 
+    src/SecretStore.h
+    src/SecretStore.cpp
+
     src/ConfigHotReloader.h
     src/ConfigHotReloader.cpp
 
@@ -93,6 +96,7 @@ target_link_libraries(XuanHub PRIVATE
     shell32              # SHAppBarMessage
     user32               # SetWindowPos / 工作区
     gdi32
+    crypt32              # Windows DPAPI（插件 API Key 密钥库）
 )
 
 target_compile_definitions(XuanHub PRIVATE

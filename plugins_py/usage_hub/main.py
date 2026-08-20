@@ -316,15 +316,9 @@ def invoke(name, args):
 
 
 def stop():
-    """卸载/热重载前由宿主调用，停掉后台线程。
-
-    join(timeout=2)：正常路径线程阻塞在 _refresh_event.wait 上，set 后立即
-    退出，join 几乎不阻塞 GUI 线程；若线程正在 query()（网络 IO），最多等
-    2 秒兜底——线程是 daemon，进程退出也会被回收。worker 侧在落盘前检查
-    _stop_flag，保证 join 超时放行的旧线程也不会再写状态文件。"""
-    global _stop_flag
+    """卸载/热重载前发出停止信号；不能在 GUI 线程 join 网络查询。"""
+    global _stop_flag, _worker_thread
     _stop_flag = True
     _refresh_event.set()
-    t = _worker_thread
-    if t is not None and t.is_alive():
-        t.join(timeout=2)
+    # worker 在 query() 返回后会检查 stop 标志，且不会再落盘；daemon 线程自行退出。
+    _worker_thread = None

@@ -66,7 +66,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# 定位本机 Python ≥3.12 安装目录（nanobind 稳定 ABI 硬性下限）：
+# 定位本机 Python ≥3.12 安装目录（隔离 worker 运行时下限）：
 # 注册表枚举全部 PythonCore 版本（取最高）→ py launcher → PATH；
 # 排除 WindowsApps 商店占位 stub
 function Resolve-PythonHome {
@@ -236,7 +236,12 @@ if ($PythonStrategy -ne "Bundle") {
             Write-Host "        Removed stale $d/ directory"
         }
     }
-    # 解释器 DLL 只在 Bundle 策略下随包分发，其余策略清掉旧产物
+    # 隔离 worker 所需解释器与 DLL 只在 Bundle 策略下随包分发，其余策略清掉旧产物
+    $oldPythonExe = Join-Path $DistDir "python.exe"
+    if (Test-Path $oldPythonExe) {
+        Remove-Item $oldPythonExe -Force -ErrorAction SilentlyContinue
+        Write-Host "        Removed stale python.exe"
+    }
     Get-ChildItem $DistDir -Filter 'python3*.dll' -File -ErrorAction SilentlyContinue |
         ForEach-Object {
             Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
@@ -251,6 +256,12 @@ foreach ($f in @("python313.zip", "python313._pth")) {
         Write-Host "        Removed stale $f"
     }
 }
+# 内嵌解释器架构已移除；手动对旧 dist 打包时也不能把后端 DLL 带进成品。
+$oldBackend = Join-Path $DistDir "pybackend.dll"
+if (Test-Path $oldBackend) {
+    Remove-Item $oldBackend -Force -ErrorAction SilentlyContinue
+    Write-Host "        Removed stale pybackend.dll"
+}
 
 if ($PythonStrategy -eq "Bundle") {
     # ---- Bundle: copy Lib/ and DLLs/ from system Python install (~30 MB) ----
@@ -264,8 +275,15 @@ if ($PythonStrategy -eq "Bundle") {
     } else {
         Write-Host "        Python home: $pythonHome"
 
-        # 解释器 DLL 进包（M12 稳定 ABI）：python3.dll（转发器）+ python3XX.dll
-        #（实际运行时）。构建期 CMake 不再拷贝它们，打包时随标准库一并搬运
+        # 独立 worker 需要 python.exe；连同 python3.dll（转发器）+ python3XX.dll
+        # 与标准库一起搬运，Bundle 包无需用户安装 Python。
+        $pythonExe = Join-Path $pythonHome "python.exe"
+        if (Test-Path $pythonExe) {
+            Copy-Item $pythonExe (Join-Path $DistDir "python.exe") -Force
+            Write-Host "        + python.exe"
+        } else {
+            Write-Warning "python.exe not found: $pythonExe (isolated Python plugins will be disabled)"
+        }
         foreach ($dll in (Get-ChildItem $pythonHome -Filter 'python3*.dll' -File)) {
             Copy-Item $dll.FullName $DistDir -Force
             Write-Host "        + $($dll.Name)"

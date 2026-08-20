@@ -9,7 +9,7 @@
 - `XuanHub.exe`：无边框、置顶、`Qt::Tool` 的 `QQuickView`，两种形态（`bar.mode`）：`appbar`（默认，Win32 AppBar 占住主屏顶部/底部工作区）；`taskbar`（`SetParent` 嵌入原生任务栏左侧，透明、不占工作区）。
 - 插件是独立 DLL（`QPluginLoader` 加载），自带 QML 界面，框架只负责发现、加载、布局。内置示例插件：`clock`、`sysinfo`。
 - 仅支持 Windows，直接用 Win32 API，不做跨平台抽象。
-- `pybridge` 桥接插件内嵌 CPython（nanobind + 稳定 ABI，通吃 Python 3.12+），承载 `plugins_py/` 下的 Python 子插件；分发默认不内置标准库，依赖用户自装 CPython ≥3.12，未安装时 pybridge 自动停用并托盘提示（见 §5）；打包脚本可选 Bundle 策略做成免安装包（见 §8）。
+- `pybridge` 桥接插件为 `plugins_py/` 下每个 Python 子插件启动独立的 `python.exe` worker，并以受随机令牌认证的 loopback IPC 连接 QML 代理；Python 崩溃、GIL 卡死或扩展模块异常不会进入宿主。分发默认依赖用户自装 CPython ≥3.12，打包脚本可选 Bundle 策略带上解释器与标准库（见 §5、§8）。
 
 ## 2. 技术栈
 
@@ -20,7 +20,7 @@
 | 编译器 | **MSVC 2022（VS 17，x64）**；本机虽有 MinGW 但不采用 |
 | 构建 | CMake ≥ 3.21 + `CMakePresets.json`，VS 17 2022 生成器 |
 | 插件加载 | `QPluginLoader` + `Q_PLUGIN_METADATA`（IID `xuanhub.BarPlugin/1.0`；host 插件另有 `xuanhub.BarPluginHost/1.0`） |
-| Python 桥接 | nanobind v2.14.0（`third_party/nanobind` submodule）+ 内嵌 CPython（稳定 ABI `Py_LIMITED_API=0x030C0000`，链接 `python3.lib`；解释器走裸 `Py_Initialize()`——nanobind 不支持嵌入，只用作对象包装/GIL/转换层） |
+| Python 桥接 | Qt `QTcpServer/QTcpSocket` + 每子插件独立 `python.exe` worker；4 字节长度前缀 JSON、一次性随机令牌认证，仅绑定 `127.0.0.1` |
 | 系统 API | Win32：`SHAppBarMessage`、`GetIfTable2`、注册表 Run 键、`RegisterWindowMessage("TaskbarCreated")` |
 | 配置 | JSON（`QJsonDocument`），热重载（`QFileSystemWatcher`） |
 
@@ -28,7 +28,7 @@
 
 前提：Qt 6.9.3 msvc2022_64 已安装；克隆后先 `git submodule update --init --recursive`。预设默认 `CMAKE_PREFIX_PATH=C:/Qt/6.9.3/msvc2022_64`，路径不同就在 `CMakeUserPresets.json`（已 gitignore）覆盖。
 
-pybridge 是**可选组件**：nanobind 子模块未初始化、或无 Python ≥3.12 开发包（稳定 ABI 头文件 + `python3.lib`）时 configure 仅 WARNING 并跳过，其余照常构建。
+pybridge 不要求构建机安装 Python 开发包或 nanobind；它始终参与构建。运行时若找不到 Python ≥3.12 的 `python.exe`、标准库和 `python3XX.dll`，pybridge 自动停用子插件并托盘提示，其余功能照常运行。
 
 ```bash
 cmake --preset default                 # 配置（生成到 build/default）
@@ -38,7 +38,7 @@ cmake --build --preset default-debug   # Debug
 
 常用命令封装为 pixi 任务（见 `pixi.toml`）：`pixi run build`、`build-debug`、`run`、`run-settings`、`package` / `package-bundle` / `package-nozip`、`setup-config`、`deploy`、`log`、`clean`。
 
-- 运行时输出统一在 **`build/default/dist/<CONFIG>/`**：`XuanHub.exe`、`barplugin.dll`、`plugins/<id>/<id>.dll + <Id>.qml + metadata.json`（根目录由顶层 `XUANHUB_BIN_DIR` 定义）。pybridge 额外同步 `plugins_py/` 整树；触碰 CPython 的代码收进 exe 旁的 `pybackend.dll`（双 DLL 结构原因见 §5）。
+- 运行时输出统一在 **`build/default/dist/<CONFIG>/`**：`XuanHub.exe`、`barplugin.dll`、`plugins/<id>/<id>.dll + <Id>.qml + metadata.json`（根目录由顶层 `XUANHUB_BIN_DIR` 定义）。pybridge 额外同步 `plugins_py/` 整树（含 `bridge_worker.py`），不再产出或加载 `pybackend.dll`。
 - **注意**：根 `config/config.json` 是开发示例，CMake 不自动拷贝，需手动复制到 dist（或 `pixi run setup-config`）；没有时退用 `%APPDATA%/XuanHub/config.json`（首运行从 qrc 播种）。
 - 运行：直接执行 `build/default/dist/Release/XuanHub.exe`。日志写 `%APPDATA%/XuanHub/xuanhub.log`（每次启动 Truncate）+ `OutputDebugString`。单实例经 `%TEMP%/XuanHub.lock`（`QLockFile`）。
 
@@ -61,10 +61,10 @@ XuanHub/
 │   └── resources/default_config.json    # qrc 内置默认配置（首运行播种用）
 ├── plugins/
 │   ├── clock/  sysinfo/                 # 两个示例插件（各含 Plugin + ViewModel + QML）
-│   └── pybridge/                        # PyBridgePlugin 外壳 + pybackend.dll（内嵌 CPython）
-├── plugins_py/                          # Python 子插件（hello / intime / usage_hub；README 即开发契约）
+│   └── pybridge/                        # PyBridgePlugin 外壳 + PyWorkerViewModel（无 CPython 链接）
+├── plugins_py/                          # Python 子插件 + bridge_worker.py（README 即开发契约）
 ├── themes/                              # 主题包（ThemeRegistry 扫描；README 即开发契约；xuanhub-default 兜底勿删）
-└── third_party/nanobind/                # git submodule（含嵌套 ext/robin_map）
+└── third_party/nanobind/                # 历史子模块；当前 pybridge 不再依赖
 ```
 
 依赖方向：**插件只链接 `barplugin`**，宿主 `app` 也链接 `barplugin`。`barplugin` 必须是 **SHARED**（保证宿主与插件 DLL 共享同一份 `EventBus` 类型/单例语义）。插件对宿主核心零依赖，核心仅通过接口拿到 `QObject* viewModel()` 与 `QUrl qmlUrl()`。
@@ -104,12 +104,10 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 ### Python 子插件（pybridge）
 
 - 目录契约：`<exeDir>/plugins_py/<name>/plugin.json + main.py + X.qml`；开发契约全文见 `plugins_py/README.md`。
-- `main.py` 约定：`update() -> dict`（必需，QTimer 持 GIL 定时拉取填入 `values` 属性袋）、`init(config)`、`invoke(name, args)`（`plugin.call()` 入口）、`stop()`（卸载/热重载前停后台线程）均可选。
-- GIL 铁律：进出 Python 一律 `py::gil_scoped_acquire`；**初始化后主线程永久 `gil_scoped_release`（有意泄漏）**——否则后台 python 线程饿死（实测踩过）。update/invoke 在 GUI 线程执行，禁止阻塞；python 后台线程只碰纯 Python 对象、绝不触达 Qt/QML，且必须实现 `stop()`。
-- 解释器是进程级单例，**任何时刻不主动 finalize**（热重载靠 `sys.modules` pop 后重新 import；进程退出由 OS 回收）；卸载时代理 VM 会连带清理本插件 exec 期间 import 的子包（按 `__file__` 落在插件目录判定）并撤掉自己追加的 `sys.path` 条目（load 时先去重），改子包代码热重载同样生效。Python 异常捕获后只记日志、UI 保留旧值；`nb::python_error` 之外还抓 `std::exception` 链（`nb::cast_error` 如超 int64 的 Python int），穿透 Qt 槽会 terminate 崩宿主。
-- pybridge 目标定义 `QT_NO_KEYWORDS`（Python 头 `PyType_Spec.slots` 与 Qt `slots` 宏冲突），其源码一律用 `Q_SIGNALS`/`Q_EMIT`。
-- 标准库定位顺序：exe 旁内置 `Lib/`（Bundle 打包，压掉 `PYTHONHOME`）→ 用户 `PYTHONHOME` → cache 变量 `XUANHUB_PYTHON_HOME_FALLBACK`（默认空）→ 注册表 `PythonCore` 枚举（≥3.12 取最高）→ `py -3` → PATH。全部未命中则**不初始化解释器**（缺标准库初始化会 fatal error 拖垮宿主）：pybridge 照常 init 但 `subPluginIds()` 返回空，并经 EventBus `app.notify` 托盘提示。调试钩子 `XUANHUB_DISABLE_PYTHON=1` 强制停用。检测结果（含"未检测到"气泡已发标记）存 `qApp` 动态属性——pybridge.dll 每次热重载都 unload，文件级静态量会复位，存 qApp 才做到进程内只检测一次、气泡只发一次。
-- **双 DLL 结构**（nanobind 以数据符号导入 `python3.dll`，`/DELAYLOAD` 只支持函数导入，规避 LNK1194）：触碰 CPython/nanobind 的代码收进 exe 旁 `pybackend.dll`（静态导入 `python3.dll`），`pybridge.dll` 外壳只经 `PyBackendApi.h` 函数接口调用、`/DELAYLOAD:pybackend.dll` 延迟到 init 全路径预装 `python3XX.dll`/`python3.dll` 之后。
+- `main.py` 约定不变：`update() -> dict`（必需）、`init(config)`、`invoke(name, args)`、`stop()`（可选）。每个子插件拥有独立解释器进程；`update/invoke` 都经异步 IPC 串行执行，QML 的 `plugin.call()` 只能表示请求是否入队，不能依赖 Python 返回值。
+- worker 只连随机端口的 `127.0.0.1`，先以一次性 256-bit token 认证，再收取 `init` 配置；API Key 等敏感 config 不放进 worker 命令行。协议用 4 字节长度前缀 JSON，单包上限 4 MiB、请求超时 15 秒。崩溃/超时仅重启本插件 worker，UI 保留旧值。
+- 卸载时代理先断开 IPC，worker 在 EOF 的 `finally` 中尽力调用 `stop()`；宽限后由常驻 `barplugin` 的 `ProcessReaper` 终止并兜底 kill。**不可**在 pybridge DLL 留下异步 lambda 回调给已卸载对象，必须交给 `ProcessReaper`。
+- 标准库定位顺序：exe 旁 Bundle（`python.exe` + `Lib/`）→ 用户 `PYTHONHOME` → cache 变量 `XUANHUB_PYTHON_HOME_FALLBACK` → 注册表 `PythonCore` → `py -3` → PATH。全部未命中时 `subPluginIds()` 返回空并经 EventBus `app.notify` 托盘提示。调试钩子 `XUANHUB_DISABLE_PYTHON=1` 强制停用；检测结果仍存 qApp 动态属性以跨 pybridge 热重载保持。
 
 ### EventBus（插件间通信）
 
@@ -176,14 +174,14 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 - 已知无害告警：`VCINSTALLDIR is not set`——只是不复制 MSVC 运行时 DLL，绿色分发包需自行带上 `vcruntime140.dll` 等。
 - 手动重新部署：`pixi run deploy`（`scripts/deploy_qt.ps1`，windeployqt 自动定位，不写死 Qt 路径）。
 - 插件目录结构即安装结构：`plugins/<id>/<id>.dll + <Id>.qml + metadata.json`。
-- **便携分发打包**：`scripts/package_portable.ps1` 把 dist 加工为绿色分发目录并打 zip：收集 MSVC 运行时 DLL；`-PythonStrategy` 两策略——`None`（默认，不内置标准库）/ `Bundle`（拷 `Lib/`（排除 site-packages）+ `DLLs/`（`_socket`/`_ssl` 等编译扩展，缺了无 Python 机器必挂）+ 解释器 DLL，免安装）；创建 `portable` 标记文件（配置与日志改放 exe 旁）；裁剪 translations/、qmltooling/、非 Basic 样式（**`qml/QtQuick/Controls/impl/` 必须保留**——Basic 样式自身依赖它）；`-NoZip` 只准备目录。注意：该脚本含中文注释，**必须保存为 UTF-8 with BOM**（PowerShell 5.1 对无 BOM 脚本按 GBK 误读）。
+- **便携分发打包**：`scripts/package_portable.ps1` 把 dist 加工为绿色分发目录并打 zip：收集 MSVC 运行时 DLL；`-PythonStrategy` 两策略——`None`（默认，不内置 Python）/ `Bundle`（拷 `python.exe`、`Lib/`（排除 site-packages）、`DLLs/`（`_socket`/`_ssl` 等编译扩展）和 `python3*.dll`，使隔离 worker 免安装运行）；创建 `portable` 标记文件（配置与日志改放 exe 旁）；裁剪 translations/、qmltooling/、非 Basic 样式（**`qml/QtQuick/Controls/impl/` 必须保留**——Basic 样式自身依赖它）；`-NoZip` 只准备目录。注意：该脚本含中文注释，**必须保存为 UTF-8 with BOM**（PowerShell 5.1 对无 BOM 脚本按 GBK 误读）。
 
 ## 9. 安全与注意事项（改代码前必读）
 
 - **ABI 锁定**：插件 DLL 必须与宿主同 Qt 版本、同编译器、同 CRT，否则 `instance()` 返回 nullptr 或直接崩溃。所有目标必须经同一 toolchain 构建。
 - `barplugin` 保持 SHARED；改回 STATIC 会引入跨 DLL 对象语义/ABI 问题。
 - 卸载顺序铁律：先 `shutdown()` 删光插件对象，再 `unload()`（已清除 `PreventUnloadHint`）；host 插件（pybridge）在所有普通插件之后 shutdown。
-- CPython 解释器任何时刻**不主动 finalize**；用户安装的 Python 必须 ≥3.12 且 x64。
+- Python worker 与宿主必须同为 x64；用户安装的 Python 必须 ≥3.12，且含 `python.exe`、`Lib/os.py` 与 `python3XX.dll`。worker 的异常、崩溃、超时或强制终止不得影响宿主进程。
 - 崩溃残留 AppBar：`WorkAreaGuard` 负责启动清旧注册/退出 `ABM_REMOVE`。工作区只用 `SHAppBarMessage(ABM_NEW)`（系统托管生命周期），**不用** `SPI_SETWORKAREA`（易被覆盖、残留难清）。
 - DPI：`main.cpp` 首行必须保持 `PassThrough` 舍入策略；AppBar 矩形用物理像素、QML 内用逻辑像素，换算见 `BarWindow::setupBar`。
 - 注册表自启项（Run 键）与 `%APPDATA%/XuanHub` 配置文件——改动注意权限与残留清理。
@@ -198,5 +196,5 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 - 设置窗口：`app/src/SettingsController/SettingsViewModel/SettingsPluginModel/SettingsPluginSortModel/SettingsPluginProxy.{h,cpp}` + `app/qml/SettingsWindow.qml`；自绘设置页示例 `plugins/sysinfo/SysInfoSettings.qml`
 - 工作区/AppBar：`app/src/AppBarWin32.cpp`、`WorkAreaGuard.{h,cpp}`；任务栏嵌入：`TaskbarEmbed.{h,cpp}`
 - 线程范式样例：`plugins/sysinfo/SysInfoWorker.{h,cpp}`；新插件 CMake 模板：`plugins/clock/CMakeLists.txt`
-- Python 桥接：`plugins/pybridge/PyBridgePlugin.{h,cpp}`（外壳）、`PyBackendApi.h` + `PyBackend.cpp`（pybackend.dll）、`PyProxyViewModel.{h,cpp}`
+- Python 桥接：`plugins/pybridge/PyBridgePlugin.{h,cpp}`（发现/运行时）、`PyWorkerViewModel.{h,cpp}`（异步 IPC 代理）、`plugins_py/bridge_worker.py`（隔离执行器）、`lib/barplugin/ProcessReaper.{h,cpp}`（跨 DLL 进程回收）
 - Python 子插件契约：`plugins_py/README.md`；示例 `hello/`（参考样例）、`intime/`（定时提醒）、`usage_hub/`（用量看板）

@@ -108,11 +108,19 @@ void SysInfoPlugin::shutdown() {
     // ③ wait 阻塞到线程真的退出（保证 worker 不再 emit 信号）
     // ④ 删 ViewModel（GUI 线程对象）
     // ⑤ 删 QThread（worker 由 init 里连的 finished→deleteLater 兜底回收）
-    if (m_worker)
-        QMetaObject::invokeMethod(m_worker.data(), "stop", Qt::QueuedConnection);
-    if (m_thread) {
+    if (m_worker && m_thread && m_thread->isRunning()) {
+        // 确认 stop 已在 worker 线程执行后才退出事件循环；只投递 QueuedConnection
+        // 后立即 quit 会让退出事件抢在 stop 前处理，资源释放时序不可证明。
+        QMetaObject::invokeMethod(m_worker.data(), "stop", Qt::BlockingQueuedConnection);
+    }
+    if (m_thread && m_thread->isRunning()) {
         m_thread->quit();
-        m_thread->wait(2000);
+        if (!m_thread->wait(2000)) {
+            // 绝不能在 QThread 仍运行时 delete：插件 DLL 随后被卸载会让 worker
+            // 落入已卸载代码。先报告异常，再等待真实退出，优先保证宿主不崩溃。
+            qCritical() << "[SysInfo] worker shutdown exceeded 2s; waiting for safe exit";
+            m_thread->wait();
+        }
     }
     if (m_vm) { delete m_vm; m_vm = nullptr; }
     // worker deleted by QThread::finished → deleteLater

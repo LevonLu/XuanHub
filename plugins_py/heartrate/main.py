@@ -623,10 +623,10 @@ def invoke(name, args):
 
 
 def stop():
-    """卸载/热重载前由宿主调用：停线程、断设备、关循环。"""
+    """卸载/热重载前发出 BLE 停止信号；不在 GUI 线程等待设备断开。"""
     global _thread, _loop
     _stop_flag.set()
-    if _thread is not None:
-        _thread.join(timeout=2)
+    # asyncio 主循环会在 100ms 内观察到标志并执行 _cleanup；旧模块继续持有
+    # 自己的 globals，因此不与新实例共享状态。
     _thread = None
     _loop = None

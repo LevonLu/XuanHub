@@ -1,11 +1,14 @@
 // ConfigService.cpp
 #include "ConfigService.h"
+#include "SecretStore.h"
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QSaveFile>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QSet>
 #include <QDebug>
 
 ConfigService::ConfigService(QObject* parent) : QObject(parent) {}
@@ -33,8 +36,7 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
                             seedPath);
                 if (QFile::exists(seedPath)) {
                     QFile::setPermissions(seedPath,
-                        QFileDevice::ReadOwner | QFileDevice::WriteOwner |
-                        QFileDevice::ReadGroup | QFileDevice::ReadOther);
+                        QFileDevice::ReadOwner | QFileDevice::WriteOwner);
                     path = seedPath;
                     qDebug() << "[Config] seeded default config to" << seedPath;
                 } else {
@@ -42,8 +44,7 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
                     if (QFile::copy(QStringLiteral(":/qt/qml/XuanHub/resources/default_config.json"),
                                     userPath)) {
                         QFile::setPermissions(userPath,
-                            QFileDevice::ReadOwner | QFileDevice::WriteOwner |
-                            QFileDevice::ReadGroup | QFileDevice::ReadOther);
+                            QFileDevice::ReadOwner | QFileDevice::WriteOwner);
                         qDebug() << "[Config] seeded default config to" << userPath;
                     }
                     path = userPath;
@@ -68,7 +69,27 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
                    << "at offset" << perr.offset << "-> keep current settings";
         return false;
     }
+    if (!doc.isObject()) {
+        qWarning() << "[Config] root must be a JSON object in" << path
+                   << "-> keep current settings";
+        return false;
+    }
     const auto root = doc.object();
+
+    // 先校验 plugins id 唯一性；不能在已修改成员状态后才拒绝，否则调用方会以为
+    // reload 失败、实际 bar 字段却已部分更新，形成难追踪的半生效状态。
+    QSet<QString> pluginIds;
+    const auto pluginArray = root.value("plugins").toArray();
+    for (const auto& pv : pluginArray) {
+        if (!pv.isObject()) continue;
+        const QString id = pv.toObject().value("id").toString();
+        if (!id.isEmpty() && pluginIds.contains(id)) {
+            qWarning() << "[Config] duplicate plugin id:" << id
+                       << "-> keep current settings";
+            return false;
+        }
+        if (!id.isEmpty()) pluginIds.insert(id);
+    }
     m_raw = root;  // M8：留存原始文档，save() 只改已知键（未知键如 bar.monitor 不丢）
 
     // M7 热重载：先留旧值，加载完成后仅对变化项 emit 对应 NOTIFY
@@ -127,7 +148,8 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
         m_taskbarOffsetX = bar.value("taskbarOffsetX").toInt(m_taskbarOffsetX);
 
     m_pluginEntries.clear();
-    const auto arr = root.value("plugins").toArray();
+    const auto arr = pluginArray;
+    const SecretStore secrets(QFileInfo(m_activePath).absolutePath());
     for (const auto& pv : arr) {
         const auto o = pv.toObject();
         PluginConfigEntry e;
@@ -136,7 +158,23 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
         e.order = qMax(0, o.value("order").toInt(0));   // 负 order 无意义，防手写越界
         // 插件宽度（像素，0=跟随内容自适应）；钳到合理范围防手写越界撑爆状态栏
         e.width = qBound(0, o.value("width").toInt(0), 800);
-        e.config = o.value("config").toObject().toVariantMap();
+        const QJsonObject configObject = o.value("config").toObject();
+        e.config = configObject.toVariantMap();
+        // 密钥在 config.json 中只保存为 DPAPI 密文库引用；运行时才在内存中注入
+        // 明文，且引用必须严格匹配当前插件和字段，防止插件跨域读取别人的密钥。
+        for (auto it = configObject.begin(); it != configObject.end(); ++it) {
+            const QString reference = SecretStore::referenceId(it.value());
+            if (reference.isEmpty()) continue;
+            const QString expected = SecretStore::idForPluginField(e.id, it.key());
+            if (reference != expected) {
+                qWarning() << "[Config] invalid secret reference for" << e.id << it.key();
+                e.config.remove(it.key());
+                continue;
+            }
+            const auto plaintext = secrets.read(reference);
+            if (plaintext) e.config.insert(it.key(), *plaintext);
+            else e.config.remove(it.key());
+        }
         if (!e.id.isEmpty()) m_pluginEntries.append(e);
     }
 
