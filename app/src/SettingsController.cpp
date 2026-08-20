@@ -13,7 +13,6 @@
 #include <QQuickItem>
 #include <QQuickView>
 #include <QQmlContext>
-#include <QQuickStyle>
 #include <QTest>
 
 SettingsController::SettingsController(ConfigService* config, ThemeManager* theme,
@@ -30,8 +29,8 @@ SettingsController::~SettingsController() {
 
 void SettingsController::open() {
     if (!m_window) {
-        // Basic 样式：自绘色板随主题（进程内仅设置窗口用 Controls，不影响 bar 的 QML）
-        QQuickStyle::setStyle(QStringLiteral("Basic"));
+        // Basic 样式已在 main() 创建任何 QML 引擎前设置；此处重复调用不仅无效，
+        // 还会在每次首次打开设置窗口时产生“必须在加载 QML 前调用”的误导性警告。
 
         m_vm = new SettingsViewModel(m_config, m_registry, m_theme, m_exeDir, m_barPlugins, this);
         auto* w = new QQuickView();
@@ -43,10 +42,10 @@ void SettingsController::open() {
         // 代价：失去系统阴影，改由 QML DropShadow 补偿。
         w->setColor(QColor(Qt::transparent));
         w->setResizeMode(QQuickView::SizeRootObjectToView);
-        // 左侧导航 + 卡片流布局（插件页为 master-detail 两栏，M10）；
-        // 加宽到 960：sysinfo 自绘设置页每行含 metric 下拉+前缀+颜色+预览+↑↓✕ 多个控件，
-        // 780 下右侧内容区被挤窄导致上移下移按钮被截断。
-        w->resize(960, 680);
+        // Fluent 2 设置页的插件主从布局需要留出搜索列表、详情分组与指标编辑行。
+        // 1080px 逻辑宽度在 100%/150% DPI 都能避免 SysInfo 的操作按钮被截断；
+        // 表单在更窄空间会自动退为单列，不依赖固定像素排版。
+        w->resize(1080, 720);
         w->rootContext()->setContextProperty(QStringLiteral("settingsVM"), m_vm);
         w->rootContext()->setContextProperty(QStringLiteral("themeManager"), m_theme);
         w->rootContext()->setContextProperty(QStringLiteral("settingsCtl"), this);

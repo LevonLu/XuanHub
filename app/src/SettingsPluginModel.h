@@ -25,7 +25,8 @@ public:
         SchemaRole,          // 读：QVariantList，sidecar 的 settings 分组声明（可空）
         SettingsQmlRole,     // 读：QUrl，sidecar 的 settingsQml 绝对路径（可空 → QVariant()）
         SetConfigValueRole,  // 写：value 为 {key, value}，写 config 草稿单字段
-        DiscoveredRole
+        DiscoveredRole,
+        GroupKeyRole         // 读："enabled-left"，供设置页分组标题使用
     };
 
     explicit SettingsPluginModel(QObject* parent = nullptr);
@@ -44,6 +45,11 @@ public:
     // 按 id 读写 config 草稿单字段（SettingsPluginProxy 用，绕过 QModelIndex）
     QVariant configValue(const QString& id, const QString& key) const;
     bool setConfigValue(const QString& id, const QString& key, const QVariant& value);
+
+    // 在同一状态栏区域内移动插件。order 仍是持久化格式，但仅由上移/下移操作
+    // 维护，避免让用户手动猜数字；sourceRow 是本模型的行号。
+    bool canMoveWithinPosition(int sourceRow, int direction) const;
+    bool moveWithinPosition(int sourceRow, int direction);
 
     // 导出保存用 plugins 数组（含 position/order/schema 字段校验与 pybridge 托管）；
     // 校验失败 err 带原因、返回 false
@@ -65,6 +71,7 @@ private:
     };
     // dir = 该插件 sidecar 所在目录（settingsQml 相对路径据此解析为绝对 URL）
     void mergeDiscovered(const QJsonObject& meta, const QString& kind, const QString& dir);
+    QVector<int> orderedRowsForPosition(const QString& position) const;
 
     QVector<Row> m_rows;
     QString m_secretDir;  // secrets.json 与当前 config.json 同目录（便携模式也成立）

@@ -2,6 +2,7 @@
 #include "ConfigService.h"
 #include "SecretStore.h"
 #include "SettingsPluginModel.h"
+#include "SettingsPluginSortModel.h"
 
 #include <QFile>
 #include <QJsonArray>
@@ -124,6 +125,59 @@ private Q_SLOTS:
         const QVariantMap hydrated = service.pluginEntries().first().config
                                          .value(QStringLiteral("vendors")).toList().first().toMap();
         QCOMPARE(hydrated.value(QStringLiteral("apiKey")).toString(), QStringLiteral("plain-key"));
+    }
+
+    void pluginMoveKeepsRegionsSeparateAndNormalizesOrder() {
+        auto entry = [](const QString& id, const QString& position, int order) {
+            PluginConfigEntry value;
+            value.id = id;
+            value.position = position;
+            value.order = order;
+            return value;
+        };
+
+        SettingsPluginModel model;
+        model.reload({entry(QStringLiteral("left-first"), QStringLiteral("left"), 12),
+                      entry(QStringLiteral("left-second"), QStringLiteral("left"), 36),
+                      entry(QStringLiteral("right-only"), QStringLiteral("right"), 42)},
+                     {}, {}, {});
+
+        SettingsPluginSortModel proxy;
+        proxy.setSourceModel(&model);
+        proxy.sort(0);
+        QCOMPARE(proxy.rowForId(QStringLiteral("left-first")), 0);
+        QCOMPARE(proxy.rowForId(QStringLiteral("left-second")), 1);
+        QCOMPARE(proxy.rowForId(QStringLiteral("right-only")), 2);
+        QVERIFY(!proxy.canMoveUp(0));                   // 左侧第一项不能跨区域上移
+        QVERIFY(proxy.canMoveUp(1));
+        QVERIFY(proxy.moveUp(1));
+        QCOMPARE(proxy.rowForId(QStringLiteral("left-second")), 0);
+        QCOMPARE(proxy.rowForId(QStringLiteral("left-first")), 1);
+        QVERIFY(!proxy.canMoveUp(0));                   // 移到首位后不能再上移
+        QVERIFY(!proxy.canMoveUp(2));                   // 右侧只有一项，不能移动
+
+        QJsonArray exported;
+        QString error;
+        QVERIFY2(model.toPluginEntriesJson(&exported, &error), qPrintable(error));
+        QHash<QString, QJsonObject> byId;
+        for (const QJsonValue& value : exported) {
+            const QJsonObject object = value.toObject();
+            byId.insert(object.value(QStringLiteral("id")).toString(), object);
+        }
+        QCOMPARE(byId.value(QStringLiteral("left-second")).value(QStringLiteral("order")).toInt(), 0);
+        QCOMPARE(byId.value(QStringLiteral("left-first")).value(QStringLiteral("order")).toInt(), 1);
+        QCOMPARE(byId.value(QStringLiteral("right-only")).value(QStringLiteral("order")).toInt(), 42);
+
+        // 禁用后的左侧插件应整体落在所有启用插件之后；组合分组键还要让 QML
+        // 区分“已启用 · 左侧区域”和“未启用 · 左侧区域”。
+        QVERIFY(model.setData(model.index(0), false, SettingsPluginModel::EnabledRole));
+        QCOMPARE(proxy.rowForId(QStringLiteral("left-second")), 0);
+        QCOMPARE(proxy.rowForId(QStringLiteral("right-only")), 1);
+        QCOMPARE(proxy.rowForId(QStringLiteral("left-first")), 2);
+        QCOMPARE(proxy.roleValue(0, QStringLiteral("groupKey")).toString(),
+                 QStringLiteral("enabled-left"));
+        QCOMPARE(proxy.roleValue(2, QStringLiteral("groupKey")).toString(),
+                 QStringLiteral("disabled-left"));
     }
 };
 

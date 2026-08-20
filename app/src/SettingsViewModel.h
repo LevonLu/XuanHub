@@ -2,7 +2,7 @@
 // 属性 = 编辑中的草稿；apply() 校验后经 ConfigService::save 写回 config.json，
 // 生效由 M7 ConfigHotReloader 的文件监听自动完成（本类不直接触发 reload，
 // 避免与 watcher 双重重载）。
-// M10：pluginModel 改为排序 proxy（启用在前）；pluginProxy 为插件自绘设置页
+// M10：pluginModel 为按启用状态、左/中/右区域分组的排序 proxy；pluginProxy 为插件自绘设置页
 //（settingsQml）的 config 草稿桥，QML 选中变化时重定向其 pluginId。
 #pragma once
 #include <QObject>
@@ -95,7 +95,7 @@ private:
     QString m_exeDir;
     PluginListModel* m_barPlugins;   // bar 的插件模型（部件实时内容宽度来源）
     SettingsPluginModel* m_pluginModel;
-    SettingsPluginSortModel* m_sortModel;      // 排序 proxy（QML 拿到的是它）
+    SettingsPluginSortModel* m_sortModel;      // 启用状态、左/中/右分组排序 proxy（QML 拿到的是它）
     SettingsPluginProxy* m_pluginProxy;        // 自绘设置页的 config 草稿桥
     int m_barHeight = 40;
     int m_barOpacity = 100;                              // 0-100 百分比（100=不透明）

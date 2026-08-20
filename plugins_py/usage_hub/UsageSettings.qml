@@ -98,20 +98,22 @@ Item {
 
             delegate: Rectangle {
                 Layout.fillWidth: true
-                implicitHeight: vendorCol.implicitHeight + 16
-                radius: 6; color: palette.base
-                border.width: 1; border.color: palette.mid
+                implicitHeight: vendorCol.implicitHeight + UiMetrics.space4 * 2
+                radius: UiMetrics.radiusM
+                color: Qt.rgba(palette.base.r, palette.base.g, palette.base.b, 0.72)
+                border.width: 1
+                border.color: Qt.rgba(palette.mid.r, palette.mid.g, palette.mid.b, 0.36)
 
                 ColumnLayout {
                     id: vendorCol
                     anchors.left: parent.left; anchors.right: parent.right
-                    anchors.margins: 10; anchors.top: parent.top
-                    spacing: 6
+                    anchors.margins: UiMetrics.space4; anchors.top: parent.top
+                    spacing: UiMetrics.space2
 
                     // ── 第一行：厂商 + 模式徽章 …… 启用 + 排序/删除 ──
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 8
+                        spacing: UiMetrics.space2
 
                         UiComboBox {
                             Layout.preferredWidth: 150
@@ -128,35 +130,46 @@ Item {
 
                         // 模式由厂商模板决定、不可改：用 muted 文字徽章展示
                         //（原为 60px 禁用下拉框，"余额" 被裁成 "余"）
-                        Label {
-                            text: { var t = root.findTemplate(modelData.id); return t ? t.modeLabels[0] : modelData.mode }
-                            color: palette.placeholderText
-                            font.pixelSize: 11
+                        Rectangle {
+                            radius: 10
+                            color: Qt.rgba(palette.highlight.r, palette.highlight.g,
+                                           palette.highlight.b, 0.14)
+                            implicitWidth: modeBadge.implicitWidth + 12
+                            implicitHeight: 22
+                            Text {
+                                id: modeBadge
+                                anchors.centerIn: parent
+                                text: { var t = root.findTemplate(modelData.id); return t ? t.modeLabels[0] : modelData.mode }
+                                color: palette.highlight
+                                font.pixelSize: UiMetrics.fontTiny
+                                font.weight: Font.DemiBold
+                            }
                         }
 
                         Item { Layout.fillWidth: true }
 
-                        CheckBox {
-                            text: "启用"
+                        UiSwitch {
+                            text: checked ? "已启用" : "已停用"
                             checked: modelData.enabled !== false
-                            onCheckedChanged: root.updateField(index, "enabled", checked)
+                            onToggled: root.updateField(index, "enabled", checked)
                         }
 
                         // 紧凑操作钮（默认 Basic 按钮太宽，三个会撑出大片空当）
                         RowLayout {
-                            spacing: 2
-                            Button { text: "↑"; flat: true; Layout.preferredWidth: 30; enabled: index > 0; onClicked: root.moveVendor(index, -1) }
-                            Button { text: "↓"; flat: true; Layout.preferredWidth: 30; enabled: index < root.vendors.length - 1; onClicked: root.moveVendor(index, 1) }
-                            Button { text: "✕"; flat: true; Layout.preferredWidth: 30; onClicked: root.removeVendor(index) }
+                            spacing: UiMetrics.space1
+                            UiButton { variant: "ghost"; text: "↑"; Layout.preferredWidth: 36; leftPadding: 0; rightPadding: 0; enabled: index > 0; onClicked: root.moveVendor(index, -1) }
+                            UiButton { variant: "ghost"; text: "↓"; Layout.preferredWidth: 36; leftPadding: 0; rightPadding: 0; enabled: index < root.vendors.length - 1; onClicked: root.moveVendor(index, 1) }
+                            UiButton { variant: "ghost"; text: "×"; Layout.preferredWidth: 36; leftPadding: 0; rightPadding: 0; onClicked: root.removeVendor(index) }
                         }
                     }
 
                     // ── 第二行：显示名称 + API Key ────────────
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 6
+                        spacing: UiMetrics.space2
 
-                        TextField {
+                        UiTextField {
+                            Layout.fillWidth: false
                             Layout.preferredWidth: 110
                             text: modelData.name || ""
                             placeholderText: "显示名称"
@@ -164,7 +177,7 @@ Item {
                             onTextChanged: root.updateField(index, "name", text)
                         }
 
-                        TextField {
+                        UiTextField {
                             Layout.fillWidth: true
                             text: modelData.apiKey || ""
                             placeholderText: { var t = root.findTemplate(modelData.id); return t ? t.keyHint : "API Key" }
@@ -177,7 +190,7 @@ Item {
                     // ── 第三行：查询间隔（秒，单位内嵌输入框）─────
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 6
+                        spacing: UiMetrics.space2
 
                         Label {
                             text: "查询间隔"
@@ -185,7 +198,8 @@ Item {
                             font.pixelSize: 11
                         }
 
-                        SpinBox {
+                        UiSpinBox {
+                            Layout.fillWidth: false
                             Layout.preferredWidth: 110
                             from: 30; to: 86400; stepSize: 30
                             value: modelData.intervalSec || 300
@@ -199,7 +213,7 @@ Item {
                     RowLayout {
                         Layout.fillWidth: true
                         visible: { var t = root.findTemplate(modelData.id); return t ? !!t.hasWorkspace : false }
-                        spacing: 6
+                        spacing: UiMetrics.space2
 
                         Label {
                             text: "Workspace"
@@ -207,7 +221,7 @@ Item {
                             font.pixelSize: 11
                         }
 
-                        TextField {
+                        UiTextField {
                             Layout.fillWidth: true
                             text: modelData.workspace || ""
                             placeholderText: "留空使用默认"
@@ -219,6 +233,6 @@ Item {
             }
         }
 
-        Button { text: "＋ 添加厂商"; onClicked: root.addVendor() }
+        UiButton { variant: "outline"; text: "＋ 添加厂商"; onClicked: root.addVendor() }
     }
 }

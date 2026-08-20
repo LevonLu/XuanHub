@@ -48,7 +48,7 @@ Item {
         spacing: 12
 
         // ── 时间 ────────────────────────────────────────────
-        GroupBox {
+        UiCard {
             title: "时间"
             Layout.fillWidth: true
             ColumnLayout {
@@ -81,7 +81,7 @@ Item {
         }
 
         // ── 动画 ────────────────────────────────────────────
-        GroupBox {
+        UiCard {
             title: "动画"
             Layout.fillWidth: true
             ColumnLayout {
@@ -120,7 +120,7 @@ Item {
         }
 
         // ── 锁屏进度条 ──────────────────────────────────────
-        GroupBox {
+        UiCard {
             title: "锁屏进度条"
             Layout.fillWidth: true
             RowLayout {
@@ -145,7 +145,7 @@ Item {
         }
 
         // ── 遮罩类型 ────────────────────────────────────────
-        GroupBox {
+        UiCard {
             title: "遮罩类型"
             Layout.fillWidth: true
             RowLayout {
@@ -166,7 +166,7 @@ Item {
         }
 
         // ── 遮罩外观（默认模式隐藏颜色/图片设置）─────────────
-        GroupBox {
+        UiCard {
             title: "遮罩外观"
             Layout.fillWidth: true
             ColumnLayout {
@@ -183,7 +183,9 @@ Item {
                         onTextChanged: sv("maskColor", text)
                     }
                     Rectangle {
-                        width: 20; height: 20; radius: 3
+                        Layout.preferredWidth: 20
+                        Layout.preferredHeight: 20
+                        radius: 3
                         color: v("maskColor") || "#1e1e2e"
                         border.width: 1; border.color: palette.mid
                     }

@@ -17,15 +17,17 @@ SpinBox {
         implicitWidth: 96
         implicitHeight: UiMetrics.controlHeightM
         radius: UiMetrics.radiusS
-        color: control.palette.base
+        color: Qt.rgba(control.palette.base.r, control.palette.base.g, control.palette.base.b, 0.86)
         border.width: 1
-        border.color: control.activeFocus ? control.palette.highlight : control.palette.mid
+        border.color: control.activeFocus ? control.palette.highlight
+                      : Qt.rgba(control.palette.mid.r, control.palette.mid.g,
+                                control.palette.mid.b, 0.72)
         Behavior on border.color { ColorAnimation { duration: UiMetrics.animFast } }
     }
 
     up.indicator: Rectangle {
         x: control.width - width
-        width: 24
+        width: 28
         height: control.height / 2
         readonly property color fg: control.palette.buttonText
         color: control.up.pressed ? Qt.rgba(fg.r, fg.g, fg.b, 0.16)
@@ -42,7 +44,7 @@ SpinBox {
     down.indicator: Rectangle {
         x: control.width - width
         y: control.height / 2
-        width: 24
+        width: 28
         height: control.height / 2
         readonly property color fg: control.palette.buttonText
         color: control.down.pressed ? Qt.rgba(fg.r, fg.g, fg.b, 0.16)

@@ -11,8 +11,8 @@ Button {
     property string variant: "outline"
 
     font.pixelSize: UiMetrics.fontM
-    leftPadding: 14
-    rightPadding: 14
+    leftPadding: UiMetrics.space4
+    rightPadding: UiMetrics.space4
     topPadding: 0
     bottomPadding: 0
     opacity: enabled ? 1.0 : 0.5
@@ -35,7 +35,9 @@ Button {
         }
         border.width: control.variant === "outline" ? 1 : 0
         border.color: control.variant === "outline"
-                      ? (control.hovered || control.activeFocus ? acc : control.palette.mid)
+                      ? (control.hovered || control.activeFocus ? acc
+                         : Qt.rgba(control.palette.mid.r, control.palette.mid.g,
+                                   control.palette.mid.b, 0.72))
                       : "transparent"
         Behavior on color { ColorAnimation { duration: UiMetrics.animFast } }
         Behavior on border.color { ColorAnimation { duration: UiMetrics.animFast } }
@@ -43,7 +45,12 @@ Button {
 
     contentItem: Text {
         text: control.text
-        font: control.font
+        // 不直接绑定整个 font 再覆写 weight：QML 会把它视为同一属性的
+        // 重复赋值并让 UiButton 类型加载失败，进而阻断整个设置窗口创建。
+        font.family: control.font.family
+        font.pixelSize: control.font.pixelSize
+        font.italic: control.font.italic
+        font.weight: control.variant === "primary" ? Font.DemiBold : Font.Normal
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         color: control.variant === "primary" ? control.palette.highlightedText

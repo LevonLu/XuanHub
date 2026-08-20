@@ -108,7 +108,7 @@ Item {
         spacing: 12
 
         // ── 目标模式 ──
-        GroupBox {
+        UiCard {
             title: "目标模式"
             Layout.fillWidth: true
             RowLayout {
@@ -128,7 +128,7 @@ Item {
         }
 
         // ── 目标时间 ──
-        GroupBox {
+        UiCard {
             title: "目标时间"
             Layout.fillWidth: true
             ColumnLayout {
@@ -206,7 +206,7 @@ Item {
         }
 
         // ── 显示 ──
-        GroupBox {
+        UiCard {
             title: "显示"
             Layout.fillWidth: true
             ColumnLayout {
@@ -276,7 +276,9 @@ Item {
                         onTextChanged: sv("reachedColor", text)
                     }
                     Rectangle {
-                        width: 20; height: 20; radius: 3
+                        Layout.preferredWidth: 20
+                        Layout.preferredHeight: 20
+                        radius: 3
                         color: {
                             var c = v("reachedColor") || ""
                             return c.length > 0 ? c : "transparent"
@@ -289,7 +291,7 @@ Item {
         }
 
         // ── 刷新 ──
-        GroupBox {
+        UiCard {
             title: "刷新"
             Layout.fillWidth: true
             RowLayout {

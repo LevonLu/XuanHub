@@ -12,6 +12,8 @@
 #include <QUuid>
 #include <QtMath>
 
+#include <algorithm>
+
 namespace {
 QJsonObject readJsonFile(const QString& path) {
     QFile f(path);
@@ -176,6 +178,9 @@ QVariant SettingsPluginModel::data(const QModelIndex& index, int role) const {
         case SettingsQmlRole:
             return r.settingsQml.isEmpty() ? QVariant() : QVariant(r.settingsQml);
         case DiscoveredRole: return r.discovered;
+        case GroupKeyRole:
+            return (r.enabled ? QStringLiteral("enabled-") : QStringLiteral("disabled-"))
+                   + r.position;
     }
     return {};
 }
@@ -199,7 +204,12 @@ bool SettingsPluginModel::setData(const QModelIndex& index, const QVariant& valu
         }
         default: return false;
     }
-    emit dataChanged(index, index, {role});
+    // 启用状态与区域会改变 QML ListView 的分组键，必须连同派生 role 一并通知，
+    // 否则代理排序虽更新，分隔标题仍可能保留旧状态。
+    if (role == EnabledRole || role == PositionRole)
+        emit dataChanged(index, index, {role, GroupKeyRole});
+    else
+        emit dataChanged(index, index, {role});
     return true;
 }
 
@@ -219,6 +229,7 @@ QHash<int, QByteArray> SettingsPluginModel::roleNames() const {
         { SettingsQmlRole, "settingsQml" },
         { SetConfigValueRole, "setConfigValue" },
         { DiscoveredRole, "discovered" },
+        { GroupKeyRole, "groupKey" },
     };
 }
 
@@ -320,6 +331,44 @@ bool SettingsPluginModel::setConfigValue(const QString& id, const QString& key,
         return true;
     }
     return false;
+}
+
+QVector<int> SettingsPluginModel::orderedRowsForPosition(const QString& position) const {
+    QVector<int> rows;
+    rows.reserve(m_rows.size());
+    for (int i = 0; i < m_rows.size(); ++i) {
+        if (m_rows.at(i).position == position) rows.append(i);
+    }
+    // 与排序代理在同一分区内的比较规则保持一致；旧配置存在相同 order 时，
+    // 用 id 给出稳定顺序，用户首次点上移/下移后会被归一化为连续序号。
+    std::sort(rows.begin(), rows.end(), [this](int left, int right) {
+        const Row& a = m_rows.at(left);
+        const Row& b = m_rows.at(right);
+        return a.order != b.order ? a.order < b.order : a.id < b.id;
+    });
+    return rows;
+}
+
+bool SettingsPluginModel::canMoveWithinPosition(int sourceRow, int direction) const {
+    if (sourceRow < 0 || sourceRow >= m_rows.size() || (direction != -1 && direction != 1))
+        return false;
+    const QVector<int> rows = orderedRowsForPosition(m_rows.at(sourceRow).position);
+    const int current = rows.indexOf(sourceRow);
+    return current >= 0 && current + direction >= 0 && current + direction < rows.size();
+}
+
+bool SettingsPluginModel::moveWithinPosition(int sourceRow, int direction) {
+    if (!canMoveWithinPosition(sourceRow, direction)) return false;
+    QVector<int> rows = orderedRowsForPosition(m_rows.at(sourceRow).position);
+    const int current = rows.indexOf(sourceRow);
+    std::swap(rows[current], rows[current + direction]);
+
+    // 只交换两个旧数字会在重复 order 的旧配置里留下不确定顺序；整组规范化后，
+    // order 仍是兼容的磁盘格式，而界面则完全由可见的上移/下移控制。
+    for (int i = 0; i < rows.size(); ++i)
+        m_rows[rows[i]].order = i;
+    emit dataChanged(index(0), index(m_rows.size() - 1), {OrderRole});
+    return true;
 }
 
 bool SettingsPluginModel::toPluginEntriesJson(QJsonArray* out, QString* err) const {

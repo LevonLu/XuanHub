@@ -1,4 +1,4 @@
-// SettingsWindow.qml — 设置窗口（M8；左侧垂直导航 + UiCard 卡片流重构）
+// SettingsWindow.qml — Fluent 2 风格设置窗口：导航、分组表单与插件详情
 // 后端：context property settingsVM（草稿属性 + pluginModel + apply/reloadFromConfig +
 //       themePackNames/themePackIds 主题包列表）、themeManager（colors 色板驱动 palette）。
 // 保存成功或取消都经 Window.window.close() 隐藏（窗口由 SettingsController 持有，不销毁）。
@@ -13,7 +13,7 @@ Pane {
     // 圆角 + 裁切：Frameless 透明窗口下，根 Rectangle 的圆角让窗口呈圆角矩形，
     // clip 防止子项（标题栏、滚动内容）溢出圆角区域。
     clip: true
-    property int cornerRadius: 8
+    property int cornerRadius: UiMetrics.radiusL
 
     // [dev] UI 测试驱动：--uitest 启动时 SettingsController 注入 uiTestCommands（命令
     // 数组），本 Timer 每 500ms 回放一条（click:x,y / kp:文本）；正常启动该属性
@@ -39,8 +39,32 @@ Pane {
         "placeholderText": "#7f849c", "mid": "#7f849c", "dark": "#313244", "light": "#313244"
     })
 
-    // 页名表：导航、标题栏副标题、StackLayout 共用一份索引
+    // ThemeManager 的色板经 QVariantMap 传入时是颜色字符串。赋给 color 属性后才会
+    // 转成带 r/g/b 分量的 QColor；不要直接访问 c.panel.r，否则会得到 undefined，
+    // 半透明层会退化成黑色（浅色主题的导航与底栏尤为明显）。
+    readonly property color bgColor: c.bg
+    readonly property color panelColor: c.panel
+    readonly property color fgColor: c.fg
+    readonly property color accentColor: c.accent
+    readonly property color dangerColor: c.danger
+    function translucent(color, opacity) {
+        return Qt.rgba(color.r, color.g, color.b, opacity)
+    }
+
+    // 页名/图标表：导航、标题栏副标题、StackLayout 共用一份索引
     readonly property var pageNames: ["外观", "插件", "通用"]
+    readonly property var pageIcons: ["◐", "⌘", "⚙"]
+    function positionLabel(position) {
+        if (position === "left") return "左侧区域"
+        if (position === "center") return "中间区域"
+        return position === "right" ? "右侧区域" : "未识别区域"
+    }
+    function groupLabel(groupKey) {
+        const separator = groupKey.indexOf("-")
+        const enabled = groupKey.substring(0, separator) === "enabled"
+        const position = separator >= 0 ? groupKey.substring(separator + 1) : groupKey
+        return (enabled ? "已启用" : "未启用") + " · " + positionLabel(position)
+    }
 
     // 插件设置草稿读取：config 无该键时用 schema default 兜底（类型化表单与自绘页共用）
     function draftValue(key, def) {
@@ -81,47 +105,74 @@ Pane {
         anchors.fill: parent
         spacing: 0
 
-        // ── 自绘标题栏（无边框窗口）：标题 + 当前页名副标题 + 关闭按钮 ──
+        // ── 自绘标题栏（无边框窗口）：产品识别 + 当前页 + 保存提示 ──
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 44
+            Layout.preferredHeight: 56
             color: "transparent"
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: UiMetrics.space4
-                anchors.rightMargin: UiMetrics.space2
-                spacing: UiMetrics.space2
+                anchors.leftMargin: UiMetrics.space5
+                anchors.rightMargin: UiMetrics.space3
+                spacing: UiMetrics.space3
 
+                Rectangle {
+                    Layout.preferredWidth: 32
+                    Layout.preferredHeight: 32
+                    radius: UiMetrics.radiusS
+                    color: root.c.accent
+                    Text {
+                        anchors.centerIn: parent
+                        text: "⚙"
+                        color: root.c.onAccent
+                        font.pixelSize: 18
+                    }
+                }
                 Text {
                     text: "玄枢设置 XuanHub Settings"
                     color: root.c.fg
-                    font.pixelSize: UiMetrics.fontM
-                    font.bold: true
+                    font.pixelSize: UiMetrics.fontL
+                    font.weight: Font.DemiBold
                 }
-                Text {   // 当前页名副标题
-                    text: "· " + root.pageNames[pageStack.currentIndex]
-                    color: root.c.muted
+                Rectangle {
+                    radius: 10
+                    color: root.translucent(root.accentColor, 0.12)
+                    implicitWidth: pageName.implicitWidth + 16
+                    implicitHeight: 24
+                    Text {
+                        id: pageName
+                        anchors.centerIn: parent
+                        text: root.pageNames[pageStack.currentIndex]
+                        color: root.c.accent
+                        font.pixelSize: UiMetrics.fontS
+                        font.weight: Font.DemiBold
+                    }
+                }
+                Item { Layout.fillWidth: true }
+                Text {
+                    text: root.invalidFields > 0 ? "请修正输入错误" : "更改将在保存后生效"
+                    color: root.invalidFields > 0 ? root.c.danger : root.c.muted
                     font.pixelSize: UiMetrics.fontS
                 }
-                Item { Layout.fillWidth: true }   // 弹簧，关闭按钮靠右
 
-                // × 关闭按钮（hover 变 danger 圆角底）
                 Item {
                     id: closeBtn
-                    Layout.preferredWidth: 32
-                    Layout.preferredHeight: 32
+                    Layout.preferredWidth: 40
+                    Layout.preferredHeight: 40
                     Rectangle {
                         anchors.fill: parent
                         radius: UiMetrics.radiusS
-                        color: closeMa.containsMouse ? root.c.danger : "transparent"
+                        color: closeMa.containsMouse
+                               ? root.translucent(root.dangerColor, 0.14)
+                               : "transparent"
                         Behavior on color { ColorAnimation { duration: UiMetrics.animFast } }
                     }
                     Text {
                         anchors.centerIn: parent
                         text: "×"
-                        color: closeMa.containsMouse ? root.c.onAccent : root.c.fg
-                        font.pixelSize: 18
+                        color: closeMa.containsMouse ? root.c.danger : root.c.fg
+                        font.pixelSize: 20
                     }
                     MouseArea {
                         id: closeMa
@@ -137,7 +188,7 @@ Pane {
             //（右侧留出关闭按钮区域，防误触）
             MouseArea {
                 anchors.fill: parent
-                anchors.rightMargin: 48
+                anchors.rightMargin: 64
                 acceptedButtons: Qt.LeftButton
                 onPressed: (mouse) => {
                     if (mouse.button === Qt.LeftButton)
@@ -145,7 +196,6 @@ Pane {
                 }
             }
 
-            // 底部分隔线（半透明 border 色）
             Rectangle {
                 anchors.left: parent.left
                 anchors.right: parent.right
@@ -156,43 +206,44 @@ Pane {
             }
         }
 
-        // ── 主体：左侧垂直导航 + 页面区 ──
+        // ── 主体：Fluent 左侧导航 + 页面区 ──
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 0
 
-            // 左侧导航（152px）：选中项 accent 左竖条 + 淡底色，hover 过渡
+            // 左侧导航：大触控区、图标与文字；选中状态由每项自身绘制，避免硬编码 y。
             Rectangle {
-                Layout.preferredWidth: 152
+                Layout.preferredWidth: 188
                 Layout.fillHeight: true
-                color: root.c.panel
+                // 使用不透明的主题面板色，既保证浅色主题的层次，也避免透明窗口
+                // 与桌面合成时污染导航颜色。
+                color: root.panelColor
 
-                // 选中竖条：随 currentIndex 滑动（120ms）
-                Rectangle {
-                    id: navIndicator
-                    x: 0
-                    width: 3
-                    height: 22
-                    radius: 1.5
-                    color: root.c.accent
-                    y: 12 + pageStack.currentIndex * 40 + 7   // 项高 36 + 间距 4，竖条垂直居中于项
-                    Behavior on y { NumberAnimation { duration: UiMetrics.animFast; easing.type: Easing.OutCubic } }
-                }
-
-                Column {
+                ColumnLayout {
                     id: navCol
-                    x: 8
-                    y: 12
-                    width: parent.width - 16
-                    spacing: 4
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: UiMetrics.space3
+                    spacing: UiMetrics.space1
+
+                    Text {
+                        text: "设置"
+                        color: root.c.muted
+                        font.pixelSize: UiMetrics.fontTiny
+                        font.weight: Font.DemiBold
+                        Layout.leftMargin: UiMetrics.space2
+                        Layout.topMargin: UiMetrics.space1
+                        Layout.bottomMargin: UiMetrics.space1
+                    }
 
                     Repeater {
                         model: root.pageNames
                         delegate: Rectangle {
                             id: navItem
-                            width: navCol.width
-                            height: 36
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 48
                             radius: UiMetrics.radiusS
                             property bool selected: pageStack.currentIndex === index
                             readonly property color acc: root.c.accent
@@ -202,14 +253,35 @@ Pane {
                                  : "transparent"
                             Behavior on color { ColorAnimation { duration: UiMetrics.animFast } }
 
-                            Text {
+                            Rectangle {
+                                visible: navItem.selected
                                 anchors.left: parent.left
-                                anchors.leftMargin: 12
+                                anchors.leftMargin: 0
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: modelData
-                                color: navItem.fg
-                                font.pixelSize: UiMetrics.fontM
-                                font.bold: navItem.selected
+                                width: 3
+                                height: 24
+                                radius: 1.5
+                                color: navItem.acc
+                            }
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: UiMetrics.space3
+                                anchors.rightMargin: UiMetrics.space3
+                                spacing: UiMetrics.space2
+                                Text {
+                                    text: root.pageIcons[index]
+                                    color: navItem.selected ? navItem.acc : root.c.muted
+                                    font.pixelSize: 20
+                                    Layout.preferredWidth: 24
+                                    horizontalAlignment: Text.AlignHCenter
+                                }
+                                Text {
+                                    text: modelData
+                                    color: navItem.fg
+                                    font.pixelSize: UiMetrics.fontM
+                                    font.weight: navItem.selected ? Font.DemiBold : Font.Normal
+                                    Layout.fillWidth: true
+                                }
                             }
                             MouseArea {
                                 id: navMa
@@ -261,54 +333,85 @@ Pane {
                         clip: true
 
                         ColumnLayout {
-                            x: UiMetrics.space4
-                            y: UiMetrics.space4
-                            width: appearanceScroll.availableWidth - UiMetrics.space4 * 2
-                            spacing: 14
+                            x: UiMetrics.space5
+                            y: UiMetrics.space5
+                            width: appearanceScroll.availableWidth - UiMetrics.space5 * 2
+                            spacing: UiMetrics.space4
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.space1
+                                Text {
+                                    text: "外观"
+                                    color: root.c.fg
+                                    font.pixelSize: UiMetrics.fontXL
+                                    font.weight: Font.DemiBold
+                                }
+                                Text {
+                                    text: "调整状态栏主题、尺寸和停靠方式"
+                                    color: root.c.muted
+                                    font.pixelSize: UiMetrics.fontM
+                                }
+                            }
 
                             UiCard {
                                 Layout.fillWidth: true
                                 title: "主题"
-                                description: "主题包与明暗模式；保存后经热重载即时生效"
+                                description: "选择主题包和明暗模式；保存后立即热重载"
 
-                                RowLayout {
+                                GridLayout {
                                     Layout.fillWidth: true
-                                    spacing: UiMetrics.space3
-                                    Text {
-                                        text: "主题包"
-                                        color: root.c.fg
-                                        font.pixelSize: UiMetrics.fontS
-                                        Layout.preferredWidth: 120
-                                        horizontalAlignment: Text.AlignRight
-                                    }
-                                    UiComboBox {
-                                        model: settingsVM.themePackNames
-                                        currentIndex: {
-                                            const ids = settingsVM.themePackIds
-                                            const i = ids.indexOf(settingsVM.themeId)
-                                            return i >= 0 ? i : 0
+                                    columns: appearanceScroll.availableWidth > 680 ? 2 : 1
+                                    columnSpacing: UiMetrics.space4
+                                    rowSpacing: UiMetrics.space3
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: UiMetrics.space1
+                                        Text {
+                                            text: "主题包"
+                                            color: root.c.fg
+                                            font.pixelSize: UiMetrics.fontS
+                                            font.weight: Font.DemiBold
                                         }
-                                        onActivated: {
-                                            const ids = settingsVM.themePackIds
-                                            if (index >= 0 && index < ids.length)
-                                                settingsVM.themeId = ids[index]
+                                        Text {
+                                            text: "决定色板与整体视觉风格"
+                                            color: root.c.muted
+                                            font.pixelSize: UiMetrics.fontTiny
+                                        }
+                                        UiComboBox {
+                                            model: settingsVM.themePackNames
+                                            currentIndex: {
+                                                const ids = settingsVM.themePackIds
+                                                const i = ids.indexOf(settingsVM.themeId)
+                                                return i >= 0 ? i : 0
+                                            }
+                                            onActivated: {
+                                                const ids = settingsVM.themePackIds
+                                                if (index >= 0 && index < ids.length)
+                                                    settingsVM.themeId = ids[index]
+                                            }
                                         }
                                     }
-                                }
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: UiMetrics.space3
-                                    Text {
-                                        text: "模式"
-                                        color: root.c.fg
-                                        font.pixelSize: UiMetrics.fontS
-                                        Layout.preferredWidth: 120
-                                        horizontalAlignment: Text.AlignRight
-                                    }
-                                    UiComboBox {
-                                        model: ["dark", "light"]
-                                        currentIndex: settingsVM.theme === "light" ? 1 : 0
-                                        onActivated: settingsVM.theme = currentText
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: UiMetrics.space1
+                                        Text {
+                                            text: "模式"
+                                            color: root.c.fg
+                                            font.pixelSize: UiMetrics.fontS
+                                            font.weight: Font.DemiBold
+                                        }
+                                        Text {
+                                            text: "浅色和深色模式均可跟随主题包"
+                                            color: root.c.muted
+                                            font.pixelSize: UiMetrics.fontTiny
+                                        }
+                                        UiComboBox {
+                                            model: ["dark", "light"]
+                                            currentIndex: settingsVM.theme === "light" ? 1 : 0
+                                            onActivated: settingsVM.theme = currentText
+                                        }
                                     }
                                 }
                             }
@@ -316,73 +419,49 @@ Pane {
                             UiCard {
                                 Layout.fillWidth: true
                                 title: "状态栏"
-                                description: "尺寸、停靠边缘与工作模式"
+                                description: "尺寸、停靠边缘与系统集成方式"
 
-                                RowLayout {
+                                GridLayout {
                                     Layout.fillWidth: true
-                                    spacing: UiMetrics.space3
-                                    Text {
-                                        text: "高度（像素）"
-                                        color: root.c.fg
-                                        font.pixelSize: UiMetrics.fontS
-                                        Layout.preferredWidth: 120
-                                        horizontalAlignment: Text.AlignRight
+                                    columns: appearanceScroll.availableWidth > 680 ? 2 : 1
+                                    columnSpacing: UiMetrics.space4
+                                    rowSpacing: UiMetrics.space3
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: UiMetrics.space1
+                                        Text { text: "高度（像素）"; color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
+                                        Text { text: "状态栏的可视高度"; color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
+                                        UiSpinBox { from: 24; to: 200; value: settingsVM.barHeight; onValueModified: settingsVM.barHeight = value }
                                     }
-                                    UiSpinBox {
-                                        from: 24; to: 200
-                                        value: settingsVM.barHeight
-                                        onValueModified: settingsVM.barHeight = value
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: UiMetrics.space1
+                                        Text { text: "停靠边缘"; color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
+                                        Text { text: "选择显示在屏幕顶部或底部"; color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
+                                        UiComboBox { model: ["top", "bottom"]; currentIndex: settingsVM.barEdge === "bottom" ? 1 : 0; onActivated: settingsVM.barEdge = currentText }
                                     }
-                                }
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: UiMetrics.space3
-                                    Text {
-                                        text: "停靠边缘"
-                                        color: root.c.fg
-                                        font.pixelSize: UiMetrics.fontS
-                                        Layout.preferredWidth: 120
-                                        horizontalAlignment: Text.AlignRight
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: UiMetrics.space1
+                                        Text { text: "工作模式"; color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
+                                        Text { text: "appbar 占用工作区；taskbar 嵌入任务栏"; color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
+                                        UiComboBox {
+                                            model: ["appbar", "taskbar"]
+                                            currentIndex: settingsVM.barMode === "taskbar" ? 1 : 0
+                                            onActivated: settingsVM.barMode = currentText
+                                        }
                                     }
-                                    UiComboBox {
-                                        model: ["top", "bottom"]
-                                        currentIndex: settingsVM.barEdge === "bottom" ? 1 : 0
-                                        onActivated: settingsVM.barEdge = currentText
-                                    }
-                                }
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: UiMetrics.space3
-                                    Text {
-                                        text: "工作模式"
-                                        color: root.c.fg
-                                        font.pixelSize: UiMetrics.fontS
-                                        Layout.preferredWidth: 120
-                                        horizontalAlignment: Text.AlignRight
-                                    }
-                                    UiComboBox {
-                                        // appbar：占住桌面工作区；taskbar：嵌入原生任务栏左侧。
-                                        // 与托盘 "任务栏模式" 勾选项写同一 config 键（bar.mode）
-                                        model: ["appbar", "taskbar"]
-                                        currentIndex: settingsVM.barMode === "taskbar" ? 1 : 0
-                                        onActivated: settingsVM.barMode = currentText
-                                    }
-                                }
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: UiMetrics.space3
-                                    Text {
-                                        text: "透明度 (%)"
-                                        color: root.c.fg
-                                        font.pixelSize: UiMetrics.fontS
-                                        Layout.preferredWidth: 120
-                                        horizontalAlignment: Text.AlignRight
-                                    }
-                                    UiSpinBox {
-                                        from: 20; to: 100   // 下限 20 防 bar 完全看不见
-                                        stepSize: 5
-                                        value: settingsVM.barOpacity
-                                        onValueModified: settingsVM.barOpacity = value
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: UiMetrics.space1
+                                        Text { text: "透明度 (%)"; color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
+                                        Text { text: "最低 20%，避免状态栏不可见"; color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
+                                        UiSpinBox {
+                                            from: 20; to: 100; stepSize: 5
+                                            value: settingsVM.barOpacity
+                                            onValueModified: settingsVM.barOpacity = value
+                                        }
                                     }
                                 }
                             }
@@ -402,22 +481,95 @@ Pane {
 
                         // ── 左栏：插件列表 ──
                         Rectangle {
-                            Layout.preferredWidth: 210
+                            id: pluginPane
+                            Layout.preferredWidth: 250
                             Layout.fillHeight: true
-                            color: root.c.panel
+                            color: root.translucent(root.panelColor, 0.72)
                             radius: UiMetrics.radiusM
                             border.width: 1
                             readonly property color bord: root.c.border
-                            border.color: Qt.rgba(bord.r, bord.g, bord.b, 0.45)
+                            border.color: Qt.rgba(bord.r, bord.g, bord.b, 0.28)
                             clip: true   // 行圆角不溢出面板圆角
+                            property string filterText: pluginSearch.text.trim().toLowerCase()
 
-                            ListView {
-                                id: pluginList
+                            ColumnLayout {
                                 anchors.fill: parent
-                                anchors.margins: 6
-                                clip: true
-                                spacing: 4
-                                model: settingsVM.pluginModel   // SettingsPluginSortModel（排序 proxy）
+                                anchors.margins: UiMetrics.space3
+                                spacing: UiMetrics.space2
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        text: "插件"
+                                        color: root.c.fg
+                                        font.pixelSize: UiMetrics.fontL
+                                        font.weight: Font.DemiBold
+                                        Layout.fillWidth: true
+                                    }
+                                    Text {
+                                        text: settingsVM.pluginModel.count + " 个"
+                                        color: root.c.muted
+                                        font.pixelSize: UiMetrics.fontTiny
+                                    }
+                                }
+                                UiTextField {
+                                    id: pluginSearch
+                                    Layout.fillWidth: true
+                                    placeholderText: "搜索插件…"
+                                }
+
+                                ListView {
+                                    id: pluginList
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    clip: true
+                                    spacing: UiMetrics.space1
+                                    // SettingsPluginSortModel：已启用插件总在前，再按左/中/右
+                                    // 区域与由上移/下移维护的顺序排列。组合分组键令区域标题在
+                                    // 启用状态切换处也保持准确，不会把两段同名区域误合并。
+                                    model: settingsVM.pluginModel
+                                    section.property: "groupKey"
+                                    section.criteria: ViewSection.FullString
+
+                                    function matchesRow(row) {
+                                        const name = String(model.roleValue(row, "name")
+                                                                  || model.roleValue(row, "id")).toLowerCase()
+                                        const id = String(model.roleValue(row, "id")).toLowerCase()
+                                        return pluginPane.filterText.length === 0
+                                            || name.indexOf(pluginPane.filterText) >= 0
+                                            || id.indexOf(pluginPane.filterText) >= 0
+                                    }
+                                    function sectionHasMatch(groupKey) {
+                                        for (let row = 0; row < model.count(); ++row) {
+                                            if (model.roleValue(row, "groupKey") === groupKey
+                                                    && matchesRow(row)) return true
+                                        }
+                                        return false
+                                    }
+                                    section.delegate: Item {
+                                        width: pluginList.width
+                                        height: pluginList.sectionHasMatch(section) ? 28 : 0
+                                        visible: height > 0
+                                        Text {
+                                            id: sectionName
+                                            anchors.left: parent.left
+                                            anchors.leftMargin: UiMetrics.space2
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: root.groupLabel(section)
+                                            color: root.c.muted
+                                            font.pixelSize: UiMetrics.fontTiny
+                                            font.weight: Font.DemiBold
+                                        }
+                                        Rectangle {
+                                            anchors.left: sectionName.right
+                                            anchors.leftMargin: UiMetrics.space2
+                                            anchors.right: parent.right
+                                            anchors.rightMargin: UiMetrics.space2
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            height: 1
+                                            color: root.translucent(root.fgColor, 0.14)
+                                        }
+                                    }
 
                                 // 选中项按 id 跟踪（勾选启用触发重排后行号会变）
                                 property string currentId: ""
@@ -445,7 +597,9 @@ Pane {
                                 delegate: Rectangle {
                                     id: pluginRow
                                     width: pluginList.width
-                                    height: 44
+                                    property bool matches: pluginList.matchesRow(index)
+                                    height: matches ? 56 : 0
+                                    visible: matches
                                     radius: UiMetrics.radiusS
                                     property bool selected: pluginList.currentId === model.id
                                     readonly property color acc: root.c.accent
@@ -461,28 +615,29 @@ Pane {
                                         anchors.leftMargin: 2
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: 3
-                                        height: 22
+                                        height: 26
                                         radius: 1.5
                                         color: pluginRow.acc
                                     }
                                     Rectangle {   // 启用状态点
                                         id: dot
                                         anchors.left: parent.left
-                                        anchors.leftMargin: 12
+                                        anchors.leftMargin: UiMetrics.space3
                                         anchors.verticalCenter: parent.verticalCenter
-                                        width: 8; height: 8; radius: 4
+                                        width: 9; height: 9; radius: 4.5
                                         color: model.enabled ? root.c.accent : root.c.muted
                                     }
                                     ColumnLayout {
                                         anchors.left: dot.right
                                         anchors.leftMargin: 8
                                         anchors.right: parent.right
-                                        anchors.rightMargin: 8
+                                        anchors.rightMargin: UiMetrics.space2
                                         anchors.verticalCenter: parent.verticalCenter
                                         spacing: 0
                                         Text {
                                             color: root.c.fg
                                             font.pixelSize: UiMetrics.fontM
+                                            font.weight: pluginRow.selected ? Font.DemiBold : Font.Normal
                                             text: model.name ? model.name : model.id
                                             elide: Text.ElideRight
                                             Layout.fillWidth: true
@@ -506,17 +661,18 @@ Pane {
                                 }
                             }
                         }
+                        }
 
                         // ── 右栏：选中插件的设置 ──
                         Rectangle {
                             id: detailPanel
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            color: root.c.panel
+                            color: root.translucent(root.panelColor, 0.56)
                             radius: UiMetrics.radiusM
                             border.width: 1
                             readonly property color bord: root.c.border
-                            border.color: Qt.rgba(bord.r, bord.g, bord.b, 0.45)
+                            border.color: Qt.rgba(bord.r, bord.g, bord.b, 0.28)
 
                             // 行数据快照：模型的读接口非响应式，统一在模型信号/选中变化时
                             // 重取；面板控件只绑这份快照，避免与 C++ 直读打架
@@ -545,7 +701,6 @@ Pane {
                                         "kind": m.roleValue(currentRow, "kind"),
                                         "enabled": m.roleValue(currentRow, "enabled"),
                                         "position": m.roleValue(currentRow, "position"),
-                                        "order": m.roleValue(currentRow, "order"),
                                         "width": m.roleValue(currentRow, "width"),
                                         "discovered": m.roleValue(currentRow, "discovered"),
                                         "schema": m.roleValue(currentRow, "schema"),
@@ -594,44 +749,65 @@ Pane {
                             ScrollView {
                                 id: detailScroll
                                 anchors.fill: parent
-                                anchors.margins: 14
+                                anchors.margins: UiMetrics.space5
                                 clip: true
                                 visible: detailPanel.currentRow >= 0
 
                                 ColumnLayout {
                                     width: detailScroll.availableWidth
-                                    spacing: 10
+                                    spacing: UiMetrics.space4
 
-                                    // 头部：名称 + 元信息（只读）
-                                    Text {
-                                        color: root.c.fg
-                                        font.pixelSize: UiMetrics.fontXL
-                                        font.bold: true
-                                        text: {
-                                            const n = detailPanel.rowData.name
-                                            return (n && n.length > 0) ? n : pluginList.currentId
+                                    // 头部：名称、类型徽章与启用状态
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: UiMetrics.space1
+                                            Text {
+                                                color: root.c.fg
+                                                font.pixelSize: UiMetrics.fontXL
+                                                font.weight: Font.DemiBold
+                                                text: {
+                                                    const n = detailPanel.rowData.name
+                                                    return (n && n.length > 0) ? n : pluginList.currentId
+                                                }
+                                            }
+                                            RowLayout {
+                                                spacing: UiMetrics.space2
+                                                Rectangle {
+                                                    radius: 10
+                                                    color: root.translucent(root.accentColor, 0.14)
+                                                    implicitWidth: typeTag.implicitWidth + 14
+                                                    implicitHeight: 22
+                                                    Text {
+                                                        id: typeTag
+                                                        anchors.centerIn: parent
+                                                        text: detailPanel.rowData.kind === "python" ? "Python" : "C++"
+                                                        color: root.c.accent
+                                                        font.pixelSize: UiMetrics.fontTiny
+                                                        font.weight: Font.DemiBold
+                                                    }
+                                                }
+                                                Text {
+                                                    color: root.c.muted
+                                                    font.pixelSize: UiMetrics.fontS
+                                                    text: {
+                                                        const d = detailPanel.rowData
+                                                        let s = pluginList.currentId
+                                                        if (d.version) s += " · v" + d.version
+                                                        if (d.author) s += " · " + d.author
+                                                        if (d.discovered === false) s += " · 磁盘缺失"
+                                                        return s
+                                                    }
+                                                }
+                                            }
                                         }
-                                    }
-                                    Text {
-                                        color: root.c.muted
-                                        font.pixelSize: UiMetrics.fontS
-                                        text: {
-                                            const d = detailPanel.rowData
-                                            let s = pluginList.currentId
-                                            if (d.version) s += " · v" + d.version
-                                            if (d.author) s += " · " + d.author
-                                            s += (d.kind === "python" ? " · Python" : " · C++")
-                                            if (d.discovered === false) s += " · 磁盘缺失"
-                                            return s
+                                        UiSwitch {
+                                            text: checked ? "已启用" : "已停用"
+                                            checked: detailPanel.rowData.enabled === true
+                                            onToggled: settingsVM.pluginModel.setRoleValue(
+                                                           detailPanel.currentRow, "enabled", checked)
                                         }
-                                    }
-
-                                    // 启用开关：未启用时下方设置区整体隐藏（右侧只剩它）
-                                    UiSwitch {
-                                        text: "启用此插件"
-                                        checked: detailPanel.rowData.enabled === true
-                                        onToggled: settingsVM.pluginModel.setRoleValue(
-                                                       detailPanel.currentRow, "enabled", checked)
                                     }
 
                                     // ── 启用后的设置区 ──
@@ -640,79 +816,113 @@ Pane {
                                         spacing: 10
                                         visible: detailPanel.rowData.enabled === true
 
-                                        // 框架级：位置 / 排序
-                                        RowLayout {
+                                        UiCard {
                                             Layout.fillWidth: true
-                                            spacing: UiMetrics.space3
-                                            Text {
-                                                text: "位置"
-                                                color: root.c.fg
-                                                font.pixelSize: UiMetrics.fontS
-                                                Layout.preferredWidth: 120
-                                                horizontalAlignment: Text.AlignRight
-                                            }
-                                            UiComboBox {
-                                                model: ["left", "center", "right"]
-                                                currentIndex: Math.max(0, indexOfValue(detailPanel.rowData.position))
-                                                onActivated: settingsVM.pluginModel.setRoleValue(
-                                                                 detailPanel.currentRow, "position", currentText)
-                                            }
-                                        }
-                                        RowLayout {
-                                            Layout.fillWidth: true
-                                            spacing: UiMetrics.space3
-                                            Text {
-                                                text: "排序"
-                                                color: root.c.fg
-                                                font.pixelSize: UiMetrics.fontS
-                                                Layout.preferredWidth: 120
-                                                horizontalAlignment: Text.AlignRight
-                                            }
-                                            UiSpinBox {
-                                                from: 0; to: 99
-                                                value: Number(detailPanel.rowData.order) || 0
-                                                onValueModified: settingsVM.pluginModel.setRoleValue(
-                                                                     detailPanel.currentRow, "order", value)
-                                            }
-                                        }
-                                        // 插件宽度：自适应（跟随内容，config width=0）/ 手动（固定像素）。
-                                        // 切手动时初始值取部件当前真实宽度（PluginSlot 实时上报，
-                                        // 经 settingsVM.pluginContentWidth 查询），无记录回退 100。
-                                        RowLayout {
-                                            Layout.fillWidth: true
-                                            spacing: UiMetrics.space3
-                                            Text {
-                                                text: "宽度"
-                                                color: root.c.fg
-                                                font.pixelSize: UiMetrics.fontS
-                                                Layout.preferredWidth: 120
-                                                horizontalAlignment: Text.AlignRight
-                                            }
-                                            UiComboBox {
-                                                model: ["自适应", "手动"]
-                                                currentIndex: Number(detailPanel.rowData.width) > 0 ? 1 : 0
-                                                onActivated: {
-                                                    if (currentIndex === 0) {
-                                                        settingsVM.pluginModel.setRoleValue(
-                                                            detailPanel.currentRow, "width", 0)
-                                                    } else if (!(Number(detailPanel.rowData.width) > 0)) {
-                                                        let w = settingsVM.pluginContentWidth(pluginList.currentId)
-                                                        if (!(w > 0)) w = 100
-                                                        settingsVM.pluginModel.setRoleValue(
-                                                            detailPanel.currentRow, "width", Math.min(800, w))
+                                            title: "基础设置"
+                                            description: "控制插件在状态栏中的位置、显示顺序与占用宽度"
+
+                                            GridLayout {
+                                                Layout.fillWidth: true
+                                                columns: detailScroll.availableWidth > 720 ? 2 : 1
+                                                columnSpacing: UiMetrics.space4
+                                                rowSpacing: UiMetrics.space3
+
+                                                ColumnLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: UiMetrics.space1
+                                                    Text { text: "位置"; color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
+                                                    Text { text: "显示在状态栏的哪一栏"; color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
+                                                    UiComboBox {
+                                                        model: ["left", "center", "right"]
+                                                        currentIndex: Math.max(0, indexOfValue(detailPanel.rowData.position))
+                                                        onActivated: settingsVM.pluginModel.setRoleValue(
+                                                                         detailPanel.currentRow, "position", currentText)
+                                                    }
+                                                }
+                                                ColumnLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: UiMetrics.space1
+                                                    Text { text: "顺序"; color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
+                                                    Text { text: "仅在当前区域内调整"; color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
+                                                    RowLayout {
+                                                        Layout.fillWidth: true
+                                                        spacing: UiMetrics.space2
+                                                        UiButton {
+                                                            variant: "outline"
+                                                            text: "↑ 上移"
+                                                            Layout.preferredWidth: 82
+                                                            enabled: settingsVM.pluginModel.canMoveUp(
+                                                                         detailPanel.currentRow)
+                                                            onClicked: settingsVM.pluginModel.moveUp(
+                                                                           detailPanel.currentRow)
+                                                        }
+                                                        UiButton {
+                                                            variant: "outline"
+                                                            text: "↓ 下移"
+                                                            Layout.preferredWidth: 82
+                                                            enabled: settingsVM.pluginModel.canMoveDown(
+                                                                         detailPanel.currentRow)
+                                                            onClicked: settingsVM.pluginModel.moveDown(
+                                                                           detailPanel.currentRow)
+                                                        }
+                                                    }
+                                                }
+                                                ColumnLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: UiMetrics.space1
+                                                    Text { text: "宽度"; color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
+                                                    Text {
+                                                        text: Number(detailPanel.rowData.width) > 0
+                                                              ? "固定插件占用宽度" : "自动跟随内容宽度"
+                                                        color: root.c.muted
+                                                        font.pixelSize: UiMetrics.fontTiny
+                                                    }
+                                                    RowLayout {
+                                                        Layout.fillWidth: true
+                                                        spacing: UiMetrics.space2
+                                                        UiComboBox {
+                                                            model: ["自适应", "手动"]
+                                                            currentIndex: Number(detailPanel.rowData.width) > 0 ? 1 : 0
+                                                            onActivated: {
+                                                                if (currentIndex === 0) {
+                                                                    settingsVM.pluginModel.setRoleValue(
+                                                                        detailPanel.currentRow, "width", 0)
+                                                                } else if (!(Number(detailPanel.rowData.width) > 0)) {
+                                                                    let w = settingsVM.pluginContentWidth(pluginList.currentId)
+                                                                    if (!(w > 0)) w = 100
+                                                                    settingsVM.pluginModel.setRoleValue(
+                                                                        detailPanel.currentRow, "width", Math.min(800, w))
+                                                                }
+                                                            }
+                                                        }
+                                                        UiSpinBox {
+                                                            visible: Number(detailPanel.rowData.width) > 0
+                                                            from: 1; to: 800
+                                                            value: Number(detailPanel.rowData.width) || 1
+                                                            onValueModified: settingsVM.pluginModel.setRoleValue(
+                                                                                 detailPanel.currentRow, "width", value)
+                                                        }
                                                     }
                                                 }
                                             }
-                                            UiSpinBox {
-                                                visible: Number(detailPanel.rowData.width) > 0
-                                                from: 1; to: 800
-                                                value: Number(detailPanel.rowData.width) || 1
-                                                onValueModified: settingsVM.pluginModel.setRoleValue(
-                                                                     detailPanel.currentRow, "width", value)
-                                            }
+                                        }
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            visible: (detailPanel.rowData.settingsQml !== undefined
+                                                      && String(detailPanel.rowData.settingsQml).length > 0)
+                                                     || (detailPanel.rowData.schema || []).length > 0
                                             Text {
-                                                visible: !(Number(detailPanel.rowData.width) > 0)
-                                                text: "跟随内容宽度"
+                                                text: "插件设置"
+                                                color: root.c.fg
+                                                font.pixelSize: UiMetrics.fontL
+                                                font.weight: Font.DemiBold
+                                            }
+                                            Item { Layout.fillWidth: true }
+                                            Text {
+                                                text: detailPanel.rowData.settingsQml !== undefined
+                                                      && String(detailPanel.rowData.settingsQml).length > 0
+                                                      ? "自定义设置页" : "通用设置项"
                                                 color: root.c.muted
                                                 font.pixelSize: UiMetrics.fontTiny
                                             }
@@ -762,30 +972,36 @@ Pane {
                             // ── 分组与字段编辑器组件（schema 表单用）──
                             Component {
                                 id: groupDelegate
-                                ColumnLayout {
+                                UiCard {
                                     id: groupRoot
                                     Layout.fillWidth: true
-                                    spacing: 6
                                     property var groupData: modelData
                                     property bool collapsed: false
 
-                                    Rectangle {   // 组标题（点击折叠/展开，hover 淡底色）
+                                    Rectangle {
                                         Layout.fillWidth: true
-                                        implicitHeight: 28
+                                        implicitHeight: 32
                                         radius: UiMetrics.radiusS
-                                        readonly property color fg: root.c.fg
                                         color: groupMa.containsMouse
-                                               ? Qt.rgba(fg.r, fg.g, fg.b, 0.06) : "transparent"
+                                               ? root.translucent(root.fgColor, 0.06)
+                                               : "transparent"
                                         Behavior on color { ColorAnimation { duration: UiMetrics.animFast } }
                                         Text {
                                             anchors.left: parent.left
-                                            anchors.leftMargin: 8
+                                            anchors.leftMargin: UiMetrics.space2
                                             anchors.verticalCenter: parent.verticalCenter
+                                            text: groupRoot.groupData.group || "设置"
+                                            color: root.c.fg
+                                            font.pixelSize: UiMetrics.fontL
+                                            font.weight: Font.DemiBold
+                                        }
+                                        Text {
+                                            anchors.right: parent.right
+                                            anchors.rightMargin: UiMetrics.space2
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: groupRoot.collapsed ? "▸" : "▾"
                                             color: root.c.muted
-                                            font.pixelSize: UiMetrics.fontS
-                                            font.bold: true
-                                            text: (groupRoot.collapsed ? "▸ " : "▾ ")
-                                                  + (groupRoot.groupData.group || "设置")
+                                            font.pixelSize: UiMetrics.fontM
                                         }
                                         MouseArea {
                                             id: groupMa
@@ -806,44 +1022,39 @@ Pane {
                                 id: fieldDelegate
                                 ColumnLayout {
                                     Layout.fillWidth: true
-                                    spacing: 2
+                                    spacing: UiMetrics.space1
                                     property var field: modelData
 
-                                    RowLayout {
+                                    Text {
+                                        text: field.label || field.key
+                                        color: root.c.fg
+                                        font.pixelSize: UiMetrics.fontS
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
                                         Layout.fillWidth: true
-                                        spacing: UiMetrics.space2
-                                        Text {
-                                            text: field.label || field.key
-                                            color: root.c.fg
-                                            font.pixelSize: UiMetrics.fontS
-                                            Layout.preferredWidth: 120
-                                            horizontalAlignment: Text.AlignRight
-                                            elide: Text.ElideRight
-                                        }
-                                        Loader {
-                                            Layout.fillWidth: true
-                                            sourceComponent: {
-                                                switch (field.type) {
-                                                    case "bool":   return boolFieldComp
-                                                    case "int":    return intFieldComp
-                                                    case "double": return doubleFieldComp
-                                                    case "color":  return colorFieldComp
-                                                    case "enum":   return enumFieldComp
-                                                    case "json":   return jsonFieldComp
-                                                    default:       return stringFieldComp
-                                                }
-                                            }
-                                            onLoaded: item.field = field
-                                        }
                                     }
-                                    Text {   // description 小字
+                                    Text {
                                         visible: !!field.description
                                         text: field.description || ""
                                         color: root.c.muted
                                         font.pixelSize: UiMetrics.fontTiny
-                                        Layout.leftMargin: 132   // 120 label + 12 间距
                                         Layout.fillWidth: true
                                         wrapMode: Text.Wrap
+                                    }
+                                    Loader {
+                                        Layout.fillWidth: true
+                                        sourceComponent: {
+                                            switch (field.type) {
+                                                case "bool":   return boolFieldComp
+                                                case "int":    return intFieldComp
+                                                case "double": return doubleFieldComp
+                                                case "color":  return colorFieldComp
+                                                case "enum":   return enumFieldComp
+                                                case "json":   return jsonFieldComp
+                                                default:         return stringFieldComp
+                                            }
+                                        }
+                                        onLoaded: item.field = field
                                     }
                                 }
                             }
@@ -1060,10 +1271,26 @@ Pane {
                         clip: true
 
                         ColumnLayout {
-                            x: UiMetrics.space4
-                            y: UiMetrics.space4
-                            width: generalScroll.availableWidth - UiMetrics.space4 * 2
-                            spacing: 14
+                            x: UiMetrics.space5
+                            y: UiMetrics.space5
+                            width: generalScroll.availableWidth - UiMetrics.space5 * 2
+                            spacing: UiMetrics.space4
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: UiMetrics.space1
+                                Text {
+                                    text: "通用"
+                                    color: root.c.fg
+                                    font.pixelSize: UiMetrics.fontXL
+                                    font.weight: Font.DemiBold
+                                }
+                                Text {
+                                    text: "管理玄枢随 Windows 启动的方式"
+                                    color: root.c.muted
+                                    font.pixelSize: UiMetrics.fontM
+                                }
+                            }
 
                             UiCard {
                                 Layout.fillWidth: true
@@ -1072,15 +1299,23 @@ Pane {
 
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    spacing: UiMetrics.space3
-                                    Text {
-                                        text: "开机自启"
-                                        color: root.c.fg
-                                        font.pixelSize: UiMetrics.fontS
-                                        Layout.preferredWidth: 120
-                                        horizontalAlignment: Text.AlignRight
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: UiMetrics.space1
+                                        Text {
+                                            text: "开机自启"
+                                            color: root.c.fg
+                                            font.pixelSize: UiMetrics.fontM
+                                            font.weight: Font.DemiBold
+                                        }
+                                        Text {
+                                            text: "通过当前用户的 Windows 启动项运行"
+                                            color: root.c.muted
+                                            font.pixelSize: UiMetrics.fontTiny
+                                        }
                                     }
                                     UiSwitch {
+                                        text: settingsVM.autoStart ? "已开启" : "已关闭"
                                         checked: settingsVM.autoStart
                                         onToggled: settingsVM.autoStart = checked
                                     }
@@ -1099,16 +1334,20 @@ Pane {
             readonly property color bord: root.c.border
             color: Qt.rgba(bord.r, bord.g, bord.b, 0.5)
         }
-        RowLayout {
+        Rectangle {
             Layout.fillWidth: true
-            Layout.leftMargin: UiMetrics.space4
-            Layout.rightMargin: UiMetrics.space4
-            Layout.topMargin: UiMetrics.space3
-            Layout.bottomMargin: UiMetrics.space3
-            spacing: UiMetrics.space2
+            Layout.preferredHeight: 72
+            color: root.panelColor
 
             Text {
-                Layout.fillWidth: true
+                id: footerError
+                anchors.left: parent.left
+                anchors.leftMargin: UiMetrics.space5
+                anchors.right: actionButtons.left
+                anchors.rightMargin: UiMetrics.space4
+                anchors.verticalCenter: parent.verticalCenter
+                // 错误文本与按钮组使用锚定而非同一个 RowLayout：错误不存在时也不会
+                // 占用弹性宽度，从而始终让三个操作按钮紧凑地靠右对齐。
                 text: settingsVM.errorMessage.length > 0 ? settingsVM.errorMessage
                     : (root.invalidFields > 0 ? "存在未修正的非法输入（红框项），修正后才能保存" : "")
                 color: root.c.danger
@@ -1118,23 +1357,34 @@ Pane {
                 elide: Text.ElideRight
                 visible: text.length > 0
             }
-            UiButton {
-                variant: "ghost"
-                text: "取消"
-                onClicked: Window.window.close()              // 隐藏，不保存
-            }
-            UiButton {
-                variant: "outline"
-                text: "应用"
-                // 有错时禁用（保险）；存在未修正的非法字段输入时同样禁用
-                enabled: settingsVM.errorMessage.length === 0 && root.invalidFields === 0
-                onClicked: settingsVM.apply()                  // 保存但不关闭
-            }
-            UiButton {
-                variant: "primary"
-                text: "保存"
-                enabled: root.invalidFields === 0
-                onClicked: if (settingsVM.apply()) Window.window.close()   // 保存并关闭
+
+            RowLayout {
+                id: actionButtons
+                anchors.right: parent.right
+                anchors.rightMargin: UiMetrics.space5
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: UiMetrics.space2
+
+                UiButton {
+                    variant: "ghost"
+                    text: "取消"
+                    Layout.preferredWidth: 72
+                    onClicked: Window.window.close()              // 隐藏，不保存
+                }
+                UiButton {
+                    variant: "outline"
+                    text: "应用"
+                    Layout.preferredWidth: 76
+                    enabled: settingsVM.errorMessage.length === 0 && root.invalidFields === 0
+                    onClicked: settingsVM.apply()                  // 保存但不关闭
+                }
+                UiButton {
+                    variant: "primary"
+                    text: "保存并关闭"
+                    Layout.preferredWidth: 128
+                    enabled: root.invalidFields === 0
+                    onClicked: if (settingsVM.apply()) Window.window.close()
+                }
             }
         }
     }
