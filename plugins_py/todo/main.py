@@ -1,9 +1,9 @@
 # main.py — py_todo 子插件：待办事项（sqlite 持久化）
 #
 # 模块级四约定：update() -> dict 必需；init(config)、invoke(name,args)、stop() 可选。
-# update/invoke 在宿主 GUI 线程内执行（持 GIL）——sqlite 读写是毫秒级本地操作，
+# update/invoke 在隔离 worker 的主线程内串行执行——sqlite 读写是毫秒级本地操作，
 # 直接在 invoke 里同步做，不起后台线程；update() 只瞬读 _cache（绝不访问 DB，
-# 避免每个 tick 一个持 GIL 的阻塞点）。DB 单连接单线程（全在 GUI 线程），
+# 避免每个 tick 一个阻塞点）。DB 单连接单线程（全在 worker 主线程），
 # WAL 模式抗崩溃；stop() 关连接释放句柄（热重载时 -wal/-shm 随连接关闭清理）。
 import os
 import sqlite3
@@ -41,27 +41,54 @@ def _db_path():
     return os.path.join(folder, "todo.db")
 
 
+def _set_database_error(error):
+    """保留可渲染的空状态，避免数据库异常让整个插件初始化失败。"""
+    global _cache
+    _cache = {
+        "count": 0,
+        "activeCount": 0,
+        "doneCount": 0,
+        "firstActive": None,
+        "todos": [],
+        "prefix": str(_config.get("prefix", "📝")),
+        "barMode": str(_config.get("barMode", "数量")),
+        "lastError": "待办数据库不可用：%s" % error,
+    }
+
+
 def _open_db():
-    """打开连接并建表（init 时调用；WAL 模式比默认回滚日志更抗崩溃）。"""
+    """打开连接并建表；失败时降级为可见空状态而非让 worker 退出。"""
     global _db
     if _db is not None:
-        return
-    _db = sqlite3.connect(_db_path())
-    _db.execute("PRAGMA journal_mode=WAL")
-    _db.execute(
-        """
-        CREATE TABLE IF NOT EXISTS todos (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            text         TEXT    NOT NULL,
-            done         INTEGER NOT NULL DEFAULT 0,
-            sort_order   INTEGER NOT NULL DEFAULT 0,
-            created_at   TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
-            completed_at TEXT,
-            updated_at   TEXT
+        return True
+    conn = None
+    try:
+        conn = sqlite3.connect(_db_path())
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS todos (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                text         TEXT    NOT NULL,
+                done         INTEGER NOT NULL DEFAULT 0,
+                sort_order   INTEGER NOT NULL DEFAULT 0,
+                created_at   TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+                completed_at TEXT,
+                updated_at   TEXT
+            )
+            """
         )
-        """
-    )
-    _db.commit()
+        conn.commit()
+    except (sqlite3.Error, OSError) as exc:
+        if conn is not None:
+            try:
+                conn.close()
+            except sqlite3.Error:
+                pass
+        _set_database_error(str(exc))
+        return False
+    _db = conn
+    return True
 
 
 def _next_sort_order():
@@ -172,7 +199,8 @@ def init(config):
     """
     global _config
     _config = dict(config or {})
-    _open_db()
+    if not _open_db():
+        return
     _rebuild_cache()
 
 
@@ -191,6 +219,10 @@ def invoke(name, args):
       - remove:      args[0] = 条目 id
       - clear_done:  删除所有已完成条目
     """
+    if _db is None:
+        _cache["lastError"] = _cache.get("lastError") or "待办数据库不可用，无法操作"
+        return
+
     try:
         if name == "add":
             _add(str(args[0]) if args else "")

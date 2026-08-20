@@ -1,8 +1,8 @@
 # main.py — py_heartrate 子插件：bleak 心率显示
 #
 # 模块级四约定：update() -> dict 必需；init(config)、invoke(name,args)、stop() 可选。
-# update/invoke 在宿主 GUI 线程内执行（持 GIL），必须轻量——所有 BLE 操作
-# （扫描/连接/订阅通知/失联监视）都在独立后台线程的 asyncio 事件循环里完成，
+# update/invoke 在隔离 worker 的主线程串行执行，必须轻量——所有 BLE 操作
+# （扫描/连接/订阅通知/失联监视）都在 worker 内独立后台线程的 asyncio 事件循环里完成，
 # 线程只碰纯 Python 对象、绝不触达 Qt/QML，结果写进模块级 _cache，update() 只瞬读。
 # stop() 用于热重载/卸载前停掉线程并断开设备，防止旧模块线程泄漏。
 #
@@ -94,7 +94,11 @@ def _parse_hr(data):
         return None
     flags = data[0]
     if flags & 0x01:
+        if len(data) < 3:
+            return None
         return int.from_bytes(data[1:3], "little")
+    if len(data) < 2:
+        return None
     return data[1]
 
 
@@ -337,7 +341,7 @@ def _worker():
 
 
 def _schedule(coro):
-    """把协程投递到后台事件循环（GUI 线程调用，线程安全）。"""
+    """把协程投递到后台事件循环（从插件执行线程调用，线程安全）。"""
     loop = _loop
     if loop is None:
         return
@@ -545,7 +549,11 @@ async def _monitor():
             ls = _cache["lastSeen"]
         if st != "connected":
             continue
-        stale = int(_config.get("staleSeconds", 10))
+        try:
+            stale = int(_config.get("staleSeconds", 10))
+        except (TypeError, ValueError):
+            stale = 10
+        stale = max(5, min(300, stale))
         ref = ls if ls is not None else _connected_at
         if ref is None or time.time() - ref <= stale:
             continue
@@ -623,7 +631,7 @@ def invoke(name, args):
 
 
 def stop():
-    """卸载/热重载前发出 BLE 停止信号；不在 GUI 线程等待设备断开。"""
+    """卸载/热重载前发出 BLE 停止信号；不等待设备断开。"""
     global _thread, _loop
     _stop_flag.set()
     # asyncio 主循环会在 100ms 内观察到标志并执行 _cleanup；旧模块继续持有

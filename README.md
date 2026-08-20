@@ -11,7 +11,7 @@
 
 - 贴边占位：顶部/底部可选，AppBar 工作区保留，退出自动归还
 - 插件化：DLL 热插拔，增删插件目录 + 重启即可装卸；三栏布局（左 / 中 / 右），顺序可配
-- Python 桥接：`plugins_py/` 下放置 Python 子插件，界面仍是 QML，逻辑用 Python 写
+- Python 桥接：每个 `plugins_py/` 子插件运行在独立 Python worker 进程，异常、超时或崩溃不会拖垮宿主；界面仍是 QML，逻辑用 Python 写
 - 主题系统：纯 JSON 主题包 × dark/light 双模式，可多主题包切换，全部插件自动跟随
 - 配置热重载：保存 `config.json` 立即生效，无需重启
 - 图形化设置窗口：插件启停 / 位置 / 排序、主题切换、插件级设置，全部可视化完成
@@ -94,6 +94,8 @@
 
 托盘菜单 → 设置... 打开。左侧为插件列表（启用在前，勾选即时归位），右侧为选中插件的设置：启停、位置、排序，以及插件自己声明的设置项（表单或插件自绘设置页）。点保存后写入 `config.json`，经热重载生效。Python 子插件的 `pybridge` 总开关由设置窗口自动托管，无需手工维护。
 
+含 API Key 等敏感字段的设置会使用当前 Windows 用户的 **DPAPI** 加密：`config.json` 仅保存引用标记，运行时才解密注入插件。用量中心的厂商密钥也适用；已有明文配置在设置窗口中保存一次即可迁移。
+
 ## 主题
 
 主题包是 `themes/<id>/theme.json` 的纯 JSON 声明式目录，放进 `themes/` 即可被识别（设置窗口或热重载后可见）。制作规范见 `themes/README.md`。
@@ -110,7 +112,7 @@
 |---|---|---|
 | 形态 | `plugins/<id>/<id>.dll + <Id>.qml + metadata.json` | `plugins_py/<name>/plugin.json + main.py + <X>.qml` |
 | 界面 | QML（与宿主同引擎） | QML（与宿主同引擎，契约完全相同） |
-| 逻辑 | C++ ViewModel（QObject + Q_PROPERTY） | `main.py` 模块级约定函数 |
+| 逻辑 | C++ ViewModel（QObject + Q_PROPERTY） | 独立 worker 进程中的 `main.py` 模块级约定函数 |
 | 构建 | 需与宿主同一构建树编译（ABI 锁定） | 无需编译，改文件重建同步即生效 |
 | 适用 | 性能敏感、要调 Win32 / 第三方 native 库 | 快速迭代、数据处理、网络 API 类插件 |
 
@@ -457,8 +459,9 @@ def stop():                 # 可选。卸载/热重载前调用，用来停后�
 
 - 刷新节拍：`config.intervalMs`（毫秒，缺省 1000）；
 - `update()` 返回的 dict 值支持 str / int / float / bool / list / dict（嵌套），其他类型转字符串；
-- `invoke()` 返回后框架会立即补拉一次 `update()`，交互反馈不用等下个 tick；
+- `invoke()` 会异步排队；其同步返回值仅表示请求是否已进入队列，worker 完成后框架会立即补拉一次 `update()`；
 - `main.py` 所在目录会追加到 `sys.path` 末尾，可导入同目录辅助模块；
+- 每个子插件在独立 Python worker 进程中执行，异常、IPC 协议错误、超时或 worker 崩溃会被桥接层隔离并自动重试；健康完成一次 `update()` 后重试退避会重置；
 - 抛异常不会拖垮宿主：traceback 记入日志，UI 保留上一次的值。
 
 最小示例：
@@ -509,9 +512,9 @@ Item {
 
 ## 网络请求与后台线程（铁律）
 
-- `update()` / `invoke()` 在宿主 GUI 线程执行且持有 GIL，**禁止阻塞**（`requests.get()` 之类会卡死整条栏）；
+- `init()` / `update()` / `invoke()` 在各自的 Python worker 进程中串行执行，不会卡住宿主 GUI；但同一插件的请求会相互等待，**仍禁止阻塞**（`requests.get()` 之类会让该插件的显示与点击反馈停滞，直至超时或 worker 被回收）；
 - 允许自起 Python 线程做后台 IO（标准库阻塞 IO 和 `sleep` 会释放 GIL），但线程**只碰纯 Python 对象、绝不触达任何 Qt/QML 对象**，结果写模块级缓存，`update()` 只瞬读缓存；
-- **必须实现 `stop()`**：热重载会销毁旧模块重新 import，旧线程不停会泄漏运行。
+- **必须实现 `stop()`**：热重载或隔离 worker 退出前会调用它；只发停止信号，不要等待网络请求或线程长时间退出。
 
 范式（精简版，完整注释版见 `plugins_py/README.md`）：
 

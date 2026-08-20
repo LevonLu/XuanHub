@@ -8,6 +8,8 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonDocument>
+#include <QSet>
+#include <QUuid>
 #include <QtMath>
 
 namespace {
@@ -71,6 +73,80 @@ bool validateField(const QJsonObject& f, const QVariant& v, QString* why) {
         }
     }
     // string/json：任意结构化值皆可
+    return true;
+}
+
+// 自绘设置页的动态 vendors 数组没有静态 schema 字段可逐项标 secret。
+// 使用稳定 UUID 作为路径的一部分，确保排序、增删同类厂商时凭据不会串位。
+bool protectUsageHubVendorSecrets(const QString& pluginId, QVariantMap* config,
+                                  const QJsonObject& rawConfig, const SecretStore& secrets,
+                                  QString* err) {
+    if (pluginId != QLatin1String("py_usage_hub") || !config) return true;
+
+    const QJsonArray rawVendors = rawConfig.value(QStringLiteral("vendors")).toArray();
+    QHash<QString, QJsonValue> rawCredentials;
+    for (const QJsonValue& value : rawVendors) {
+        const QJsonObject vendor = value.toObject();
+        const QString token = vendor.value(QStringLiteral("secretId")).toString();
+        if (!token.isEmpty()) rawCredentials.insert(token, vendor.value(QStringLiteral("apiKey")));
+    }
+
+    const QVariantList vendors = config->value(QStringLiteral("vendors")).toList();
+    QVariantList protectedVendors;
+    protectedVendors.reserve(vendors.size());
+    QSet<QString> activeTokens;
+    for (const QVariant& value : vendors) {
+        QVariantMap vendor = value.toMap();
+        if (vendor.isEmpty()) {
+            protectedVendors.append(value);
+            continue;
+        }
+        QString token = vendor.value(QStringLiteral("secretId")).toString();
+        if (token.isEmpty() || activeTokens.contains(token))
+            token = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        activeTokens.insert(token);
+        vendor.insert(QStringLiteral("secretId"), token);
+
+        const QString secretId = SecretStore::idForPluginField(
+            pluginId, QStringLiteral("vendors.%1.apiKey").arg(token));
+        if (vendor.contains(QStringLiteral("apiKey"))) {
+            const QJsonValue candidate = QJsonValue::fromVariant(vendor.value(QStringLiteral("apiKey")));
+            const QString reference = SecretStore::referenceId(candidate);
+            if (!reference.isEmpty()) {
+                if (reference != secretId) {
+                    *err = QStringLiteral("py_usage_hub：厂商凭据引用无效");
+                    return false;
+                }
+                vendor.insert(QStringLiteral("apiKey"), SecretStore::referenceValue(secretId).toVariant());
+            } else {
+                const QString plaintext = vendor.value(QStringLiteral("apiKey")).toString();
+                if (!secrets.write(secretId, plaintext)) {
+                    *err = QStringLiteral("py_usage_hub：无法安全保存厂商凭据");
+                    return false;
+                }
+                if (plaintext.isEmpty()) vendor.remove(QStringLiteral("apiKey"));
+                else vendor.insert(QStringLiteral("apiKey"),
+                                   SecretStore::referenceValue(secretId).toVariant());
+            }
+        } else if (const QString reference = SecretStore::referenceId(rawCredentials.value(token));
+                   reference == secretId) {
+            // 当前用户无法解密旧凭据时，保存别的设置不应静默清掉它。
+            vendor.insert(QStringLiteral("apiKey"), SecretStore::referenceValue(secretId).toVariant());
+        }
+        protectedVendors.append(vendor);
+    }
+
+    // 删除厂商时同步清掉其 DPAPI 密文，避免 secrets.json 无限制积累孤儿条目。
+    for (auto it = rawCredentials.cbegin(); it != rawCredentials.cend(); ++it) {
+        if (activeTokens.contains(it.key())) continue;
+        const QString secretId = SecretStore::idForPluginField(
+            pluginId, QStringLiteral("vendors.%1.apiKey").arg(it.key()));
+        if (SecretStore::referenceId(it.value()) == secretId && !secrets.write(secretId, {})) {
+            *err = QStringLiteral("py_usage_hub：无法清除已删除厂商的凭据");
+            return false;
+        }
+    }
+    config->insert(QStringLiteral("vendors"), protectedVendors);
     return true;
 }
 } // namespace
@@ -312,6 +388,7 @@ bool SettingsPluginModel::toPluginEntriesJson(QJsonArray* out, QString* err) con
                 else config.insert(key, SecretStore::referenceValue(secretId).toVariant());
             }
         }
+        if (!protectUsageHubVendorSecrets(r.id, &config, rawConfig, secrets, err)) return false;
         o[QStringLiteral("id")] = r.id;
         o[QStringLiteral("position")] = r.position;
         o[QStringLiteral("order")] = r.order;

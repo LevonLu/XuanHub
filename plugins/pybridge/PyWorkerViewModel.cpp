@@ -220,6 +220,9 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
                 m_values = next;
                 Q_EMIT valuesChanged();
             }
+            // 仅在真正完成一次 update 后认定 worker 已恢复，避免初始化成功但随即
+            // 崩溃的插件绕过退避；健康运行后下一次故障从 1 秒重新尝试。
+            m_restartAttempt = 0;
         }
     }
 

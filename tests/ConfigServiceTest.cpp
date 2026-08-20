@@ -1,6 +1,7 @@
 // ConfigServiceTest.cpp — 配置根类型、重复插件与 DPAPI 密钥引用回归测试
 #include "ConfigService.h"
 #include "SecretStore.h"
+#include "SettingsPluginModel.h"
 
 #include <QFile>
 #include <QJsonArray>
@@ -86,6 +87,43 @@ private Q_SLOTS:
                  QStringLiteral("test-secret"));
         QVERIFY(service.rawConfig().value(QStringLiteral("plugins")).toArray().first().toObject()
                     .value(QStringLiteral("config")).toObject().value(QStringLiteral("aiApiKey")).isObject());
+    }
+
+    void usageHubVendorSecretMigratesAndHydrates() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QJsonObject vendor{{QStringLiteral("id"), QStringLiteral("deepseek")},
+                                 {QStringLiteral("name"), QStringLiteral("DeepSeek")},
+                                 {QStringLiteral("apiKey"), QStringLiteral("plain-key")}};
+        const QJsonObject rawEntry = plugin(QStringLiteral("py_usage_hub"),
+                                            {{QStringLiteral("vendors"), QJsonArray{vendor}}});
+        PluginConfigEntry entry;
+        entry.id = QStringLiteral("py_usage_hub");
+        entry.position = QStringLiteral("right");
+        entry.config = rawEntry.value(QStringLiteral("config")).toObject().toVariantMap();
+
+        SettingsPluginModel model;
+        model.reload({entry}, QJsonArray{rawEntry}, {}, dir.filePath(QStringLiteral("config.json")));
+        QJsonArray exported;
+        QString error;
+        QVERIFY2(model.toPluginEntriesJson(&exported, &error), qPrintable(error));
+
+        const QJsonObject saved = exported.first().toObject();
+        const QJsonObject savedVendor = saved.value(QStringLiteral("config")).toObject()
+                                           .value(QStringLiteral("vendors")).toArray().first().toObject();
+        const QString token = savedVendor.value(QStringLiteral("secretId")).toString();
+        QVERIFY(!token.isEmpty());
+        const QString secretId = SecretStore::idForPluginField(
+            QStringLiteral("py_usage_hub"), QStringLiteral("vendors.%1.apiKey").arg(token));
+        QCOMPARE(SecretStore::referenceId(savedVendor.value(QStringLiteral("apiKey"))), secretId);
+        QCOMPARE(SecretStore(dir.path()).read(secretId).value_or({}), QStringLiteral("plain-key"));
+
+        QVERIFY(writeJson(dir.path(), QJsonDocument(configWithPlugins({saved}))));
+        ConfigService service;
+        QVERIFY(service.load(dir.path(), dir.path()));
+        const QVariantMap hydrated = service.pluginEntries().first().config
+                                         .value(QStringLiteral("vendors")).toList().first().toMap();
+        QCOMPARE(hydrated.value(QStringLiteral("apiKey")).toString(), QStringLiteral("plain-key"));
     }
 };
 

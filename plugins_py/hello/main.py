@@ -1,6 +1,6 @@
 # main.py — py_hello 子插件（M6 示例）
 # 模块级三约定：update() -> dict 必需；init(config)、invoke(name, args) 可选。
-# 注意：update/invoke 在宿主 GUI 线程内执行（持 GIL），必须轻量、禁止阻塞与起线程。
+# 注意：update/invoke 在隔离 worker 的主线程内串行执行，必须轻量、禁止阻塞。
 from datetime import datetime
 
 _config = {}

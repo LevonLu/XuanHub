@@ -5,7 +5,7 @@
 #   - plan:    限额查询（如 GLM Coding Plan），显示 5h/每周窗口进度条
 #
 # 模块级四约定：update() -> dict 必需；init(config)、invoke(name,args)、stop() 可选。
-# update/invoke 在宿主 GUI 线程内执行（持 GIL），必须轻量——网络 IO 全在后台 daemon
+# update/invoke 在隔离 worker 的主线程内串行执行，必须轻量——网络 IO 全在后台 daemon
 # 线程里完成，线程只碰纯 Python 对象、绝不触达 Qt/QML，结果写进模块级 _cache，
 # update() 只瞬读缓存。stop() 用来在热重载/卸载前停掉旧线程防泄漏。
 import json
@@ -316,7 +316,7 @@ def invoke(name, args):
 
 
 def stop():
-    """卸载/热重载前发出停止信号；不能在 GUI 线程 join 网络查询。"""
+    """卸载/热重载前发出停止信号；不等待网络查询，避免阻塞插件执行线程。"""
     global _stop_flag, _worker_thread
     _stop_flag = True
     _refresh_event.set()

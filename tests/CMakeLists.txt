@@ -5,6 +5,8 @@ add_executable(xuanhub_config_tests
     ${CMAKE_SOURCE_DIR}/app/src/ConfigService.cpp
     ${CMAKE_SOURCE_DIR}/app/src/SecretStore.h
     ${CMAKE_SOURCE_DIR}/app/src/SecretStore.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/SettingsPluginModel.h
+    ${CMAKE_SOURCE_DIR}/app/src/SettingsPluginModel.cpp
 )
 
 set_target_properties(xuanhub_config_tests PROPERTIES AUTOMOC ON)
@@ -13,6 +15,7 @@ target_include_directories(xuanhub_config_tests PRIVATE
 )
 target_link_libraries(xuanhub_config_tests PRIVATE
     Qt6::Core
+    Qt6::Gui
     Qt6::Test
     crypt32
 )
@@ -22,6 +25,8 @@ target_link_libraries(xuanhub_config_tests PRIVATE
 add_custom_command(TARGET xuanhub_config_tests POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:Qt6::Core>" "$<TARGET_FILE_DIR:xuanhub_config_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Gui>" "$<TARGET_FILE_DIR:xuanhub_config_tests>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:Qt6::Test>" "$<TARGET_FILE_DIR:xuanhub_config_tests>"
     VERBATIM
@@ -33,7 +38,7 @@ add_test(NAME xuanhub_config_tests COMMAND xuanhub_config_tests)
 find_package(Python 3.12 QUIET COMPONENTS Interpreter)
 if(Python_Interpreter_FOUND)
     add_test(NAME xuanhub_pyworker_tests
-        COMMAND "${Python_EXECUTABLE}" -B -m unittest plugins_py/tests/test_bridge_worker.py -v)
+        COMMAND "${Python_EXECUTABLE}" -B -m unittest discover -s plugins_py/tests -v)
     set_tests_properties(xuanhub_pyworker_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 

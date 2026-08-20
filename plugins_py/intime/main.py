@@ -4,7 +4,7 @@
 # 休息时间到 → QML 遮罩从 bar 向下滑落覆盖全屏，显示倒计时和自定义文字，
 # ESC 提前结束休息。
 #
-# update() 在 GUI 线程执行，必须轻量——所有计时基于 time.time() 的差值计算。
+# update() 在隔离 worker 的主线程执行，必须轻量——所有计时基于 time.time() 的差值计算。
 import threading
 import time
 
