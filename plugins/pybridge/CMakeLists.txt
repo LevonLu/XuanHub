@@ -1,5 +1,5 @@
 # PyBridge 插件 —— 每个 Python 子插件在独立 python.exe worker 中运行。
-# 宿主 DLL 不链接 CPython/nanobind：Python 崩溃、GIL 卡死或扩展模块异常不会进入 XuanHub 进程。
+# 宿主 DLL 不链接 CPython：Python 崩溃、GIL 卡死或扩展模块异常不会进入 XuanHub 进程。
 add_library(pybridge MODULE
     PyBridgePlugin.h
     PyBridgePlugin.cpp

@@ -554,7 +554,7 @@ def update():
 
 # 从源码构建
 
-前提：Qt 6.9.3（msvc2022_64）、MSVC 2022、CMake ≥ 3.21。Qt 安装路径不同就改 `CMakePresets.json` 或新建 `CMakeUserPresets.json` 覆盖 `CMAKE_PREFIX_PATH`。克隆后先 `git submodule update --init --recursive`（拉取 nanobind 及嵌套的 ext/robin_map）。
+前提：Qt 6.9.3（msvc2022_64）、MSVC 2022、CMake ≥ 3.21。Qt 安装路径不同就改 `CMakePresets.json` 或新建 `CMakeUserPresets.json` 覆盖 `CMAKE_PREFIX_PATH`。
 
 ```bash
 cmake --preset default                 # 配置（生成到 build/default）
@@ -575,6 +575,5 @@ plugins/        # C++ 插件：clock / sysinfo / pybridge
 plugins_py/     # Python 子插件（README.md 即开发契约）
 themes/         # 主题包（README.md 即开发契约）
 config/         # 开发用示例配置
-third_party/    # nanobind git submodule（含嵌套的 ext/robin_map）
 AGENTS.md       # 面向 AI 代理的项目说明（架构细节最齐全的一份文档）
 ```

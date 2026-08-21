@@ -30,7 +30,7 @@ add_subdirectory(plugins/clock)
 add_subdirectory(plugins/sysinfo)
 
 # pybridge 不再内嵌 CPython：只需 Qt 网络组件启动独立 python.exe worker，
-# 因而构建机无需 Python 开发包或 nanobind 子模块。运行时找不到 Python 3.12+
+# 因而构建机无需 Python 开发包。运行时找不到 Python 3.12+
 # 时插件自行降级，不影响宿主与其他插件。
 add_subdirectory(plugins/pybridge)
 

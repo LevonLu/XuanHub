@@ -17,7 +17,7 @@
 |---|---|
 | 语言 / 标准 | C++17（无编译器扩展） |
 | UI | Qt 6.9.3 — Qt Quick / QML（另有 Widgets、Network） |
-| 编译器 | **MSVC 2022（VS 17，x64）**；本机虽有 MinGW 但不采用 |
+| 编译器 | **MSVC 2022（VS 17，x64）**；不支持 MinGW 工具链 |
 | 构建 | CMake ≥ 3.21 + `CMakePresets.json`，VS 17 2022 生成器 |
 | 插件加载 | `QPluginLoader` + `Q_PLUGIN_METADATA`（IID `xuanhub.BarPlugin/1.0`；host 插件另有 `xuanhub.BarPluginHost/1.0`） |
 | Python 桥接 | Qt `QTcpServer/QTcpSocket` + 每子插件独立 `python.exe` worker；4 字节长度前缀 JSON、一次性随机令牌认证，仅绑定 `127.0.0.1` |
@@ -26,9 +26,9 @@
 
 ## 3. 构建与运行
 
-前提：Qt 6.9.3 msvc2022_64 已安装；克隆后先 `git submodule update --init --recursive`。预设默认 `CMAKE_PREFIX_PATH=C:/Qt/6.9.3/msvc2022_64`，路径不同就在 `CMakeUserPresets.json`（已 gitignore）覆盖。
+前提：Qt 6.9.3 msvc2022_64 已安装。若仓库默认预设无法定位 Qt，请在已被 gitignore 的 `CMakeUserPresets.json` 中按本机安装位置覆盖 `CMAKE_PREFIX_PATH`。
 
-pybridge 不要求构建机安装 Python 开发包或 nanobind；它始终参与构建。运行时若找不到 Python ≥3.12 的 `python.exe`、标准库和 `python3XX.dll`，pybridge 自动停用子插件并托盘提示，其余功能照常运行。
+pybridge 不要求构建机安装 Python 开发包；它始终参与构建。运行时若找不到 Python ≥3.12 的 `python.exe`、标准库和 `python3XX.dll`，pybridge 自动停用子插件并托盘提示，其余功能照常运行。
 
 ```bash
 cmake --preset default                 # 配置（生成到 build/default）
@@ -63,8 +63,7 @@ XuanHub/
 │   ├── clock/  sysinfo/                 # 两个示例插件（各含 Plugin + ViewModel + QML）
 │   └── pybridge/                        # PyBridgePlugin 外壳 + PyWorkerViewModel（无 CPython 链接）
 ├── plugins_py/                          # Python 子插件 + bridge_worker.py（README 即开发契约）
-├── themes/                              # 主题包（ThemeRegistry 扫描；README 即开发契约；xuanhub-default 兜底勿删）
-└── third_party/nanobind/                # 历史子模块；当前 pybridge 不再依赖
+└── themes/                              # 主题包（ThemeRegistry 扫描；README 即开发契约；xuanhub-default 兜底勿删）
 ```
 
 依赖方向：**插件只链接 `barplugin`**，宿主 `app` 也链接 `barplugin`。`barplugin` 必须是 **SHARED**（保证宿主与插件 DLL 共享同一份 `EventBus` 类型/单例语义）。插件对宿主核心零依赖，核心仅通过接口拿到 `QObject* viewModel()` 与 `QUrl qmlUrl()`。
@@ -145,6 +144,7 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 ## 6. 代码风格与约定
 
 - **注释与文档一律使用简体中文**；源文件首行是 `// 文件名 — 一句话职责` 头注释；关键设计取舍在代码附近注释"为什么"（含被拒绝的备选）。
+- 文档引用项目文件时使用仓库相对路径，引用用户数据目录时使用 `%APPDATA%`、`%TEMP%` 等环境变量；不得写入开发者用户名、盘符或个人工作区绝对路径。
 - 头文件 `#pragma once`；字符串字面量 `QStringLiteral`；接口/POD 放 `namespace xuanhub`（`lib/barplugin`），宿主应用层类在全局命名空间。
 - Qt 惯用法优先：信号槽、`Q_PROPERTY`、`QPointer`、`QVariantMap`；日志用 `qDebug()/qWarning()`（全局 message handler 带 `[时间戳] [级别]` 前缀）。
 - 新增插件的 CMake 模板（照抄 `plugins/clock/CMakeLists.txt`）：`add_library(<id> MODULE ...)` + `AUTOMOC ON`；`PREFIX "" OUTPUT_NAME <id>`；链接 `barplugin`（+ 需要的 Qt/Win32 库）；`RUNTIME_OUTPUT_DIRECTORY "${XUANHUB_BIN_DIR}/plugins/<id>"` + `POST_BUILD copy_if_different` 拷 DLL/QML/metadata.json（VS 生成器下 MODULE 的 .dll 不走 RUNTIME_OUTPUT_DIRECTORY，POST_BUILD 兜底必须保留）；顶层 `add_subdirectory(plugins/<id>)`。
