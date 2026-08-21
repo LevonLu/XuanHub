@@ -138,11 +138,14 @@ else()
     message(WARNING "windeployqt 未找到，dist 不会自动部署 Qt 依赖（请手动执行，见 AGENTS.md §8）")
 endif()
 
-# M9：部署 themes/ 主题包到运行时目录（themes/<id>/theme.json 即安装结构）。
-# 每次 XuanHub 链接后整树同步，保证用户改 theme.json / 增删主题包后立刻生效。
+# M9：部署 themes/ 主题包和许可证到运行时目录。
+# 每次 XuanHub 链接后整树同步主题，并确保二进制分发满足 BSD-3-Clause 署名要求。
 add_custom_command(TARGET XuanHub POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/themes"
         "${XUANHUB_BIN_DIR}/themes"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/LICENSE"
+        "${XUANHUB_BIN_DIR}/LICENSE"
     VERBATIM
 )

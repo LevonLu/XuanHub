@@ -577,3 +577,10 @@ themes/         # 主题包（README.md 即开发契约）
 config/         # 开发用示例配置
 AGENTS.md       # 面向 AI 代理的项目说明（架构细节最齐全的一份文档）
 ```
+
+## 许可证
+
+XuanHub 使用 [BSD 3-Clause License](LICENSE)。允许个人和商业用途、修改及再分发；源码和二进制分发均须按许可证保留以下署名信息：
+
+- 项目地址：<https://github.com/LevonLu/XuanHub>
+- GitHub：[@LevonLu](https://github.com/LevonLu)

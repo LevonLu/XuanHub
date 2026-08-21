@@ -84,7 +84,8 @@ function Test-StrictChildPath {
 function Assert-PackageSafe {
     param(
         [Parameter(Mandatory = $true)][string]$PackageDir,
-        [Parameter(Mandatory = $true)][string]$DefaultConfig
+        [Parameter(Mandatory = $true)][string]$DefaultConfig,
+        [Parameter(Mandatory = $true)][string]$LicenseFile
     )
 
     $forbiddenNames = @(
@@ -115,6 +116,14 @@ function Assert-PackageSafe {
     } elseif ((Get-FileHash $packageConfig -Algorithm SHA256).Hash -ne
               (Get-FileHash $DefaultConfig -Algorithm SHA256).Hash) {
         $violations.Add("config.json 不是仓库内置默认配置")
+    }
+
+    $packageLicense = Join-Path $PackageDir "LICENSE"
+    if (-not (Test-Path $packageLicense -PathType Leaf)) {
+        $violations.Add("缺少 BSD-3-Clause 许可证: $packageLicense")
+    } elseif ((Get-FileHash $packageLicense -Algorithm SHA256).Hash -ne
+              (Get-FileHash $LicenseFile -Algorithm SHA256).Hash) {
+        $violations.Add("LICENSE 与仓库许可证不一致")
     }
 
     $textExtensions = @(
@@ -154,7 +163,8 @@ function Assert-PackageSafe {
 function Assert-ZipManifestSafe {
     param(
         [Parameter(Mandatory = $true)][string]$ZipPath,
-        [Parameter(Mandatory = $true)][string]$DefaultConfig
+        [Parameter(Mandatory = $true)][string]$DefaultConfig,
+        [Parameter(Mandatory = $true)][string]$LicenseFile
     )
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -167,6 +177,7 @@ function Assert-ZipManifestSafe {
     )
     $violations = New-Object System.Collections.Generic.List[string]
     $configHashes = New-Object System.Collections.Generic.List[string]
+    $licenseHashes = New-Object System.Collections.Generic.List[string]
     $archive = [IO.Compression.ZipFile]::OpenRead($ZipPath)
     try {
         foreach ($entry in $archive.Entries) {
@@ -194,6 +205,19 @@ function Assert-ZipManifestSafe {
                     $stream.Dispose()
                 }
             }
+            if ($entry.FullName -eq "LICENSE") {
+                $stream = $entry.Open()
+                try {
+                    $sha = [Security.Cryptography.SHA256]::Create()
+                    try {
+                        $licenseHashes.Add(([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', ''))
+                    } finally {
+                        $sha.Dispose()
+                    }
+                } finally {
+                    $stream.Dispose()
+                }
+            }
         }
     } finally {
         $archive.Dispose()
@@ -202,6 +226,10 @@ function Assert-ZipManifestSafe {
     $defaultHash = (Get-FileHash $DefaultConfig -Algorithm SHA256).Hash
     if ($configHashes.Count -ne 1 -or $configHashes[0] -ne $defaultHash) {
         $violations.Add("ZIP 中缺少唯一且干净的默认 config.json")
+    }
+    $licenseHash = (Get-FileHash $LicenseFile -Algorithm SHA256).Hash
+    if ($licenseHashes.Count -ne 1 -or $licenseHashes[0] -ne $licenseHash) {
+        $violations.Add("ZIP 中缺少唯一且正确的 LICENSE")
     }
     if ($violations.Count -gt 0) {
         $detail = $violations | Sort-Object -Unique | ForEach-Object { "  - $_" }
@@ -293,6 +321,7 @@ $packageName = "XuanHub-v$Version-portable-x64"
 $DistDir = Join-Path $OutputDir $packageName
 $zipPath = Join-Path $OutputDir "$packageName.zip"
 $defaultConfig = Join-Path $ProjectRoot "app\resources\default_config.json"
+$licenseFile = Join-Path $ProjectRoot "LICENSE"
 
 Write-Host "=============================================="
 Write-Host "  XuanHub Portable Packaging Tool  v$Version"
@@ -312,6 +341,10 @@ if (-not (Test-Path $sourceExe)) {
 }
 if (-not (Test-Path $defaultConfig -PathType Leaf)) {
     Write-Error "Default config not found: $defaultConfig"
+    exit 1
+}
+if (-not (Test-Path $licenseFile -PathType Leaf)) {
+    Write-Error "License not found: $licenseFile"
     exit 1
 }
 if (-not (Test-StrictChildPath -Parent $OutputDir -Child $DistDir)) {
@@ -350,13 +383,14 @@ if ($stageCopyCode -ge 8) {
     exit 1
 }
 Copy-Item -LiteralPath $defaultConfig -Destination (Join-Path $DistDir "config.json") -Force
+Copy-Item -LiteralPath $licenseFile -Destination (Join-Path $DistDir "LICENSE") -Force
 
 $exe = Join-Path $DistDir "XuanHub.exe"
 if (-not (Test-Path $exe)) {
     Write-Error "XuanHub.exe missing from staging directory"
     exit 1
 }
-Write-Host "        XuanHub.exe + clean default config: OK"
+Write-Host "        XuanHub.exe + clean default config + LICENSE: OK"
 
 # ---- Step 2: Copy MSVC runtime DLLs ----
 Write-Host "`n[2/6] Collecting MSVC runtime DLLs..."
@@ -715,7 +749,7 @@ if (-not $NoPrune) {
 # ---- Step 6: Create zip archive ----
 Write-Host "`n[6/6] Packaging..."
 
-Assert-PackageSafe -PackageDir $DistDir -DefaultConfig $defaultConfig
+Assert-PackageSafe -PackageDir $DistDir -DefaultConfig $defaultConfig -LicenseFile $licenseFile
 
 $distSize = (Get-ChildItem $DistDir -Recurse -File | Measure-Object -Property Length -Sum).Sum
 Write-Host ("        Dist dir size: {0:N1} MB" -f ($distSize / 1MB))
@@ -730,7 +764,7 @@ if (-not $NoZip) {
 
     if (Test-Path $zipPath) {
         try {
-            Assert-ZipManifestSafe -ZipPath $zipPath -DefaultConfig $defaultConfig
+            Assert-ZipManifestSafe -ZipPath $zipPath -DefaultConfig $defaultConfig -LicenseFile $licenseFile
         } catch {
             Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
             throw

@@ -63,7 +63,8 @@ XuanHub/
 │   ├── clock/  sysinfo/                 # 两个示例插件（各含 Plugin + ViewModel + QML）
 │   └── pybridge/                        # PyBridgePlugin 外壳 + PyWorkerViewModel（无 CPython 链接）
 ├── plugins_py/                          # Python 子插件 + bridge_worker.py（README 即开发契约）
-└── themes/                              # 主题包（ThemeRegistry 扫描；README 即开发契约；xuanhub-default 兜底勿删）
+├── themes/                              # 主题包（ThemeRegistry 扫描；README 即开发契约；xuanhub-default 兜底勿删）
+└── LICENSE                              # BSD-3-Clause；源码与二进制分发均须保留
 ```
 
 依赖方向：**插件只链接 `barplugin`**，宿主 `app` 也链接 `barplugin`。`barplugin` 必须是 **SHARED**（保证宿主与插件 DLL 共享同一份 `EventBus` 类型/单例语义）。插件对宿主核心零依赖，核心仅通过接口拿到 `QObject* viewModel()` 与 `QUrl qmlUrl()`。
