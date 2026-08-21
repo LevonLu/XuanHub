@@ -562,7 +562,9 @@ cmake --build --preset default         # Release
 cmake --build --preset default-debug   # Debug
 ```
 
-运行产物统一在 `build/default/dist/<CONFIG>/`（含 `XuanHub.exe`、插件目录、Qt 依赖，链接后自动 windeployqt）。仓库根的 `config/config.json` 是开发示例，需手动拷到该目录才会以便携模式生效。pybridge（Python 桥接）为可选组件：构建需本机装有 Python ≥3.12 开发包与已初始化的 nanobind 子模块，缺失时 configure 告警并跳过该插件，其余功能照常构建。
+运行产物统一在 `build/default/dist/<CONFIG>/`（含 `XuanHub.exe`、插件目录、Qt 依赖，链接后自动 windeployqt）。仓库根的 `config/config.json` 是开发示例，需手动拷到该目录才会以便携模式生效。pybridge 始终参与构建，不链接 CPython；运行时找不到 Python ≥3.12 时只停用 Python 子插件。
+
+`pixi run package` / `package-bundle` / `package-bundle-full` 会从构建输出创建全新的 `dist/XuanHub-v<版本>-portable-x64/` staging，再生成 ZIP。打包不会复用运行目录里的配置、日志、锁或 DPAPI 密钥库；成品固定使用内置默认配置，并在压缩前检查敏感文件、密钥形状和本机用户路径。`pixi run package-nozip` 只保留通过同一安全检查的 staging 目录。
 
 ## 仓库目录速览
 

@@ -3,8 +3,9 @@
     Package XuanHub as portable distribution.
 
 .DESCRIPTION
-    Collects all dependencies (MSVC runtime DLLs, Python stdlib),
-    creates portable marker file, prunes unnecessary files, and archives to zip.
+    Copies build artifacts into a clean staging directory, collects dependencies
+    (MSVC runtime DLLs, optional Python stdlib), rejects runtime/private files,
+    creates the portable marker, prunes unnecessary files, and archives to zip.
 
 .PARAMETER Config
     Build configuration: Release or Debug. Default: Release.
@@ -66,6 +67,149 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Test-StrictChildPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$Parent,
+        [Parameter(Mandatory = $true)][string]$Child
+    )
+
+    $parentFull = [IO.Path]::GetFullPath($Parent).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    $childFull = [IO.Path]::GetFullPath($Child).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    return $childFull.StartsWith($parentFull, [StringComparison]::OrdinalIgnoreCase) -and
+           -not $childFull.Equals($parentFull, [StringComparison]::OrdinalIgnoreCase)
+}
+
+# 最终发布闸门：运行时文件一律拒绝，config.json 必须与仓库内置默认配置一致；
+# 文本文件再检查高置信凭据形状和本机用户目录，避免“打包机状态”混入成品。
+function Assert-PackageSafe {
+    param(
+        [Parameter(Mandatory = $true)][string]$PackageDir,
+        [Parameter(Mandatory = $true)][string]$DefaultConfig
+    )
+
+    $forbiddenNames = @(
+        "secrets.json", "XuanHub.lock", "xuanhub.log", ".env", ".npmrc", ".pypirc"
+    )
+    $forbiddenExtensions = @(
+        ".pyc", ".pyo", ".pem", ".key", ".p12", ".pfx", ".keystore", ".jks",
+        ".log", ".db", ".sqlite", ".sqlite3", ".dmp", ".dump", ".trace"
+    )
+    $violations = New-Object System.Collections.Generic.List[string]
+
+    Get-ChildItem $PackageDir -Recurse -Directory -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -in @("__pycache__", ".git", ".hg", ".svn") } |
+        ForEach-Object { $violations.Add("禁止目录: $($_.FullName)") }
+
+    $packageFiles = @(Get-ChildItem $PackageDir -Recurse -File -Force)
+    foreach ($file in $packageFiles) {
+        if ($file.Name -in $forbiddenNames -or
+            $file.Name -like ".env.*" -or
+            $file.Extension.ToLowerInvariant() -in $forbiddenExtensions) {
+            $violations.Add("禁止文件: $($file.FullName)")
+        }
+    }
+
+    $packageConfig = Join-Path $PackageDir "config.json"
+    if (-not (Test-Path $packageConfig -PathType Leaf)) {
+        $violations.Add("缺少干净默认配置: $packageConfig")
+    } elseif ((Get-FileHash $packageConfig -Algorithm SHA256).Hash -ne
+              (Get-FileHash $DefaultConfig -Algorithm SHA256).Hash) {
+        $violations.Add("config.json 不是仓库内置默认配置")
+    }
+
+    $textExtensions = @(
+        ".json", ".qml", ".py", ".md", ".txt", ".ini", ".conf", ".yaml", ".yml",
+        ".toml", ".ps1", ".cmake", ".xml", ".js", ".ts", ".css", ".html"
+    )
+    $secretPatterns = @(
+        @{ Name = "私钥头"; Pattern = '-----BEGIN(?: [A-Z0-9]+)? PRIVATE KEY-----' },
+        @{ Name = "AWS Access Key"; Pattern = '(?:AKIA|ASIA)[A-Z0-9]{16}' },
+        @{ Name = "GitHub Token"; Pattern = '(?:gh[pousr]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{20,255})' },
+        @{ Name = "OpenAI/Anthropic Key"; Pattern = '(?:sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,})' },
+        @{ Name = "Google/Slack Token"; Pattern = '(?:AIza[0-9A-Za-z_-]{35}|xox[baprs]-[0-9A-Za-z-]{10,})' },
+        @{ Name = "JWT"; Pattern = 'eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}' },
+        @{ Name = "带凭据 URL"; Pattern = 'https?://[^/\s:@]+:[^@\s/]+@' },
+        @{ Name = "本机用户目录"; Pattern = '(?i)[A-Z]:[/\\]Users[/\\][^/\\\s]+' }
+    )
+    foreach ($file in $packageFiles) {
+        if ($file.Length -gt 5MB -or $file.Extension.ToLowerInvariant() -notin $textExtensions) {
+            continue
+        }
+        $content = [IO.File]::ReadAllText($file.FullName)
+        foreach ($rule in $secretPatterns) {
+            if ($content -match $rule.Pattern) {
+                $violations.Add("$($rule.Name): $($file.FullName)")
+            }
+        }
+    }
+
+    if ($violations.Count -gt 0) {
+        $detail = $violations | Sort-Object -Unique | ForEach-Object { "  - $_" }
+        throw "发布安全检查失败：`n$($detail -join "`n")"
+    }
+    Write-Host "        Security gate: PASS"
+}
+
+# 压缩完成后检查 ZIP 自身，关闭“安全检查后、压缩过程中又生成运行时文件”的竞态。
+function Assert-ZipManifestSafe {
+    param(
+        [Parameter(Mandatory = $true)][string]$ZipPath,
+        [Parameter(Mandatory = $true)][string]$DefaultConfig
+    )
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $forbiddenNames = @(
+        "secrets.json", "XuanHub.lock", "xuanhub.log", ".env", ".npmrc", ".pypirc"
+    )
+    $forbiddenExtensions = @(
+        ".pyc", ".pyo", ".pem", ".key", ".p12", ".pfx", ".keystore", ".jks",
+        ".log", ".db", ".sqlite", ".sqlite3", ".dmp", ".dump", ".trace"
+    )
+    $violations = New-Object System.Collections.Generic.List[string]
+    $configHashes = New-Object System.Collections.Generic.List[string]
+    $archive = [IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        foreach ($entry in $archive.Entries) {
+            $parts = $entry.FullName -split '[/\\]'
+            if ($parts -contains ".git" -or $parts -contains ".hg" -or
+                $parts -contains ".svn" -or $parts -contains "__pycache__") {
+                $violations.Add("禁止目录: $($entry.FullName)")
+            }
+            $extension = [IO.Path]::GetExtension($entry.Name).ToLowerInvariant()
+            if ($entry.Name -in $forbiddenNames -or
+                $entry.Name -like ".env.*" -or
+                $extension -in $forbiddenExtensions) {
+                $violations.Add("禁止文件: $($entry.FullName)")
+            }
+            if ($entry.FullName -eq "config.json") {
+                $stream = $entry.Open()
+                try {
+                    $sha = [Security.Cryptography.SHA256]::Create()
+                    try {
+                        $configHashes.Add(([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', ''))
+                    } finally {
+                        $sha.Dispose()
+                    }
+                } finally {
+                    $stream.Dispose()
+                }
+            }
+        }
+    } finally {
+        $archive.Dispose()
+    }
+
+    $defaultHash = (Get-FileHash $DefaultConfig -Algorithm SHA256).Hash
+    if ($configHashes.Count -ne 1 -or $configHashes[0] -ne $defaultHash) {
+        $violations.Add("ZIP 中缺少唯一且干净的默认 config.json")
+    }
+    if ($violations.Count -gt 0) {
+        $detail = $violations | Sort-Object -Unique | ForEach-Object { "  - $_" }
+        throw "ZIP 发布安全检查失败：`n$($detail -join "`n")"
+    }
+    Write-Host "        Archive gate: PASS"
+}
+
 # 定位本机 Python ≥3.12 安装目录（隔离 worker 运行时下限）：
 # 注册表枚举全部 PythonCore 版本（取最高）→ py launcher → PATH；
 # 排除 WindowsApps 商店占位 stub
@@ -88,16 +232,38 @@ function Resolve-PythonHome {
     if ($best) { return $best.Home }
     $pyLauncher = @(Get-Command py -ErrorAction SilentlyContinue)[0]
     if ($pyLauncher) {
-        $exe = & $pyLauncher.Source -3 -c "import sys; print(sys.executable)" 2>$null
-        $minor = & $pyLauncher.Source -3 -c "import sys; print(sys.version_info[1])" 2>$null
-        if ($exe -and [int]$minor -ge 12 -and (Test-Path "$exe")) { return (Split-Path "$exe" -Parent) }
+        # PowerShell 5.1 会把 py launcher 的 stderr 包装成 NativeCommandError；
+        # 启动器存在但未注册解释器时必须吞掉错误，继续尝试 PATH。
+        try {
+            $exe = & $pyLauncher.Source -3 -c "import sys; print(sys.executable)" 2>$null
+            $launcherCode = $LASTEXITCODE
+            $minor = if ($launcherCode -eq 0) {
+                & $pyLauncher.Source -3 -c "import sys; print(sys.version_info[1])" 2>$null
+            } else { $null }
+        } catch {
+            $exe = $null
+            $minor = $null
+        }
+        if ($exe -and $minor -and [int]$minor -ge 12 -and (Test-Path "$exe")) {
+            return (Split-Path "$exe" -Parent)
+        }
     }
     $cmd = @(Get-Command python -ErrorAction SilentlyContinue |
              Where-Object { $_.Source -notlike '*WindowsApps*' })[0]
     if ($cmd) {
-        $exe = & $cmd.Source -c "import sys; print(sys.executable)" 2>$null
-        $minor = & $cmd.Source -c "import sys; print(sys.version_info[1])" 2>$null
-        if ($exe -and [int]$minor -ge 12 -and (Test-Path "$exe")) { return (Split-Path "$exe" -Parent) }
+        try {
+            $exe = & $cmd.Source -c "import sys; print(sys.executable)" 2>$null
+            $pythonCode = $LASTEXITCODE
+            $minor = if ($pythonCode -eq 0) {
+                & $cmd.Source -c "import sys; print(sys.version_info[1])" 2>$null
+            } else { $null }
+        } catch {
+            $exe = $null
+            $minor = $null
+        }
+        if ($exe -and $minor -and [int]$minor -ge 12 -and (Test-Path "$exe")) {
+            return (Split-Path "$exe" -Parent)
+        }
     }
     return $null
 }
@@ -112,7 +278,7 @@ if (-not $OutputDir) {
     $OutputDir = Join-Path $ProjectRoot "dist"
 }
 
-$DistDir = Join-Path $ProjectRoot "build\default\dist\$Config"
+$SourceDistDir = Join-Path $ProjectRoot "build\default\dist\$Config"
 
 # Read version from CMakeLists.txt
 $CmakeFile = Join-Path $ProjectRoot "CMakeLists.txt"
@@ -123,22 +289,74 @@ if ($versionMatch) {
     $Version = "0.1.0"
 }
 
+$packageName = "XuanHub-v$Version-portable-x64"
+$DistDir = Join-Path $OutputDir $packageName
+$zipPath = Join-Path $OutputDir "$packageName.zip"
+$defaultConfig = Join-Path $ProjectRoot "app\resources\default_config.json"
+
 Write-Host "=============================================="
 Write-Host "  XuanHub Portable Packaging Tool  v$Version"
 Write-Host "=============================================="
 Write-Host ""
 Write-Host "[info] Config:    $Config"
 Write-Host "[info] Version:   $Version"
-Write-Host "[info] Dist dir:  $DistDir"
+Write-Host "[info] Build dir: $SourceDistDir"
+Write-Host "[info] Stage dir: $DistDir"
 
-# ---- Step 1: Verify dist directory ----
-Write-Host "`n[1/6] Verifying build artifacts..."
-$exe = Join-Path $DistDir "XuanHub.exe"
-if (-not (Test-Path $exe)) {
+# ---- Step 1: Verify and stage build artifacts ----
+Write-Host "`n[1/6] Creating clean staging directory..."
+$sourceExe = Join-Path $SourceDistDir "XuanHub.exe"
+if (-not (Test-Path $sourceExe)) {
     Write-Error "XuanHub.exe not found. Build first: cmake --build --preset default"
     exit 1
 }
-Write-Host "        XuanHub.exe: OK"
+if (-not (Test-Path $defaultConfig -PathType Leaf)) {
+    Write-Error "Default config not found: $defaultConfig"
+    exit 1
+}
+if (-not (Test-StrictChildPath -Parent $OutputDir -Child $DistDir)) {
+    Write-Error "Unsafe staging path: $DistDir"
+    exit 1
+}
+New-Item -ItemType Directory -Path $OutputDir -Force -ErrorAction SilentlyContinue | Out-Null
+if (-not $NoZip -and (Test-Path $zipPath)) {
+    # 先删除旧包；若本次任何安全检查失败，不留下可能被误上传的陈旧 ZIP。
+    Remove-Item -LiteralPath $zipPath -Force
+}
+if (Test-Path $DistDir) {
+    Remove-Item -LiteralPath $DistDir -Recurse -Force
+}
+New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
+
+# 从构建输出复制程序文件，但在进入 staging 时就排除所有运行时/私有状态；
+# 后续仍有 Assert-PackageSafe 二次 fail-closed 检查，避免新增文件类型时静默泄露。
+$stageCopyArgs = @(
+    $SourceDistDir,
+    $DistDir,
+    "/E",
+    "/COPY:DAT",
+    "/DCOPY:DAT",
+    "/R:1", "/W:1",
+    "/XD", "__pycache__", ".git", ".hg", ".svn",
+    "/XF", "config.json", "secrets.json", "XuanHub.lock", "xuanhub.log", "portable",
+            "*.pyc", "*.pyo", "*.pdb", "*.log", "*.db", "*.sqlite", "*.sqlite3",
+            "*.dmp", "*.dump", "*.trace", "*.pem", "*.key", "*.p12", "*.pfx",
+    "/NJH", "/NJS", "/NDL", "/NFL"
+)
+& robocopy @stageCopyArgs | Out-Null
+$stageCopyCode = $LASTEXITCODE
+if ($stageCopyCode -ge 8) {
+    Write-Error "robocopy exit code $stageCopyCode, staging copy failed"
+    exit 1
+}
+Copy-Item -LiteralPath $defaultConfig -Destination (Join-Path $DistDir "config.json") -Force
+
+$exe = Join-Path $DistDir "XuanHub.exe"
+if (-not (Test-Path $exe)) {
+    Write-Error "XuanHub.exe missing from staging directory"
+    exit 1
+}
+Write-Host "        XuanHub.exe + clean default config: OK"
 
 # ---- Step 2: Copy MSVC runtime DLLs ----
 Write-Host "`n[2/6] Collecting MSVC runtime DLLs..."
@@ -311,10 +529,10 @@ if ($PythonStrategy -eq "Bundle") {
                 $pythonLib,
                 $dstLib,
                 "/E",
-                "/XD", "site-packages", "test", "idlelib", "turtledemo", "distutils", "ensurepip", "__pycache__",
+                "/XD", "site-packages", "test", "idlelib", "turtledemo", "distutils", "ensurepip", "venv", "__pycache__",
                 "/XF", "*.pyc",
                 "/NJH", "/NJS",
-                "/NDL"
+                "/NDL", "/NFL", "/NP"
             )
 
             $rc = (Start-Process robocopy -ArgumentList $robocopyArgs -Wait -PassThru -NoNewWindow).ExitCode
@@ -341,7 +559,7 @@ if ($PythonStrategy -eq "Bundle") {
                 "/XD", "__pycache__",
                 "/XF", "*.pyc",
                 "/NJH", "/NJS",
-                "/NDL"
+                "/NDL", "/NFL", "/NP"
             )
             $rc = (Start-Process robocopy -ArgumentList $robocopyArgs -Wait -PassThru -NoNewWindow).ExitCode
             if ($rc -ge 8) {
@@ -382,6 +600,27 @@ if ($PythonStrategy -eq "Bundle") {
             }
         }
     }
+}
+
+# site-packages 由打包机复制时可能携带现成 pyc；它们会嵌入打包机的绝对路径。
+# 发布包统一只保留源码/扩展模块，让目标机按需生成自己的缓存。
+$bytecodeFiles = @(
+    Get-ChildItem $DistDir -Recurse -File -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -in @(".pyc", ".pyo") }
+)
+foreach ($file in $bytecodeFiles) {
+    Remove-Item -LiteralPath $file.FullName -Force
+}
+$cacheDirs = @(
+    Get-ChildItem $DistDir -Recurse -Directory -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -eq "__pycache__" } |
+        Sort-Object { $_.FullName.Length } -Descending
+)
+foreach ($dir in $cacheDirs) {
+    Remove-Item -LiteralPath $dir.FullName -Recurse -Force
+}
+if ($bytecodeFiles.Count -gt 0 -or $cacheDirs.Count -gt 0) {
+    Write-Host "        Removed $($bytecodeFiles.Count) bytecode file(s) and $($cacheDirs.Count) cache dir(s)"
 }
 
 if ($PythonStrategy -eq "None") {
@@ -476,24 +715,26 @@ if (-not $NoPrune) {
 # ---- Step 6: Create zip archive ----
 Write-Host "`n[6/6] Packaging..."
 
+Assert-PackageSafe -PackageDir $DistDir -DefaultConfig $defaultConfig
+
 $distSize = (Get-ChildItem $DistDir -Recurse -File | Measure-Object -Property Length -Sum).Sum
 Write-Host ("        Dist dir size: {0:N1} MB" -f ($distSize / 1MB))
 
 if (-not $NoZip) {
     New-Item -ItemType Directory -Path $OutputDir -Force -ErrorAction SilentlyContinue | Out-Null
 
-    $zipName = "XuanHub-v$Version-portable-x64.zip"
-    $zipPath = Join-Path $OutputDir $zipName
-
-    # Remove old zip if exists
-    if (Test-Path $zipPath) {
-        Remove-Item $zipPath -Force
-    }
+    $zipName = "$packageName.zip"
 
     Write-Host "        Creating $zipName ..."
     Compress-Archive -Path "$DistDir\*" -DestinationPath $zipPath -CompressionLevel Optimal -Force
 
     if (Test-Path $zipPath) {
+        try {
+            Assert-ZipManifestSafe -ZipPath $zipPath -DefaultConfig $defaultConfig
+        } catch {
+            Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+            throw
+        }
         $zipSize = (Get-Item $zipPath).Length
         Write-Host ("        Done: {0} ({1:N1} MB)" -f $zipPath, ($zipSize / 1MB))
     } else {

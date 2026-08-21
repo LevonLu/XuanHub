@@ -174,7 +174,7 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 - 已知无害告警：`VCINSTALLDIR is not set`——只是不复制 MSVC 运行时 DLL，绿色分发包需自行带上 `vcruntime140.dll` 等。
 - 手动重新部署：`pixi run deploy`（`scripts/deploy_qt.ps1`，windeployqt 自动定位，不写死 Qt 路径）。
 - 插件目录结构即安装结构：`plugins/<id>/<id>.dll + <Id>.qml + metadata.json`。
-- **便携分发打包**：`scripts/package_portable.ps1` 把 dist 加工为绿色分发目录并打 zip：收集 MSVC 运行时 DLL；`-PythonStrategy` 两策略——`None`（默认，不内置 Python）/ `Bundle`（拷 `python.exe`、`Lib/`（排除 site-packages）、`DLLs/`（`_socket`/`_ssl` 等编译扩展）和 `python3*.dll`，使隔离 worker 免安装运行）；创建 `portable` 标记文件（配置与日志改放 exe 旁）；裁剪 translations/、qmltooling/、非 Basic 样式（**`qml/QtQuick/Controls/impl/` 必须保留**——Basic 样式自身依赖它）；`-NoZip` 只准备目录。注意：该脚本含中文注释，**必须保存为 UTF-8 with BOM**（PowerShell 5.1 对无 BOM 脚本按 GBK 误读）。
+- **便携分发打包**：`scripts/package_portable.ps1` 把只读构建输出复制到全新的 `dist/XuanHub-v<版本>-portable-x64/` staging，再加工并打 zip；绝不直接压缩运行过的 build dist。脚本收集 MSVC 运行时 DLL；`-PythonStrategy` 两策略——`None`（默认，不内置 Python）/ `Bundle`（拷 `python.exe`、`Lib/`（排除 site-packages）、`DLLs/`（`_socket`/`_ssl` 等编译扩展）和 `python3*.dll`，使隔离 worker 免安装运行）；统一排除 VCS 元数据、删除 `__pycache__`/`*.pyc`，只复制内置默认配置，并在压缩前 fail-closed 检查 `.git/.hg/.svn`、`secrets.json`、锁/日志/数据库/密钥文件、高置信凭据形状及本机用户路径；创建 `portable` 标记文件；裁剪 translations/、qmltooling/、非 Basic 样式（**`qml/QtQuick/Controls/impl/` 必须保留**——Basic 样式自身依赖它）；`-NoZip` 只准备通过同一安全检查的 staging。注意：该脚本含中文注释，**必须保存为 UTF-8 with BOM**（PowerShell 5.1 对无 BOM 脚本按 GBK 误读）。
 
 ## 9. 安全与注意事项（改代码前必读）
 

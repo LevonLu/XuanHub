@@ -14,6 +14,34 @@ CMakeUserPresets.json
 *.obj
 *.pdb
 __pycache__/
+*.py[cod]
+*.dmp
+*.dump
+*.trace
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# 本机配置与敏感材料
+.env
+.env.*
+!.env.example
+secrets.json
+credentials
+credentials.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+.npmrc
+.pypirc
+XuanHub.lock
+config.local.*
+config.private.*
+!config.example.json
 
 # pixi 环境
 .pixi/
