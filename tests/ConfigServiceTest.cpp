@@ -72,7 +72,7 @@ private Q_SLOTS:
     void secretReferenceHydratesOnlyForOwningPlugin() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
-        const QString secretId = SecretStore::idForPluginField(QStringLiteral("py_pet"),
+        const QString secretId = SecretStore::idForPluginField(QStringLiteral("py_secret_demo"),
                                                                QStringLiteral("aiApiKey"));
         SecretStore secrets(dir.path());
         QVERIFY(secrets.write(secretId, QStringLiteral("test-secret")));
@@ -80,7 +80,7 @@ private Q_SLOTS:
         const QJsonObject secretConfig{{QStringLiteral("aiApiKey"),
                                         SecretStore::referenceValue(secretId)}};
         QVERIFY(writeJson(dir.path(), QJsonDocument(configWithPlugins({
-            plugin(QStringLiteral("py_pet"), secretConfig)}))));
+            plugin(QStringLiteral("py_secret_demo"), secretConfig)}))));
 
         ConfigService service;
         QVERIFY(service.load(dir.path(), dir.path()));
