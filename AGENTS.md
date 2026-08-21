@@ -26,7 +26,7 @@
 
 ## 3. 构建与运行
 
-前提：Qt 6.9.3 msvc2022_64 已安装。若仓库默认预设无法定位 Qt，请在已被 gitignore 的 `CMakeUserPresets.json` 中按本机安装位置覆盖 `CMAKE_PREFIX_PATH`。
+宿主和 C++ 插件的构建前提是 Qt 6.9.3 msvc2022_64。若仓库默认预设无法定位 Qt，请在已被 gitignore 的 `CMakeUserPresets.json` 中按本机安装位置覆盖 `CMAKE_PREFIX_PATH`。只开发 Python 子插件时不需要 Qt/MSVC，使用 §5 的便携宿主流程。
 
 pybridge 不要求构建机安装 Python 开发包；它始终参与构建。运行时若找不到 Python ≥3.12 的 `python.exe`、标准库和 `python3XX.dll`，pybridge 自动停用子插件并托盘提示，其余功能照常运行。
 
@@ -40,7 +40,7 @@ cmake --build --preset default-debug   # Debug
 
 - 运行时输出统一在 **`build/default/dist/<CONFIG>/`**：`XuanHub.exe`、`barplugin.dll`、`plugins/<id>/<id>.dll + <Id>.qml + metadata.json`（根目录由顶层 `XUANHUB_BIN_DIR` 定义）。pybridge 额外同步 `plugins_py/` 整树（含 `bridge_worker.py`），不再产出或加载 `pybackend.dll`。
 - **注意**：根 `config/config.json` 是开发示例，CMake 不自动拷贝，需手动复制到 dist（或 `pixi run setup-config`）；没有时退用 `%APPDATA%/XuanHub/config.json`（首运行从 qrc 播种）。
-- 运行：直接执行 `build/default/dist/Release/XuanHub.exe`。日志写 `%APPDATA%/XuanHub/xuanhub.log`（每次启动 Truncate）+ `OutputDebugString`。单实例经 `%TEMP%/XuanHub.lock`（`QLockFile`）。
+- 运行：直接执行 `build/default/dist/Release/XuanHub.exe`。普通模式的日志写 `%APPDATA%/XuanHub/xuanhub.log`、单实例锁写 `%TEMP%/XuanHub.lock`；exe 同目录存在 `portable` 标记时，配置、密钥库、日志和锁均改放 exe 同目录。日志每次启动 Truncate，同时输出到 `OutputDebugString`。
 
 ## 4. 目录结构
 
@@ -109,6 +109,17 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 - 卸载时代理先断开 IPC，worker 在 EOF 的 `finally` 中尽力调用 `stop()`；宽限后由常驻 `barplugin` 的 `ProcessReaper` 终止并兜底 kill。**不可**在 pybridge DLL 留下异步 lambda 回调给已卸载对象，必须交给 `ProcessReaper`。
 - 标准库定位顺序：exe 旁 Bundle（`python.exe` + `Lib/`）→ 用户 `PYTHONHOME` → cache 变量 `XUANHUB_PYTHON_HOME_FALLBACK` → 注册表 `PythonCore` → `py -3` → PATH。全部未命中时 `subPluginIds()` 返回空并经 EventBus `app.notify` 托盘提示。调试钩子 `XUANHUB_DISABLE_PYTHON=1` 强制停用；检测结果仍存 qApp 动态属性以跨 pybridge 热重载保持。
 
+#### 无 Qt/MSVC 的 Python 插件开发路径（Agent 决策规则）
+
+- 当任务范围仅为 `plugins_py/<name>/`，或开发者明确没有 Qt/C++ 环境时，**不得把配置 CMake、安装 Qt 或编译宿主当作前置条件**。优先使用 GitHub Release 的 Windows x64 Bundle 便携包作为已编译宿主。
+- 把便携包解压到可写目录，复制其中的 `plugins_py/hello/` 为新插件模板；只修改 `plugin.json`、`main.py`、主 QML 及同目录辅助文件。`plugin.json.id` 使用全局唯一的 `py_` 前缀，`qml` 显式指向主界面文件。
+- 启用插件优先走“托盘 → 设置...”，框架会自动维护 `pybridge` 总开关。手改便携目录根部 `config.json` 时，`plugins` 数组必须同时包含新插件条目和 `{ "id": "pybridge", ... }`。
+- 开发验证顺序：解析 `plugin.json` → 对纯 Python 逻辑运行单测 → 扫描凭据/缓存残留 → 在便携宿主中重启验证。纯 Python 插件不以 Qt/C++ 全量构建作为验收门槛；但 QML 只能由真实宿主完成最终视觉和交互验收。
+- 便携模式日志是 `<exeDir>/xuanhub.log`。改 `config.json` 可热重载；改 `main.py`、`plugin.json` 或 QML 后统一退出并重启，尤其 QML 存在进程内组件缓存。
+- Bundle 模式优先使用 exe 同目录的 Python。纯 Python 依赖可随插件目录分发；原生扩展必须匹配 Bundle 的 Python 版本与 x64 架构并放入 `Lib/site-packages/`。若要直接复用本机 Python 的 `site-packages`，使用非 Bundle 宿主。
+- 真实 API Key 不得进入 `plugin.json`、源码或示例配置。设置 schema 中的敏感字符串字段标记 `"secret": true`，由设置窗口写入 Windows DPAPI 密钥库。
+- 对外分发只打包 `plugins_py/<name>/`，排除 `__pycache__`、`*.pyc`、日志、测试凭据、本机配置和 VCS 元数据；不要把整个便携宿主作为插件包发布。
+
 ### EventBus（插件间通信）
 
 `xuanhub::EventBus`（宿主 main 栈上单例，经 `BarPluginContext` 下发）：`subscribe(topic, receiver, slot)` / `publish(topic, QVariantMap)`，slot 形如 `onPayload(QVariantMap)`；订阅者以 `QPointer` 持有防悬空；同 (receiver, slot) 重复订阅会被去重忽略（publish 不重复投递）。插件间不直接互调。**插件 `shutdown()` 必须删光自己订阅过 EventBus 的对象**——泄漏的订阅对象在 DLL unload 后 QPointer 仍非空，下次 publish 会对已卸载代码 invoke → 宿主崩溃。现有 topic：`theme.changed`；`app.notify`（插件 → 托盘气泡，为此 `TrayIcon` 在 `loadFrom` **之前**创建——订阅必须先于发布）。`EventBus.h` 用 `Q_SIGNALS` 而非 `signals`（`QT_NO_KEYWORDS` 插件也要包含它）。
@@ -165,9 +176,9 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 - 托盘：菜单各项逐一点验；重启 Explorer 后托盘自动重建。
 - taskbar 模式：勾选后嵌入任务栏左侧、背景透出、宽度随内容收缩；切回 appbar 工作区 reserve 无残留；重启 explorer 自动重新嵌入；100%/150% DPI 各验一次。
 - DPI：100%/150%/200% 切换不糊、appbar 矩形物理像素换算正确。
-- Python 子插件：改 `main.py` 重启即生效；`update()` 抛异常时 UI 保留旧值、日志有 traceback、宿主不崩；无 Python 环境的机器上 pybridge 自动停用 + 托盘提示。
+- Python 子插件：无 Qt/MSVC 路径按 §5 决策规则验证；改 `main.py` / `plugin.json` / QML 后重启即生效；`update()` 抛异常时 UI 保留旧值、日志有 traceback、宿主不崩；无 Python 环境的机器上 pybridge 自动停用 + 托盘提示。
 
-调试入口：`%APPDATA%/XuanHub/xuanhub.log` 与 `OutputDebugString`（DebugView）。`--settings` 启动即开设置窗口；`--uitest` 读 `<exeDir>/uitest.txt` 回放 UI 验收脚本（`click:x,y` / `kp:文本` / `fc:可见文本`；事件必须经 QTest 注入——直接 postEvent 不走 Qt Quick 输入分发，实测无效）。
+调试入口：普通模式为 `%APPDATA%/XuanHub/xuanhub.log`，便携模式为 `<exeDir>/xuanhub.log`，另有 `OutputDebugString`（DebugView）。`--settings` 启动即开设置窗口；`--uitest` 读 `<exeDir>/uitest.txt` 回放 UI 验收脚本（`click:x,y` / `kp:文本` / `fc:可见文本`；事件必须经 QTest 注入——直接 postEvent 不走 Qt Quick 输入分发，实测无效）。
 
 ## 8. 部署
 

@@ -5,7 +5,7 @@
 状态栏以无边框、置顶窗口的形式占据主屏顶部或底部边缘（经 Win32 AppBar 向系统申请工作区，其他窗口最大化时不会遮挡它）；栏上的一切内容——时钟、网速、启动器……——都是可插拔的插件。插件有两种形态：
 
 - **C++ 插件**：独立 DLL，性能最好，可直接调用 Win32 API；
-- **Python 子插件**：由内置的 `pybridge` 桥接插件承载（内嵌 CPython，稳定 ABI 兼容 3.12+），**写插件不需要碰 C++**，改完即生效。
+- **Python 子插件**：由内置的 `pybridge` 桥接插件承载，每个插件运行在独立的 `python.exe` worker 中；**写插件不需要 Qt、MSVC 或 C++ 编译环境**。
 
 ## 特性
 
@@ -21,7 +21,7 @@
 
 - Windows 10 / 11，x64
 - **基础功能零依赖**：宿主与 C++ 插件开箱即用，分发包已附带 MSVC 运行库
-- **Python 子插件需要自装 CPython 3.12+**（python.org 下载安装即可，程序经注册表/py launcher/PATH 自动定位，无需配置）。未安装时：宿主与 C++ 插件完全不受影响，Python 子插件自动停用，启动时托盘弹出提示；安装后重启自动启用
+- **Python 子插件需要 CPython 3.12+**。Bundle 便携包已内置运行时；不含 Bundle 的构建会依次从 `PYTHONHOME`、注册表、`py` launcher 和 PATH 定位用户安装的 Python。未找到时仅停用 Python 子插件，宿主与 C++ 插件不受影响
 
 ---
 
@@ -31,7 +31,7 @@
 
 分发包是绿色便携目录，解压到任意位置后运行其中的 `XuanHub.exe` 即可，无需安装、不写系统目录。程序为单实例：重复启动会直接退出。
 
-日志写入 `%APPDATA%/XuanHub/xuanhub.log`（每次启动清空重写）。遇到插件不显示、界面异常时先看它。
+带 `portable` 标记的便携包把 `config.json`、`secrets.json`、锁和 `xuanhub.log` 都放在 `XuanHub.exe` 同目录；普通安装模式的日志位于 `%APPDATA%/XuanHub/xuanhub.log`。日志每次启动清空重写，遇到插件不显示、界面异常时先看它。
 
 ## 托盘菜单
 
@@ -65,7 +65,8 @@
   "plugins": [
     { "id": "sysinfo",  "position": "right", "order": 0, "config": { "intervalMs": 1000 } },
     { "id": "clock",    "position": "right", "order": 1, "config": { "format": "HH:mm:ss" } },
-    { "id": "py_hello", "position": "right", "order": 2, "config": { "intervalMs": 1000, "prefix": "Py" } }
+    { "id": "py_hello", "position": "right", "order": 2, "config": { "intervalMs": 1000, "prefix": "Py" } },
+    { "id": "pybridge", "position": "right", "order": 9, "config": {} }
   ]
 }
 ```
@@ -113,7 +114,7 @@
 | 形态 | `plugins/<id>/<id>.dll + <Id>.qml + metadata.json` | `plugins_py/<name>/plugin.json + main.py + <X>.qml` |
 | 界面 | QML（与宿主同引擎） | QML（与宿主同引擎，契约完全相同） |
 | 逻辑 | C++ ViewModel（QObject + Q_PROPERTY） | 独立 worker 进程中的 `main.py` 模块级约定函数 |
-| 构建 | 需与宿主同一构建树编译（ABI 锁定） | 无需编译，改文件重建同步即生效 |
+| 构建 | 需与宿主同一构建树编译（ABI 锁定） | 无需编译；可直接使用便携包作为开发宿主 |
 | 适用 | 性能敏感、要调 Win32 / 第三方 native 库 | 快速迭代、数据处理、网络 API 类插件 |
 
 两种插件的**界面契约完全一致**：QML 根 `Item` 声明 `property var plugin`，框架加载后把 ViewModel（Python 插件是代理 ViewModel）注入该属性，QML 内一律用 `plugin ? plugin.someProperty : fallback` 防御空值。
@@ -419,9 +420,39 @@ ctx->eventBus->publish(QStringLiteral("my.topic"), QVariantMap{{"key", 1}});
 
 # Python 插件开发（pybridge）
 
-`pybridge` 是一个特殊的桥接插件：内嵌 CPython 解释器（稳定 ABI，兼容 3.12+），扫描 `<exeDir>/plugins_py/` 下的子插件，为每个子插件创建通用代理 ViewModel 注入 QML。**写 Python 插件只需三个文本文件，零 C++、零编译。**
+`pybridge` 是一个特殊的桥接插件：它扫描 `<exeDir>/plugins_py/` 下的子插件，为每个插件启动独立的 Python worker，并创建通用代理 ViewModel 注入 QML。**写 Python 插件只需三个文本文件，零 C++、零编译。**
 
 完整开发契约见 `plugins_py/README.md`，参考实现见 `plugins_py/hello/`。以下为要点。
+
+## 不安装 Qt/MSVC，直接开发 Python 插件
+
+只开发 Python 插件时，不需要 clone 后构建整个工程，也不需要安装 Qt、Visual Studio 或 CMake。可直接把官方便携包当作开发宿主：
+
+1. 从 GitHub Releases 下载 Windows x64 便携包，解压到一个可写目录；不要放进需要管理员权限才能修改的目录。
+2. 优先选择标注为 **Bundle** 的包，它已经包含 Python 运行时。若使用非 Bundle 包，安装 CPython 3.12 或更高版本，并确保 `py -3` 或 PATH 能找到它。
+3. 复制便携包里的 `plugins_py/hello/` 作为模板，例如改名为 `plugins_py/mytool/`，然后修改其中的 `plugin.json`、`main.py` 和 QML 文件。无需运行任何 CMake 命令。
+4. 确认 `plugin.json.id` 全局唯一并使用 `py_` 前缀，例如 `py_mytool`；`qml` 字段应指向该目录中的主界面文件。
+5. 启动或重启 `XuanHub.exe`，打开“托盘菜单 → 设置...”，在插件列表中启用新插件并选择位置。设置窗口会自动维护 `pybridge` 总开关。
+6. 也可以直接编辑便携目录根部的 `config.json`，在 `plugins` 数组中同时保留 `pybridge` 并加入新插件：
+
+```json
+{
+  "plugins": [
+    { "id": "py_mytool", "position": "right", "order": 2, "config": { "intervalMs": 1000 } },
+    { "id": "pybridge", "position": "right", "order": 9, "config": {} }
+  ]
+}
+```
+
+开发循环：
+
+- 纯 Python 逻辑可以直接用本机 Python 运行单元测试，不依赖 Qt；让 `main.py` 保持只依赖普通 Python 模块，便于脱离宿主测试。
+- 修改便携目录中的 `main.py`、`plugin.json` 或 QML 后，退出并重新启动 XuanHub 验证。配置值可以通过设置窗口或保存 `config.json` 触发热重载；QML 组件存在进程内缓存，改 QML 后必须重启。
+- 便携模式的日志就在 `XuanHub.exe` 同目录的 `xuanhub.log`；Python traceback、worker 启动失败和 QML 加载错误都记录在这里。
+- 标准库可直接使用。第三方纯 Python 包可以随插件目录一起分发；需要原生扩展的依赖必须与便携包的 Python 版本和 x64 架构匹配，可安装到便携包的 `Lib/site-packages/`。若希望直接使用本机 Python 的 `site-packages`，应选择非 Bundle 宿主，因为 Bundle 中 exe 同目录的 Python 具有最高优先级。
+- 不要把真实 API Key 写进 `plugin.json`、源码或示例配置。敏感设置应通过插件设置 schema 标记为 `secret`，由 XuanHub 使用 Windows DPAPI 保存。
+
+准备分享插件时，只打包自己的 `plugins_py/<name>/` 目录，排除 `__pycache__`、`*.pyc`、日志、测试凭据和本机配置；使用者解压到其 XuanHub 的 `plugins_py/` 后重启即可发现。
 
 ## 目录契约
 
@@ -446,6 +477,7 @@ plugins_py/
 
 - `id` 全局唯一，约定 `py_` 前缀（与 DLL 插件的 id 命名空间区分）；
 - 启用/布局在 `config.json` 里配置，规则同 C++ 插件：`{ "id": "py_mytool", "position": "right", "order": 2, "config": { "intervalMs": 1000 } }`；
+- `config.json` 中还必须保留 `pybridge` 条目作为 Python 插件总开关；通过设置窗口启用插件时框架会自动维护；
 - 设置项声明（`settings` schema / `settingsQml` 自绘页）与 C++ 插件同一契约，见 `plugins_py/README.md`。
 
 ## `main.py` 模块级约定
@@ -542,13 +574,13 @@ def update():
     return dict(_cache)
 ```
 
-`urllib`（含 HTTPS）开箱即用——运行时的解释器指向用户自装的 Python（≥3.12），其完整标准库与编译扩展模块（`_socket`、`_ssl` 等）均可用。第三方库（如 `requests`）装进该 Python 即可直接 import（其 `site-packages` 对插件可见）。
+`urllib`（含 HTTPS）开箱即用。非 Bundle 模式使用用户安装的 Python（≥3.12），其标准库、编译扩展和 `site-packages` 对插件可见；Bundle 模式优先使用 exe 同目录的 Python，第三方依赖需放入该运行时的 `Lib/site-packages/` 或随插件目录分发。
 
 ## 调试
 
-- 日志：`%APPDATA%/XuanHub/xuanhub.log`（Python traceback 也在其中）；
-- 改 `main.py` / `*.qml` 后重新构建（POST_BUILD 会把 `plugins_py/` 同步到运行目录）再重启宿主即生效，免重编任何 DLL；
-- 已知限制：Python 子插件暂无 EventBus 接入；运行依赖用户自装的 CPython ≥3.12（未安装时自动停用 + 托盘提示）。
+- 日志：便携模式为 `<exeDir>/xuanhub.log`，普通模式为 `%APPDATA%/XuanHub/xuanhub.log`（Python traceback 也在其中）；
+- 直接编辑便携包时无需构建，改 `main.py` / `plugin.json` / `*.qml` 后重启宿主；在源码构建树中开发时，重新构建会通过 POST_BUILD 把 `plugins_py/` 同步到运行目录；
+- 已知限制：Python 子插件暂无 EventBus 接入；运行需要 Bundle 中的或用户安装的 CPython ≥3.12，未找到时自动停用并弹出托盘提示。
 
 ---
 
