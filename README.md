@@ -1,6 +1,6 @@
 # 玄枢 / XuanHub
 
-基于 **Qt6 / QML** 的 Windows 插件化状态栏框架（对标 polybar / waybar / Rainmeter）。当前版本 0.1.0。
+基于 **Qt6 / QML** 的 Windows 插件化状态栏框架（对标 polybar / waybar / Rainmeter）。当前版本 0.2.0。
 
 状态栏以无边框、置顶窗口的形式占据主屏顶部或底部边缘（经 Win32 AppBar 向系统申请工作区，其他窗口最大化时不会遮挡它）；栏上的一切内容——时钟、网速、启动器……——都是可插拔的插件。插件有两种形态：
 

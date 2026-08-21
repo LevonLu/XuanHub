@@ -314,7 +314,7 @@ $versionMatch = Select-String -Path $CmakeFile -Pattern 'VERSION\s+(\d+\.\d+\.\d
 if ($versionMatch) {
     $Version = $versionMatch.Matches[0].Groups[1].Value
 } else {
-    $Version = "0.1.0"
+    $Version = "0.2.0"
 }
 
 $packageName = "XuanHub-v$Version-portable-x64"
