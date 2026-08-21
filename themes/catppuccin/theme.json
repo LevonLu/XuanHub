@@ -1,0 +1,32 @@
+{
+  "id": "catppuccin",
+  "name": "Catppuccin",
+  "version": "0.1.0",
+  "author": "Catppuccin (Latte / Mocha palette) / XuanHub",
+  "dark": {
+    "bg":      "#1e1e2e",
+    "panel":   "#181825",
+    "fg":      "#cdd6f4",
+    "muted":   "#a6adc8",
+    "accent":  "#cba6f7",
+    "danger":  "#f38ba8",
+    "success": "#a6e3a1",
+    "warning": "#f9e2af",
+    "hover":   "#313244",
+    "border":  "#45475a",
+    "onAccent":"#1e1e2e"
+  },
+  "light": {
+    "bg":      "#eff1f5",
+    "panel":   "#e6e9ef",
+    "fg":      "#4c4f69",
+    "muted":   "#6c6f85",
+    "accent":  "#8839ef",
+    "danger":  "#d20f39",
+    "success": "#40a02b",
+    "warning": "#df8e1d",
+    "hover":   "#ccd0da",
+    "border":  "#bcc0cc",
+    "onAccent":"#ffffff"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "id": "solarized",
+  "name": "Solarized",
+  "version": "0.1.0",
+  "author": "Ethan Schoonover (palette) / XuanHub",
+  "dark": {
+    "bg":      "#002b36",
+    "panel":   "#073642",
+    "fg":      "#839496",
+    "muted":   "#586e75",
+    "accent":  "#268bd2",
+    "danger":  "#dc322f",
+    "success": "#859900",
+    "warning": "#b58900",
+    "hover":   "#09404c",
+    "border":  "#586e75",
+    "onAccent":"#ffffff"
+  },
+  "light": {
+    "bg":      "#fdf6e3",
+    "panel":   "#eee8d5",
+    "fg":      "#657b83",
+    "muted":   "#93a1a1",
+    "accent":  "#268bd2",
+    "danger":  "#dc322f",
+    "success": "#859900",
+    "warning": "#b58900",
+    "hover":   "#e4dcc5",
+    "border":  "#93a1a1",
+    "onAccent":"#ffffff"
+  }
+}

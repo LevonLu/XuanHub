@@ -7,7 +7,11 @@
 ```
 themes/
 ├── xuanhub-default/theme.json   # 内置默认主题（兜底，勿删）
-├── tokyo-night/theme.json       # 示例第二主题
+├── catppuccin/theme.json        # Catppuccin：Latte / Mocha
+├── github/theme.json             # GitHub Primer：Light / Dark
+├── one/theme.json                # Atom One：Light / Dark
+├── solarized/theme.json          # Solarized：Light / Dark
+├── tokyo-night/theme.json        # Tokyo Night：Day / Night
 └── <your-theme>/theme.json      # 你的主题：一个目录 + 一个 theme.json
 ```
 
