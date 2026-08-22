@@ -139,6 +139,28 @@ API；隔离 Python 插件的 HostServices 请求会强制检查实际授予权�
 屏幕与 bar 边缘，以及 `log/notify/readText/writeText/openSettings/openUrl` 等受控调用。
 旧的 `themeManager/barWindow/barScreenGeometry/i18n` 全局仍保留一个兼容周期，新插件不要依赖。
 
+### 标准弹窗
+
+插件 QML 导入 `XuanHub` 后使用 `PluginPopup` 创建超出 bar 边界的顶层界面：
+
+```qml
+PluginPopup {
+    id: details
+    anchorItem: root
+    pluginContext: root.pluginContext
+    width: 400
+    height: Math.min(520, body.implicitHeight + 24)
+    onOpened: root.startExpensiveWork()
+    onClosed: root.stopExpensiveWork()
+    Rectangle { id: body; anchors.fill: parent }
+}
+```
+
+bar 点击处理调用 `details.toggleFromBar()`。宿主负责逻辑坐标定位、当前屏边界、bar 顶部或
+底部方向、动态高度稳定后显现、跨插件单活动窗口、Esc、失焦关闭和 toggle 防重开。
+`openAnchored()` 可用于非 bar 点击入口，`closePopup()` 用于内容区关闭按钮。高级插件仍可
+自建 `Window`，但必须自行处理上述平台细节，也不会自动加入互斥策略。
+
 ## EventBus V2
 
 V1 `EventBus::publish/subscribe` 保持同步语义以兼容旧插件。V2 必须通过

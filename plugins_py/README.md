@@ -271,6 +271,41 @@ Item {
   `lastHealthyAt`、`restartCount`、`consecutiveFailures`、`loadDurationMs` 和 `queueDepth` 字段。
   展示诊断信息时应容忍未来新增字段，不要根据错误文本驱动业务逻辑。
 
+### 标准弹窗
+
+需要超出状态栏边界的界面时，导入 `XuanHub` 并使用 `PluginPopup`。它仍是独立顶层窗口，
+但由宿主统一处理当前屏边界、顶部/底部方向、跨插件互斥、Esc、失焦关闭，以及点击同一 bar
+部件时“关闭后不立刻重开”的守卫：
+
+```qml
+import XuanHub
+
+Item {
+    id: root
+    property var plugin
+    property var pluginContext
+
+    MouseArea { anchors.fill: parent; onClicked: details.toggleFromBar() }
+
+    PluginPopup {
+        id: details
+        anchorItem: root
+        pluginContext: root.pluginContext
+        width: 400
+        height: Math.min(520, content.implicitHeight + 24)
+
+        onOpened: if (root.plugin) root.plugin.call("start", [])
+        onClosed: if (root.plugin) root.plugin.call("stop", [])
+
+        Rectangle { id: content; anchors.fill: parent }
+    }
+}
+```
+
+动态高度会在稳定后再显现并重新定位；插件不要再复制 `mapToGlobal`、屏幕 clamp、
+`barPressed` 或透明预定位代码。只有需要非互斥窗口或特殊原生 flags 的高级场景才自建
+`Window`。
+
 ## 调试
 
 - 日志：`%APPDATA%/XuanHub/xuanhub.log`（Python traceback 也在其中）。

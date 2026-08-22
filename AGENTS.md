@@ -92,7 +92,7 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 - 槽位（`PluginSlot`）`clip: true`：插件根 Item 声明的 width 即其占位宽度，**任何超出槽位边界的绘制都会被裁掉**（ListView 只裁整列不裁单个 delegate，槽位不裁剪时溢出内容会直接画到相邻插件上）。插件必须保证根 Item 宽度 ≥ 实际内容宽度；固定宽模式下被截断属预期行为，由插件自行处理对齐。
 - 不用 `QML_ELEMENT` 静态注册——外部 DLL 无法在宿主编译期注册类型；`Loader + source URL` 是既定方案。
 - 宿主 QML 根上下文的 context property（插件 QML 同引擎可访问）：`pluginModel`（含 left/center/right 过滤子模型）、`themeManager`（`themeId`/`mode`/`colors` 11 字段色板，用 `themeManager.colors.bg` 取色）、`barConfig`、`barScreenGeometry`（当前屏 `availableGeometry` 逻辑像素，弹窗越界修正的唯一可靠来源——taskbar 模式下 `Item.Screen` 失效）、`barWindow`（插件用 `Connections` 收听其 `barPressed()` 实现"点 bar 关闭弹窗"；信号先于 item 的 `onClicked` 到达，toggle 部件需记录按下瞬间的弹窗状态防重开，范式见 `plugins_py/usage_hub/UsageHub.qml`）。
-- 插件弹窗（独立 `Window`）定位：锚点一律 `root.mapToGlobal`，边界用 `barScreenGeometry`（rect 只有 x/y/width/height，right/bottom 自己算）；高度异步收敛的弹窗用「隐身创建 + show 后 clamp + 底边锚定 + 稳定后显现」，完整实现见 UsageHub.qml 的 `popupWin`。**改插件 QML 后必须重启进程验证**：引擎对 file:// 组件有内存缓存，热重载不加载磁盘新文件。
+- 插件弹窗优先使用 `import XuanHub` 提供的 `PluginPopup`：设置 `anchorItem`、`pluginContext`，bar 点击调用 `toggleFromBar()`；宿主统一处理当前屏边界、顶部/底部方向、动态高度稳定显现、跨插件互斥、Esc/失焦/bar 点击关闭。只有特殊 flags 或非互斥场景才自建 `Window` 并自行处理定位。**改插件 QML 后必须重启进程验证**：引擎对 file:// 组件有内存缓存，热重载不加载磁盘新文件。
 - QML 加载失败默认静默：`PluginSlot.qml` 监听 `Loader.Error` 画红色占位符，真实错误在 `xuanhub.log` 的 qWarning 里。
 
 ### 线程模型（铁律）
