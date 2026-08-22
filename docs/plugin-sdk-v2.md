@@ -1,5 +1,8 @@
 # XuanHub 原生插件 SDK V2
 
+> 文档导航：[`docs/README.md`](README.md)。本文是 C++ 插件公开契约的权威来源；
+> `IBarPlugin/1.0` 仅用于兼容既有插件，新插件应使用 V2。
+
 SDK V2 用可预检的 `metadata.json` 和独立 IID 替代“先加载 DLL 再判断是否兼容”。
 宿主仍支持 V1，旧插件不需要重新编译；新插件应使用 V2。
 

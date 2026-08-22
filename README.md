@@ -109,6 +109,27 @@
 
 # 插件开发总览
 
+开发资料统一从 [`docs/README.md`](docs/README.md) 进入。公开契约按运行时分别维护：
+
+| 开发目标 | 权威文档 |
+|---|---|
+| C++ 原生插件 | [`docs/plugin-sdk-v2.md`](docs/plugin-sdk-v2.md) |
+| Python 隔离插件 | [`plugins_py/README.md`](plugins_py/README.md) |
+| QML/C++/Python 多语言 | [`docs/i18n.md`](docs/i18n.md) |
+| `.xuanplugin` 打包与签名 | [`docs/xuanplugin-format.md`](docs/xuanplugin-format.md) |
+| 静态更新源 | [`docs/xuanplugin-update-index.md`](docs/xuanplugin-update-index.md) |
+
+新插件先用统一 CLI 生成模板，再按对应权威文档实现：
+
+```powershell
+python scripts/xuanhub_plugin.py create plugins/my_plugin --runtime native --id com.example.my_plugin --name "My Plugin"
+python scripts/xuanhub_plugin.py create plugins_py/my_plugin --runtime python --id py_my_plugin --name "My Plugin"
+python scripts/xuanhub_plugin.py validate <插件目录>
+```
+
+CLI 还提供 `test/run/doctor/package`；准确参数使用
+`python scripts/xuanhub_plugin.py <命令> --help` 查询。
+
 当前原生 DLL 是同进程受信任代码，权限声明不能形成安全沙箱；第三方不受信任插件应优先使用
 Python/Protocol V2 隔离路径。`experiments/native_worker/` 已验证原生后端进程隔离的崩溃、
 超时和开销，但尚未接入发布版。边界、指标和产品化门槛见
@@ -126,12 +147,18 @@ Python/Protocol V2 隔离路径。`experiments/native_worker/` 已验证原生�
 
 ---
 
-# C++ 插件开发
+# C++ 插件开发（SDK V2 优先）
 
-## 插件模型速览
+新插件必须优先采用 `IBarPlugin2` 与 IID `xuanhub.BarPlugin/2.0`。完整的 Manifest、配置迁移、
+HostServices、EventBus V2、声明式动作、响应式布局和 V1 迁移步骤，以
+[`docs/plugin-sdk-v2.md`](docs/plugin-sdk-v2.md) 为准；可独立构建的参考插件位于
+[`examples/plugins/v2_demo/`](examples/plugins/v2_demo/)。以下 V1 内容仅用于维护既有插件，
+不再作为新插件模板。
 
-- 插件是 Qt 插件机制的 **MODULE DLL**，经 `Q_PLUGIN_METADATA(IID "xuanhub.BarPlugin/1.0")` 声明身份；
-- 宿主启动（或配置热重载）时扫描 `<exeDir>/plugins/*/` 下的 `*.dll`，用 `QPluginLoader` 加载并校验 IID，再 `qobject_cast` 到 `IBarPlugin` 接口；
+## V1 兼容模型速览
+
+- 旧插件是 Qt 插件机制的 **MODULE DLL**，经 `Q_PLUGIN_METADATA(IID "xuanhub.BarPlugin/1.0")` 声明身份；
+- 宿主仍会兼容加载 `IBarPlugin/1.0`，但 V1 不提供 SDK V2 的发现期兼容协商、权限服务和结构化结果；
 - 插件**只链接 `barplugin`** 接口库，对宿主核心零依赖；核心只通过接口拿到 `QObject* viewModel()` 与 `QUrl qmlUrl()`，QML 实例化由核心统一完成。
 
 ## 安装结构（= 源码目录结构）
@@ -148,7 +175,7 @@ plugins/
 
 构建产出的运行时布局：`<exeDir>/plugins/myplugin/myplugin.dll + MyPlugin.qml + metadata.json`。**三个文件缺一不可**。
 
-## 接口契约
+## V1 接口契约
 
 `lib/barplugin/include/barplugin/IBarPlugin.h`：
 
@@ -187,7 +214,7 @@ Q_DECLARE_INTERFACE(xuanhub::IBarPlugin, "xuanhub.BarPlugin/1.0")
 - 接口**绝不返回** `QWidget*` / `QQuickItem*` —— 界面一律走 QML；
 - `viewModel()` 返回的对象生命周期归插件自己管，`shutdown()` 里必须删干净（宿主随后会 `unload()` DLL，泄漏的 QObject 会执行已释放的代码）。
 
-## 最小完整示例
+## V1 最小示例
 
 以精简版时钟为例（实际可照抄 `plugins/clock/`）。
 
@@ -419,15 +446,23 @@ ctx->eventBus->publish(QStringLiteral("my.topic"), QVariantMap{{"key", 1}});
 
 ## ABI 警告（重要）
 
-插件 DLL 与宿主存在严格的 ABI 锁定：**同 Qt 版本（6.9.3）、同编译器（MSVC 2022 x64）、同 CRT（Release `/MD` / Debug `/MDd`）**，否则 `instance()` 返回 nullptr 或直接崩溃。当前没有独立的插件 SDK 分发，第三方 C++ 插件的实际开发路径是 **clone 本仓库、在 `plugins/` 下加子目录、用同一构建树整体编译**（Qt 路径见 `CMakePresets.json`，可用 `CMakeUserPresets.json` 覆盖）。
+插件 DLL 与宿主存在严格的 ABI 锁定：**同 Qt 版本（6.9.3）、同编译器（MSVC 2022 x64）、同 CRT（Release `/MD` / Debug `/MDd`）**，否则会在发现期被拒绝，绕过检查还可能崩溃。SDK V2 可先用 `cmake --install` 生成独立 CMake 包，再按 `examples/plugins/v2_demo/` 构建；维护仓库内 V1 插件时仍应使用同一构建树。准确步骤见 [`docs/plugin-sdk-v2.md`](docs/plugin-sdk-v2.md#构建约束)。
 
 ---
 
 # Python 插件开发（pybridge）
 
-`pybridge` 是一个特殊的桥接插件：它扫描 `<exeDir>/plugins_py/` 下的子插件，为每个插件启动独立的 Python worker，并创建通用代理 ViewModel 注入 QML。**写 Python 插件只需三个文本文件，零 C++、零编译。**
+`pybridge` 是一个特殊的桥接插件：它扫描 `<exeDir>/plugins_py/` 下的子插件，为每个插件启动独立的 `python.exe` worker，并创建通用代理 ViewModel 注入 QML。pybridge 不链接或内嵌 CPython，单个 Worker 的异常、阻塞或崩溃不会进入宿主进程。**写 Python 插件只需文本文件，零 C++、零编译。**
 
-完整开发契约见 `plugins_py/README.md`，参考实现见 `plugins_py/hello/`。以下为要点。
+完整开发契约见 [`plugins_py/README.md`](plugins_py/README.md)，参考实现见
+[`plugins_py/hello/`](plugins_py/hello/)。以下仅为快速上手要点，Protocol V2、依赖、
+HostServices、EventBus 和配置迁移均以权威契约为准。
+
+```powershell
+python scripts/xuanhub_plugin.py create plugins_py/my_plugin --runtime python --id py_my_plugin --name "My Plugin"
+python scripts/xuanhub_plugin.py validate plugins_py/my_plugin
+python scripts/xuanhub_plugin.py test plugins_py/my_plugin
+```
 
 ## 不安装 Qt/MSVC，直接开发 Python 插件
 

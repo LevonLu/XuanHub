@@ -1,5 +1,8 @@
 # Python 子插件开发契约（M6）
 
+> 统一文档导航见 [`docs/README.md`](../docs/README.md)。本文是 Python 插件 Manifest、Worker、
+> Protocol V2、依赖和 QML 行为的权威来源。
+
 > 由 `pybridge` 桥接插件承载：每个子插件运行在独立的 `python.exe` worker 进程中，
 > 宿主只保留异步代理 ViewModel 注入 QML。Python 崩溃、GIL 卡死和扩展模块异常不会进入
 > XuanHub 进程。写 Python 子插件**不需要**碰 C++。

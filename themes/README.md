@@ -1,5 +1,7 @@
 # XuanHub 主题包开发契约
 
+> 统一文档导航见 [`docs/README.md`](../docs/README.md)。本文是主题包格式的权威来源。
+
 主题包是**纯 JSON 声明式**的目录，放 `<exeDir>/themes/<id>/theme.json` 即被框架发现。无需 C++ 编译、无需重启（下次热重载/重启即生效）。本文件是开发契约全文。
 
 ## 1. 目录布局

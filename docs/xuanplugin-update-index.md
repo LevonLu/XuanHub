@@ -1,5 +1,8 @@
 # `.xuanplugin` 静态更新索引（Schema 1）
 
+> 文档导航：[`docs/README.md`](README.md)。插件包本身的完整规则见
+> [`xuanplugin-format.md`](xuanplugin-format.md)。
+
 更新索引是用户显式添加的只读 JSON URL。玄枢只支持绝对 `https://` URL和本机
 `file:///` URL，不接受 HTTP、URL 凭据或 fragment。检查更新只下载并解析索引，不会下载
 插件包；用户确认安装某一项后才下载包，并重新经过完整 `.xuanplugin` 离线校验器。
