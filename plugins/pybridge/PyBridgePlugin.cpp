@@ -236,6 +236,10 @@ QStringList PyBridgePlugin::subPluginIds() {
 
 xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const QVariantMap& cfg) {
     xuanhub::SubPluginInfo info;
+    if (m_vms.contains(id)) {
+        qWarning() << "[PyBridge] createSubPlugin: already running" << id;
+        return info;
+    }
     const QString dirPath = m_dirs.value(id);
     if (dirPath.isEmpty()) {
         qWarning() << "[PyBridge] createSubPlugin: unknown id" << id;
@@ -267,7 +271,7 @@ xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const 
         delete viewModel;
         return info;
     }
-    m_vms.append(viewModel);
+    m_vms.insert(id, viewModel);
     info.meta = {id,
                  object.value(QStringLiteral("name")).toString(id),
                  object.value(QStringLiteral("version")).toString(),
@@ -276,4 +280,12 @@ xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const 
     info.qmlFilePath = viewQml;
     info.dirPath = dirPath;
     return info;
+}
+
+bool PyBridgePlugin::destroySubPlugin(const QString& id) {
+    QObject* viewModel = m_vms.take(id);
+    if (!viewModel) return false;
+    delete viewModel;
+    qDebug() << "[PyBridge] destroyed sub-plugin:" << id;
+    return true;
 }
