@@ -72,6 +72,18 @@ private Q_SLOTS:
         QCOMPARE(viewModel.consecutiveFailures(), 0);
     }
 
+    void exposesHealthSnapshot() {
+        PyWorkerViewModel viewModel(QStringLiteral("health_snapshot"), {}, {}, {}, {}, nullptr);
+        QCOMPARE(viewModel.health().value(QStringLiteral("state")).toString(),
+                 QStringLiteral("discovered"));
+        for (int failure = 1; failure <= 5; ++failure)
+            viewModel.recordWorkerFailure(failure * 1000);
+        const QVariantMap health = viewModel.health();
+        QCOMPARE(health.value(QStringLiteral("state")).toString(),
+                 QStringLiteral("circuitOpen"));
+        QCOMPARE(health.value(QStringLiteral("consecutiveFailures")).toInt(), 5);
+    }
+
     void reaperGraceTimerSurvivesEarlyWorkerExit() {
         // 两个 worker 在 750ms 宽限期内先后自行退出，覆盖曾导致热重载闪退的
         // finished/deleteLater 与 grace timer 竞态。旧实现会在这里访问悬空 QProcess。

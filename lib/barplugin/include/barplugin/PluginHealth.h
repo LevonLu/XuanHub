@@ -3,6 +3,7 @@
 
 #include <QDateTime>
 #include <QString>
+#include <QStringView>
 
 namespace xuanhub {
 
@@ -33,6 +34,20 @@ inline QString pluginStateKey(PluginState state) {
         case PluginState::Stopped:     return QStringLiteral("stopped");
     }
     return QStringLiteral("failed");
+}
+
+inline PluginState pluginStateFromKey(QStringView key, PluginState fallback) {
+    if (key == u"discovered")  return PluginState::Discovered;
+    if (key == u"starting")    return PluginState::Starting;
+    if (key == u"running")     return PluginState::Running;
+    if (key == u"degraded")    return PluginState::Degraded;
+    if (key == u"restarting")  return PluginState::Restarting;
+    if (key == u"failed")      return PluginState::Failed;
+    if (key == u"circuitOpen") return PluginState::CircuitOpen;
+    if (key == u"disabled")    return PluginState::Disabled;
+    if (key == u"stopping")    return PluginState::Stopping;
+    if (key == u"stopped")     return PluginState::Stopped;
+    return fallback;
 }
 
 struct PluginHealth {

@@ -45,6 +45,37 @@ private Q_SLOTS:
         QCOMPARE(roles.value(PluginListModel::LastErrorRole), QByteArray("lastError"));
         QCOMPARE(roles.value(PluginListModel::QueueDepthRole), QByteArray("queueDepth"));
     }
+
+    void mergesRuntimeHealthReports() {
+        PluginManager::LoadedPlugin plugin;
+        plugin.id = QStringLiteral("runtime_health");
+        plugin.health.state = xuanhub::PluginState::Starting;
+        plugin.health.startedAt = QDateTime::fromMSecsSinceEpoch(1000, QTimeZone::UTC);
+
+        PluginListModel model;
+        model.setPlugins({plugin});
+        QSignalSpy changedSpy(&model, &QAbstractItemModel::dataChanged);
+        const QDateTime healthyAt = QDateTime::fromMSecsSinceEpoch(2000, QTimeZone::UTC);
+        model.reportHealth(QStringLiteral("runtime_health"), {
+            {QStringLiteral("state"), QStringLiteral("restarting")},
+            {QStringLiteral("lastError"), QStringLiteral("IPC disconnected")},
+            {QStringLiteral("lastHealthyAt"), healthyAt},
+            {QStringLiteral("restartCount"), 3},
+            {QStringLiteral("queueDepth"), 1},
+        });
+
+        QCOMPARE(changedSpy.count(), 1);
+        const QModelIndex index = model.index(0);
+        QCOMPARE(model.data(index, PluginListModel::HealthStateRole).toString(),
+                 QStringLiteral("restarting"));
+        QCOMPARE(model.data(index, PluginListModel::LastErrorRole).toString(),
+                 QStringLiteral("IPC disconnected"));
+        QCOMPARE(model.data(index, PluginListModel::LastHealthyAtRole).toDateTime(), healthyAt);
+        QCOMPARE(model.data(index, PluginListModel::RestartCountRole).toInt(), 3);
+        QCOMPARE(model.data(index, PluginListModel::QueueDepthRole).toInt(), 1);
+        QCOMPARE(model.data(index, PluginListModel::StartedAtRole).toDateTime(),
+                 plugin.health.startedAt);
+    }
 };
 
 QTEST_GUILESS_MAIN(PluginListModelTest)

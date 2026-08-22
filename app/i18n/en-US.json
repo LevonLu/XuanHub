@@ -98,6 +98,9 @@
       "%1：order 不能为负": "%1: order cannot be negative", "%1：width 需在 0-800 之间": "%1: width must be between 0 and 800",
       "%1：无法安全保存 %2": "%1: could not securely save %2"
     },
+    "xuanhub.pluginSlot": {
+      "无法加载插件界面：%1": "Could not load the plugin interface: %1"
+    },
     "xuanhub.tray": {
       "玄枢 XuanHub": "XuanHub",
       "设置...": "Settings...",

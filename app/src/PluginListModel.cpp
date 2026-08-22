@@ -108,6 +108,46 @@ void PluginListModel::reportContentWidth(const QString& id, int w) {
     m_contentWidths.insert(id, w);
 }
 
+void PluginListModel::reportHealth(const QString& id, const QVariantMap& update) {
+    int row = -1;
+    for (int i = 0; i < m_items.size(); ++i) {
+        if (m_items.at(i).id == id) {
+            row = i;
+            break;
+        }
+    }
+    if (row < 0 || update.isEmpty()) return;
+
+    auto& health = m_items[row].health;
+    if (update.contains(QStringLiteral("state"))) {
+        health.state = xuanhub::pluginStateFromKey(
+            update.value(QStringLiteral("state")).toString(), health.state);
+    }
+    if (update.contains(QStringLiteral("lastError")))
+        health.lastError = update.value(QStringLiteral("lastError")).toString();
+    if (update.contains(QStringLiteral("lastErrorAt")))
+        health.lastErrorAt = update.value(QStringLiteral("lastErrorAt")).toDateTime();
+    if (update.contains(QStringLiteral("startedAt")))
+        health.startedAt = update.value(QStringLiteral("startedAt")).toDateTime();
+    if (update.contains(QStringLiteral("lastHealthyAt")))
+        health.lastHealthyAt = update.value(QStringLiteral("lastHealthyAt")).toDateTime();
+    if (update.contains(QStringLiteral("restartCount")))
+        health.restartCount = update.value(QStringLiteral("restartCount")).toInt();
+    if (update.contains(QStringLiteral("consecutiveFailures")))
+        health.consecutiveFailures = update.value(QStringLiteral("consecutiveFailures")).toInt();
+    if (update.contains(QStringLiteral("loadDurationMs")))
+        health.loadDurationMs = update.value(QStringLiteral("loadDurationMs")).toLongLong();
+    if (update.contains(QStringLiteral("queueDepth")))
+        health.queueDepth = update.value(QStringLiteral("queueDepth")).toInt();
+
+    const QModelIndex changed = index(row);
+    Q_EMIT dataChanged(changed, changed, {
+        HealthStateRole, LastErrorRole, LastErrorAtRole, StartedAtRole,
+        LastHealthyAtRole, RestartCountRole, ConsecutiveFailuresRole,
+        LoadDurationMsRole, QueueDepthRole,
+    });
+}
+
 int PluginListModel::contentWidth(const QString& id) const {
     return m_contentWidths.value(id, 0);
 }

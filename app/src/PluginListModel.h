@@ -7,6 +7,7 @@
 #include <QVector>
 #include <QUrl>
 #include <QPointer>
+#include <QVariantMap>
 
 #include "PluginManager.h"
 
@@ -51,6 +52,8 @@ public:
     // 插件槽（PluginSlot.qml）上报的自然内容宽度（逻辑像素）；
     // 设置窗口切「手动」宽度时以此作初始值。与 WidthRole（config 定宽）无关。
     Q_INVOKABLE void reportContentWidth(const QString& id, int w);
+    // 插件代理或 PluginSlot 以稳定字段增量上报；未提供的指标保持原值。
+    Q_INVOKABLE void reportHealth(const QString& id, const QVariantMap& update);
     int contentWidth(const QString& id) const;   // 无记录返回 0
 
 private:

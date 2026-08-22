@@ -2,6 +2,7 @@
 #include "PyWorkerViewModel.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDebug>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -84,14 +85,34 @@ bool PyWorkerViewModel::running() const {
     return m_authenticated && m_process && m_process->state() != QProcess::NotRunning;
 }
 
+QVariantMap PyWorkerViewModel::health() const {
+    return {
+        {QStringLiteral("state"), xuanhub::pluginStateKey(m_health.state)},
+        {QStringLiteral("lastError"), m_health.lastError},
+        {QStringLiteral("lastErrorAt"), m_health.lastErrorAt},
+        {QStringLiteral("startedAt"), m_health.startedAt},
+        {QStringLiteral("lastHealthyAt"), m_health.lastHealthyAt},
+        {QStringLiteral("restartCount"), m_health.restartCount},
+        {QStringLiteral("consecutiveFailures"), consecutiveFailures()},
+        {QStringLiteral("loadDurationMs"), m_health.loadDurationMs},
+        {QStringLiteral("queueDepth"), m_queue.size() + (m_inFlightId != 0 ? 1 : 0)},
+    };
+}
+
 bool PyWorkerViewModel::start() {
     if (m_stopping || m_circuitOpen || m_process || m_server) return false;
     auto* server = new QTcpServer(this);
     if (!server->listen(QHostAddress::LocalHost, 0)) {
-        qWarning() << "[PyBridge]" << m_id << ": cannot listen for worker:" << server->errorString();
+        m_health.lastError = QStringLiteral("cannot listen for worker: %1")
+                                 .arg(server->errorString());
+        m_health.lastErrorAt = QDateTime::currentDateTimeUtc();
+        setHealthState(xuanhub::PluginState::Failed);
+        qWarning() << "[PyBridge]" << m_id << ":" << m_health.lastError;
         server->deleteLater();
         return false;
     }
+    m_health.startedAt = QDateTime::currentDateTimeUtc();
+    setHealthState(xuanhub::PluginState::Starting);
     m_server = server;
     m_token = nextToken();
     m_authenticated = false;
@@ -253,6 +274,7 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
     m_inFlight = {};
     m_inFlightId = 0;
     m_requestTimer.stop();
+    Q_EMIT healthChanged();
 
     const bool ok = message.value(QStringLiteral("ok")).toBool(false);
     if (!ok) {
@@ -305,6 +327,7 @@ void PyWorkerViewModel::enqueue(Request request, bool front) {
     }
     if (front) m_queue.prepend(std::move(request));
     else m_queue.enqueue(std::move(request));
+    Q_EMIT healthChanged();
     dispatchNext();
 }
 
@@ -367,6 +390,8 @@ void PyWorkerViewModel::handleProcessFinished(int exitCode, QProcess::ExitStatus
 void PyWorkerViewModel::failWorker(const QString& reason, bool retry) {
     if (m_stopping) return;
     qWarning() << "[PyBridge]" << m_id << ":" << reason;
+    m_health.lastError = reason;
+    m_health.lastErrorAt = QDateTime::currentDateTimeUtc();
     m_startTimer.stop();
     m_requestTimer.stop();
     m_updateTimer.stop();
@@ -393,7 +418,15 @@ void PyWorkerViewModel::failWorker(const QString& reason, bool retry) {
         detachProcess(process);
     }
     Q_EMIT runningChanged();
-    if (retry && !recordWorkerFailure(m_failureClock.elapsed())) scheduleRestart();
+    if (retry) {
+        if (!recordWorkerFailure(m_failureClock.elapsed())) {
+            setHealthState(xuanhub::PluginState::Restarting);
+            scheduleRestart();
+        }
+    } else {
+        setHealthState(xuanhub::PluginState::Failed);
+    }
+    Q_EMIT healthChanged();
 }
 
 bool PyWorkerViewModel::recordWorkerFailure(qint64 elapsedMs) {
@@ -411,19 +444,32 @@ bool PyWorkerViewModel::recordWorkerFailure(qint64 elapsedMs) {
                    << ": worker circuit opened after" << m_failureTimesMs.size()
                    << "failures within" << kCircuitFailureWindowMs << "ms";
         Q_EMIT circuitOpenChanged();
+        setHealthState(xuanhub::PluginState::CircuitOpen);
     }
     return true;
 }
 
 void PyWorkerViewModel::markWorkerHealthy() {
     m_restartAttempt = 0;
-    if (m_failureTimesMs.isEmpty()) return;
-    m_failureTimesMs.clear();
-    Q_EMIT consecutiveFailuresChanged();
+    if (!m_failureTimesMs.isEmpty()) {
+        m_failureTimesMs.clear();
+        Q_EMIT consecutiveFailuresChanged();
+    }
+    m_health.lastHealthyAt = QDateTime::currentDateTimeUtc();
+    setHealthState(xuanhub::PluginState::Running);
+    Q_EMIT healthChanged();
+}
+
+void PyWorkerViewModel::setHealthState(xuanhub::PluginState state) {
+    if (m_health.state == state) return;
+    m_health.state = state;
+    Q_EMIT healthChanged();
 }
 
 void PyWorkerViewModel::scheduleRestart() {
     if (m_stopping) return;
+    ++m_health.restartCount;
+    Q_EMIT healthChanged();
     const int shift = qMin(m_restartAttempt++, 5);
     const int delay = qMin(30000, 1000 * (1 << shift));
     QTimer::singleShot(delay, this, [this] {

@@ -6,6 +6,33 @@ import XuanHub
 
 Item {
     id: wrapper
+
+    function reportHealth() {
+        var next = {}
+        if (model.viewModel && model.viewModel.health !== undefined) {
+            var workerHealth = model.viewModel.health
+            for (var key in workerHealth)
+                next[key] = workerHealth[key]
+        } else if (slot.status === Loader.Loading) {
+            next.state = "starting"
+        } else if (slot.status === Loader.Ready) {
+            next.state = "running"
+        }
+        if (slot.status === Loader.Error) {
+            next.state = "failed"
+            next.lastError = qsTranslate("xuanhub.pluginSlot", "无法加载插件界面：%1")
+                                .arg(slot.source)
+        }
+        pluginModel.reportHealth(model.id, next)
+    }
+
+    Component.onCompleted: reportHealth()
+
+    Connections {
+        target: model.viewModel
+        ignoreUnknownSignals: true
+        function onHealthChanged() { wrapper.reportHealth() }
+    }
     // 高度跟随所属 ListView（即 bar 实际高度），与 config.barHeight 联动；
     // 脱离 ListView 使用时的回退值 40
     height: ListView.view ? ListView.view.height : 40
@@ -48,8 +75,10 @@ Item {
                              "（插件根 Item 必须声明正宽度，否则槽位不可见）")
             // 注意：不要在这里给 wrapper.width 赋值——命令式赋值会销毁
             // 上面的声明式绑定，item 宽度后续变化将无法跟踪
+            wrapper.reportHealth()
         }
         onStatusChanged: {
+            wrapper.reportHealth()
             if (status === Loader.Error)
                 console.warn("[PluginSlot] load failed:", source,
                              "(真实错误见 xuanhub.log 中 QML 引擎的 qWarning 输出)")

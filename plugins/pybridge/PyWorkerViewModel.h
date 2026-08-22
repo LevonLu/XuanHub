@@ -13,6 +13,8 @@
 #include <QTimer>
 #include <QVariantMap>
 
+#include "barplugin/PluginHealth.h"
+
 class QTcpServer;
 class QTcpSocket;
 class PyWorkerViewModelTest;
@@ -24,6 +26,7 @@ class PyWorkerViewModel : public QObject {
     Q_PROPERTY(bool running READ running NOTIFY runningChanged)
     Q_PROPERTY(bool circuitOpen READ circuitOpen NOTIFY circuitOpenChanged)
     Q_PROPERTY(int consecutiveFailures READ consecutiveFailures NOTIFY consecutiveFailuresChanged)
+    Q_PROPERTY(QVariantMap health READ health NOTIFY healthChanged)
 public:
     PyWorkerViewModel(QString id, QString dirPath, QVariantMap cfg, QString pythonExe,
                       QString workerScript, xuanhub::EventBus* bus,
@@ -35,6 +38,7 @@ public:
     bool circuitOpen() const { return m_circuitOpen; }
     int consecutiveFailures() const { return m_failureTimesMs.size(); }
     int updateIntervalMs() const { return m_updateIntervalMs; }
+    QVariantMap health() const;
 
     // 启动监听端与 worker。真正的 import/init 在 worker 连接并通过令牌认证后异步进行。
     bool start();
@@ -52,6 +56,7 @@ Q_SIGNALS:
     void runningChanged();
     void circuitOpenChanged();
     void consecutiveFailuresChanged();
+    void healthChanged();
 
 private:
     friend class PyWorkerViewModelTest;
@@ -75,6 +80,7 @@ private:
     void failWorker(const QString& reason, bool retry);
     bool recordWorkerFailure(qint64 elapsedMs);
     void markWorkerHealthy();
+    void setHealthState(xuanhub::PluginState state);
     void scheduleRestart();
     void stopWorker();
     void detachProcess(QProcess* process, int gracefulMs = 0);
@@ -104,6 +110,7 @@ private:
     bool m_stopping = false;
     bool m_circuitOpen = false;
     QQueue<qint64> m_failureTimesMs;
+    xuanhub::PluginHealth m_health;
     int m_restartAttempt = 0;
     int m_updateIntervalMs = 1000;
 };
