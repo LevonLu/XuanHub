@@ -102,6 +102,21 @@ Pane {
         return (v === undefined || v === null) ? def : v
     }
 
+    // 条件格式：{ "key": "mode", "equals": "advanced" }；另支持
+    // notEquals / in / truthy。显式引用 revision，让其他字段改动后立即重算。
+    function schemaConditionMatches(condition) {
+        const revision = settingsVM.pluginProxy.revision
+        if (!condition || !condition.key) return true
+        const current = settingsVM.pluginProxy.value(String(condition.key))
+        if (condition.equals !== undefined) return current === condition.equals
+        if (condition.notEquals !== undefined) return current !== condition.notEquals
+        if (condition.in !== undefined && Array.isArray(condition.in))
+            return condition.in.indexOf(current) >= 0
+        if (condition.truthy !== undefined)
+            return Boolean(current) === Boolean(condition.truthy)
+        return true
+    }
+
     // 非法输入计数（double/color/json 字段红框时 >0）：>0 禁用保存/应用。
     // 字段组件持 invalid 属性经此报告状态；delegate 销毁时自行归还计数。
     property int invalidFields: 0
@@ -1262,6 +1277,8 @@ Pane {
                                     Layout.fillWidth: true
                                     spacing: UiMetrics.space1
                                     property var field: modelData
+                                    visible: root.schemaConditionMatches(field.visibleWhen)
+                                    enabled: root.schemaConditionMatches(field.enabledWhen)
 
                                     Text {
                                         text: field.label || field.key
@@ -1288,8 +1305,12 @@ Pane {
                                                 case "double": return doubleFieldComp
                                                 case "color":  return colorFieldComp
                                                 case "enum":   return enumFieldComp
+                                                case "object": return jsonFieldComp
+                                                case "array":  return jsonFieldComp
                                                 case "json":   return jsonFieldComp
-                                                default:         return stringFieldComp
+                                                default:         return field.multiline === true
+                                                                        ? multilineFieldComp
+                                                                        : stringFieldComp
                                             }
                                         }
                                         onLoaded: item.field = field
@@ -1371,6 +1392,12 @@ Pane {
                                     property bool _initializing: false
                                     placeholderText: field.placeholder || ""
                                     echoMode: field.secret === true ? TextInput.Password : TextInput.Normal
+                                    Component.onDestruction: if (invalid) root.invalidFields -= 1
+                                    function validText(value) {
+                                        if (!field.regex) return true
+                                        try { return new RegExp(String(field.regex)).test(value) }
+                                        catch (e) { return false }
+                                    }
                                     Component.onCompleted: init()
                                     onFieldChanged: init()
                                     function init() {
@@ -1379,8 +1406,57 @@ Pane {
                                         text = String(root.draftValue(field.key,
                                             field.default !== undefined ? field.default : ""))
                                         _initializing = false
+                                        root.setFieldInvalid(this, !validText(text))
                                     }
-                                    onTextChanged: if (field.key && !_initializing) settingsVM.pluginProxy.setValue(field.key, text)
+                                    onTextChanged: {
+                                        if (!field.key || _initializing) return
+                                        const ok = validText(text)
+                                        root.setFieldInvalid(this, !ok)
+                                        if (ok) settingsVM.pluginProxy.setValue(field.key, text)
+                                    }
+                                }
+                            }
+
+                            Component {
+                                id: multilineFieldComp
+                                TextArea {
+                                    property var field: ({})
+                                    property bool invalid: false
+                                    property bool _initializing: false
+                                    Component.onDestruction: if (invalid) root.invalidFields -= 1
+                                    implicitHeight: Math.min(180, Math.max(88, contentHeight + 24))
+                                    placeholderText: field.placeholder || ""
+                                    wrapMode: TextEdit.Wrap
+                                    selectByMouse: true
+                                    color: root.c.fg
+                                    function validText(value) {
+                                        if (!field.regex) return true
+                                        try { return new RegExp(String(field.regex)).test(value) }
+                                        catch (e) { return false }
+                                    }
+                                    Component.onCompleted: init()
+                                    onFieldChanged: init()
+                                    function init() {
+                                        if (!field.key) return
+                                        _initializing = true
+                                        text = String(root.draftValue(field.key,
+                                            field.default !== undefined ? field.default : ""))
+                                        _initializing = false
+                                        root.setFieldInvalid(this, !validText(text))
+                                    }
+                                    onTextChanged: {
+                                        if (!field.key || _initializing) return
+                                        const ok = validText(text)
+                                        root.setFieldInvalid(this, !ok)
+                                        if (ok) settingsVM.pluginProxy.setValue(field.key, text)
+                                    }
+                                    background: Rectangle {
+                                        color: root.c.bg
+                                        radius: UiMetrics.radiusS
+                                        border.width: 1
+                                        border.color: parent.activeFocus ? root.c.accent
+                                                      : (parent.invalid ? root.c.danger : root.c.muted)
+                                    }
                                 }
                             }
 
@@ -1494,6 +1570,10 @@ Pane {
                                         let parsed = null
                                         let ok = true
                                         try { parsed = JSON.parse(text) } catch (e) { ok = false }
+                                        if (ok && field.type === "object")
+                                            ok = parsed !== null && typeof parsed === "object"
+                                                 && !Array.isArray(parsed)
+                                        if (ok && field.type === "array") ok = Array.isArray(parsed)
                                         root.setFieldInvalid(this, !ok)
                                         if (ok) settingsVM.pluginProxy.setValue(field.key, parsed)
                                     }
