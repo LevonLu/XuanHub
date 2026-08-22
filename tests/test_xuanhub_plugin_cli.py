@@ -100,5 +100,48 @@ class ValidatorTest(unittest.TestCase):
             self.assertIn("tree.user_absolute_path", codes)
 
 
+class WorkerHarnessTest(unittest.TestCase):
+    def test_runs_protocol_v2_lifecycle_without_qt(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_plugin(root)
+            (root / "main.py").write_text(
+                "locale = 'unset'\n"
+                "def init(config):\n    pass\n"
+                "def update():\n    return {'locale': locale}\n"
+                "def set_locale(value):\n    global locale\n    locale = value\n"
+                "def invoke(name, args):\n    return sum(args)\n"
+                "def stop():\n    pass\n",
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [sys.executable, str(CLI_PATH), "test", str(root), "--json",
+                 "--invoke", "sum", "--invoke-args", "[2,3]", "--repeat", "2"],
+                check=False, capture_output=True, text=True, encoding="utf-8",
+            )
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            result = json.loads(completed.stdout)
+            self.assertTrue(result["ok"])
+            self.assertEqual(len(result["steps"]), 12)
+            self.assertEqual({step["cycle"] for step in result["steps"]}, {1, 2})
+
+    def test_reports_plugin_exception(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_plugin(root)
+            (root / "main.py").write_text(
+                "def update():\n    raise RuntimeError('boom')\n",
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [sys.executable, str(CLI_PATH), "test", str(root), "--json"],
+                check=False, capture_output=True, text=True, encoding="utf-8",
+            )
+            self.assertEqual(completed.returncode, 1)
+            result = json.loads(completed.stdout)
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["diagnostics"][-1]["code"], "test.worker_failed")
+
+
 if __name__ == "__main__":
     unittest.main()

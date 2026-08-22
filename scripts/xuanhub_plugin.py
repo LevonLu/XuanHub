@@ -9,6 +9,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import secrets
+import socket
+import struct
+import subprocess
 import re
 import sys
 from dataclasses import asdict, dataclass
@@ -32,6 +36,7 @@ SUSPICIOUS_NAMES = {
 }
 SUSPICIOUS_SUFFIXES = {".pyc", ".pyo", ".log", ".lock"}
 FIELD_TYPES = {"bool", "int", "double", "string", "color", "enum", "json", "object", "array"}
+MAX_FRAME_BYTES = 4 * 1024 * 1024
 
 
 class DuplicateKeyError(ValueError):
@@ -363,12 +368,269 @@ def format_text(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+class WorkerHarnessError(RuntimeError):
+    pass
+
+
+class WorkerHarness:
+    """最小 Protocol V2 宿主，只提供无副作用的服务响应。"""
+
+    def __init__(self, plugin_dir: Path, worker: Path, plugin_id: str, timeout: float) -> None:
+        self.plugin_dir = plugin_dir.resolve()
+        self.worker = worker.resolve()
+        self.plugin_id = plugin_id
+        self.timeout = timeout
+        self.server: socket.socket | None = None
+        self.connection: socket.socket | None = None
+        self.process: subprocess.Popen[str] | None = None
+        self.request_id = 0
+
+    @staticmethod
+    def _send(connection: socket.socket, message: dict[str, Any]) -> None:
+        payload = json.dumps(message, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        if len(payload) > MAX_FRAME_BYTES:
+            raise WorkerHarnessError("outgoing frame exceeds 4 MiB")
+        connection.sendall(struct.pack(">I", len(payload)) + payload)
+
+    @staticmethod
+    def _recv_exact(connection: socket.socket, size: int) -> bytes:
+        chunks = bytearray()
+        while len(chunks) < size:
+            chunk = connection.recv(size - len(chunks))
+            if not chunk:
+                raise WorkerHarnessError("worker closed the IPC connection")
+            chunks.extend(chunk)
+        return bytes(chunks)
+
+    @classmethod
+    def _recv(cls, connection: socket.socket) -> dict[str, Any]:
+        size = struct.unpack(">I", cls._recv_exact(connection, 4))[0]
+        if size <= 0 or size > MAX_FRAME_BYTES:
+            raise WorkerHarnessError(f"worker sent invalid frame size: {size}")
+        try:
+            message = json.loads(cls._recv_exact(connection, size).decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as error:
+            raise WorkerHarnessError(f"worker sent invalid JSON: {error}") from error
+        if not isinstance(message, dict):
+            raise WorkerHarnessError("worker frame root is not an object")
+        return message
+
+    def start(self) -> dict[str, Any]:
+        if not self.worker.is_file():
+            raise WorkerHarnessError(f"bridge worker not found: {self.worker}")
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server.bind(("127.0.0.1", 0))
+        self.server.listen(1)
+        self.server.settimeout(self.timeout)
+        token = secrets.token_hex(32)
+        self.process = subprocess.Popen(
+            [sys.executable, "-B", "-E", "-u", str(self.worker),
+             "--port", str(self.server.getsockname()[1]), "--token", token,
+             "--plugin-dir", str(self.plugin_dir), "--plugin-id", self.plugin_id],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+        )
+        try:
+            self.connection, _ = self.server.accept()
+        except socket.timeout as error:
+            details = self._process_details()
+            raise WorkerHarnessError(f"worker did not connect before timeout{details}") from error
+        self.connection.settimeout(self.timeout)
+        hello = self._recv(self.connection)
+        if (hello.get("type") != "hello" or hello.get("token") != token
+                or hello.get("protocol") != 2 or hello.get("pluginId") != self.plugin_id):
+            raise WorkerHarnessError("worker Protocol V2 hello is invalid")
+        return hello
+
+    def request(self, operation: str, data: dict[str, Any]) -> dict[str, Any]:
+        if self.connection is None:
+            raise WorkerHarnessError("worker is not connected")
+        self.request_id += 1
+        request_id = str(self.request_id)
+        self._send(self.connection, {
+            "type": "request", "id": request_id, "op": operation, "data": data,
+        })
+        while True:
+            message = self._recv(self.connection)
+            message_type = message.get("type")
+            if message_type == "host_service":
+                self._send(self.connection, {
+                    "type": "host_service_response", "id": message.get("id"),
+                    "ok": True, "result": None,
+                })
+                continue
+            if message_type == "event_bus":
+                self._send(self.connection, {
+                    "type": "event_bus_response", "id": message.get("id"),
+                    "ok": True, "result": {"accepted": True},
+                })
+                continue
+            if message_type in {"call_progress", "plugin_values", "plugin_event"}:
+                continue
+            if message_type != "response" or message.get("id") != request_id:
+                raise WorkerHarnessError(f"unexpected worker message: {message_type}")
+            return message
+
+    def close(self) -> None:
+        if self.connection is not None:
+            self.connection.close()
+            self.connection = None
+        if self.server is not None:
+            self.server.close()
+            self.server = None
+        if self.process is not None and self.process.poll() is None:
+            self.process.terminate()
+            try:
+                self.process.wait(timeout=self.timeout)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(timeout=self.timeout)
+        if self.process is not None:
+            if self.process.stdout:
+                self.process.stdout.close()
+            if self.process.stderr:
+                self.process.stderr.close()
+
+    def wait_for_clean_exit(self) -> None:
+        if self.process is None:
+            raise WorkerHarnessError("worker process was not started")
+        try:
+            exit_code = self.process.wait(timeout=self.timeout)
+        except subprocess.TimeoutExpired as error:
+            raise WorkerHarnessError("worker did not exit after stop") from error
+        if exit_code != 0:
+            raise WorkerHarnessError(f"worker exited with {exit_code}{self._process_details()}")
+
+    def _process_details(self) -> str:
+        if self.process is None or self.process.poll() is None or self.process.stderr is None:
+            return ""
+        stderr = self.process.stderr.read().strip()
+        return f": {stderr[-2000:]}" if stderr else ""
+
+
+def find_worker(plugin_dir: Path, explicit: Path | None) -> Path:
+    if explicit is not None:
+        return explicit
+    candidates = [
+        plugin_dir.resolve().parent / "bridge_worker.py",
+        Path(__file__).resolve().parents[1] / "plugins_py" / "bridge_worker.py",
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return candidates[0]
+
+
+def test_plugin(args: argparse.Namespace) -> dict[str, Any]:
+    validation = Validator(args.plugin_dir).validate()
+    diagnostics = list(validation["diagnostics"])
+    result: dict[str, Any] = {
+        "schemaVersion": RESULT_SCHEMA_VERSION,
+        "command": "test",
+        "ok": False,
+        "plugin": validation["plugin"],
+        "summary": {"errors": validation["summary"]["errors"],
+                    "warnings": validation["summary"]["warnings"]},
+        "steps": [],
+        "diagnostics": diagnostics,
+    }
+    if validation["plugin"]["runtime"] != "python":
+        diagnostics.append(asdict(Diagnostic(
+            "error", "test.python_only", "Worker 测试只支持 Python 插件")))
+        result["summary"]["errors"] += 1
+        return result
+    if validation["summary"]["errors"]:
+        return result
+
+    config: dict[str, Any] = {}
+    if args.config:
+        try:
+            raw = args.config.read_text(encoding="utf-8-sig") if args.config.is_file() else str(args.config)
+            parsed = json.loads(raw)
+            if not isinstance(parsed, dict):
+                raise ValueError("config root must be an object")
+            config = parsed
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+            diagnostics.append(asdict(Diagnostic(
+                "error", "test.invalid_config", f"测试配置无效：{error}")))
+            result["summary"]["errors"] += 1
+            return result
+
+    if args.repeat < 1 or args.repeat > 20:
+        diagnostics.append(asdict(Diagnostic(
+            "error", "test.invalid_repeat", "--repeat 必须在 1-20 之间")))
+        result["summary"]["errors"] += 1
+        return result
+
+    for cycle in range(1, args.repeat + 1):
+        harness = WorkerHarness(
+            args.plugin_dir, find_worker(args.plugin_dir, args.worker),
+            validation["plugin"]["id"], args.timeout,
+        )
+        try:
+            def step(name: str, **details: Any) -> None:
+                result["steps"].append({"name": name, "cycle": cycle,
+                                        "ok": True, **details})
+
+            hello = harness.start()
+            step("hello", capabilities=hello.get("capabilities", []))
+            initialized = harness.request("init", {"config": config, "locale": args.locale})
+            if not initialized.get("ok"):
+                raise WorkerHarnessError(f"init failed: {initialized.get('error', 'unknown error')}")
+            step("init", capabilities=initialized.get("result", {}).get("capabilities", []))
+            updated = harness.request("update", {})
+            if not updated.get("ok") or not isinstance(updated.get("result"), dict):
+                raise WorkerHarnessError(f"update failed: {updated.get('error', 'result is not an object')}")
+            step("update", keys=sorted(updated["result"]))
+            localized = harness.request("set_locale", {"locale": args.locale_switch})
+            if not localized.get("ok"):
+                raise WorkerHarnessError(f"set_locale failed: {localized.get('error', 'unknown error')}")
+            step("set_locale")
+            if args.invoke:
+                invoke_args = json.loads(args.invoke_args)
+                if not isinstance(invoke_args, list):
+                    raise WorkerHarnessError("--invoke-args must be a JSON array")
+                invoked = harness.request("invoke", {"name": args.invoke, "args": invoke_args})
+                if not invoked.get("ok"):
+                    raise WorkerHarnessError(f"invoke failed: {invoked.get('error', 'unknown error')}")
+                step("invoke")
+            stopped = harness.request("stop", {})
+            if not stopped.get("ok"):
+                raise WorkerHarnessError(f"stop failed: {stopped.get('error', 'unknown error')}")
+            harness.wait_for_clean_exit()
+            step("stop")
+        except (WorkerHarnessError, socket.timeout, OSError, json.JSONDecodeError) as error:
+            diagnostics.append(asdict(Diagnostic(
+                "error", "test.worker_failed", f"cycle {cycle}: {error}")))
+            result["summary"]["errors"] += 1
+            break
+        finally:
+            harness.close()
+    result["ok"] = result["summary"]["errors"] == 0
+    return result
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="xuanhub-plugin", description="XuanHub 插件开发者工具")
     subparsers = parser.add_subparsers(dest="command", required=True)
     validate = subparsers.add_parser("validate", help="只读校验插件目录")
     validate.add_argument("plugin_dir", type=Path)
     validate.add_argument("--json", action="store_true", dest="json_output", help="输出稳定 JSON")
+    test = subparsers.add_parser("test", help="通过真实 Protocol V2 Worker 测试 Python 插件")
+    test.add_argument("plugin_dir", type=Path)
+    test.add_argument("--json", action="store_true", dest="json_output", help="输出稳定 JSON")
+    test.add_argument("--config", type=Path, help="配置 JSON 文件；省略时使用空对象")
+    test.add_argument("--worker", type=Path, help="显式指定 bridge_worker.py")
+    test.add_argument("--timeout", type=float, default=8.0)
+    test.add_argument("--repeat", type=int, default=1,
+                      help="用全新 Worker 重复生命周期 1-20 次，用于验证重启")
+    test.add_argument("--locale", default="en-US")
+    test.add_argument("--locale-switch", default="zh-CN")
+    test.add_argument("--invoke", help="显式测试的动作名称；默认不调用动作")
+    test.add_argument("--invoke-args", default="[]", help="动作参数 JSON 数组")
     return parser
 
 
@@ -380,6 +642,15 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         else:
             print(format_text(result))
+        return 0 if result["ok"] else 1
+    if args.command == "test":
+        result = test_plugin(args)
+        if args.json_output:
+            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_text(result))
+            for step in result["steps"]:
+                print(f"STEP {step['name']}: {'PASS' if step['ok'] else 'FAIL'}")
         return 0 if result["ok"] else 1
     return 2
 
