@@ -1,0 +1,4 @@
+interface:
+  display_name: "创建 XuanHub 插件"
+  short_description: "让 Agent 从需求到验证完整创建 C++ 或 Python 插件"
+  default_prompt: "使用 $create-xuanhub-plugin 根据我的需求创建并验证一个 XuanHub 插件。"

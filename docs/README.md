@@ -8,6 +8,7 @@
 | 角色 | 从这里开始 | 继续阅读 |
 |---|---|---|
 | 框架维护者 | [`AGENTS.md`](../AGENTS.md) | [`plugin-framework-roadmap.md`](plugin-framework-roadmap.md)、[`native-worker-isolation-evaluation.md`](native-worker-isolation-evaluation.md) |
+| 使用 Agent 创建插件 | [`.agents/skills/create-xuanhub-plugin/SKILL.md`](../.agents/skills/create-xuanhub-plugin/SKILL.md) | 根据运行时继续阅读 C++ 或 Python 权威契约 |
 | C++ 插件开发者 | [`plugin-sdk-v2.md`](plugin-sdk-v2.md) | [`i18n.md`](i18n.md)、[`xuanplugin-format.md`](xuanplugin-format.md)、[`xuanplugin-update-index.md`](xuanplugin-update-index.md) |
 | Python 插件开发者 | [`plugins_py/README.md`](../plugins_py/README.md) | [`i18n.md`](i18n.md)、[`xuanplugin-format.md`](xuanplugin-format.md)、[`xuanplugin-update-index.md`](xuanplugin-update-index.md) |
 | 主题开发者 | [`themes/README.md`](../themes/README.md) | 根目录 [`README.md`](../README.md) 的运行和打包说明 |
@@ -19,6 +20,7 @@
 |---|---|
 | [`README.md`](../README.md) | 产品说明、安装使用、开发入口和源码构建 |
 | [`AGENTS.md`](../AGENTS.md) | 框架架构、生命周期铁律、代码规范、测试与发布门禁 |
+| [`.agents/skills/create-xuanhub-plugin/SKILL.md`](../.agents/skills/create-xuanhub-plugin/SKILL.md) | Agent 创建、实现、验证和打包 XuanHub 插件的标准工作流 |
 | [`plugin-framework-roadmap.md`](plugin-framework-roadmap.md) | 大型升级方向、状态、实施记录和未完成项 |
 | [`plugin-sdk-v2.md`](plugin-sdk-v2.md) | C++ SDK V2、Manifest、HostServices、EventBus、布局和 V1 迁移 |
 | [`plugins_py/README.md`](../plugins_py/README.md) | Python Manifest、Protocol V2、worker、依赖和 QML 契约 |
