@@ -287,19 +287,11 @@ Item {
     }
 
     // ── Bar 点击 → 切换弹窗 ──────────────────────────────────────
-    // 点 bar 任意处关闭弹窗：bar 是 WindowDoesNotAcceptFocus，点击不会让弹窗
-    // 失活（onActiveChanged 不触发），靠宿主 barWindow.barPressed 信号补齐；
-    // 点桌面/其他窗口仍走失活关闭。信号先于 item 的 onClicked 到达，
-    // 用 popupOpenOnBarPress 记录按下瞬间弹窗状态，避免「点部件关弹窗」
-    // 被 onClicked 当成 toggle 又立刻重开。
-    property bool popupOpenOnBarPress: false
-
+    // 主弹窗的 bar 点击守卫由 PluginPopup 处理；这里仅关闭独立的悬停提示。
     Connections {
         target: pluginContext ? pluginContext
                               : (typeof barWindow !== "undefined" ? barWindow : null)
         function onBarPressed() {
-            root.popupOpenOnBarPress = popupWin.visible
-            popupWin.hide()
             tipDelay.stop(); tip.hide()
         }
     }
@@ -309,14 +301,7 @@ Item {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
         hoverEnabled: true
-        onClicked: {
-            if (root.popupOpenOnBarPress) {
-                // 本次按下已经由 barPressed 把弹窗关掉了，不再重开
-                root.popupOpenOnBarPress = false
-                return
-            }
-            root.openPopup()
-        }
+        onClicked: root.openPopup()
         onContainsMouseChanged: {
             if (containsMouse) tipDelay.restart()
             else { tipDelay.stop(); tip.hide() }
@@ -392,22 +377,10 @@ Item {
 
     // ── 弹出窗口 ─────────────────────────────────────────────────
     function openPopup() {
-        const pw = 400
-        const anchor = root.mapToGlobal(Qt.point(root.width / 2, root.height + 6))
-        popupWin.x = Math.round(anchor.x - pw / 2)
-        popupWin.y = Math.round(anchor.y)
-        // 清掉上次上翻遗留的底边锚：否则卡片重建的高度瞬变会让 onHeightChanged
-        // 用旧锚抢跑，doClamp 看到 y 已被预调而误判"不越界"不上翻（实测导致
-        // 弹窗位置 正常/偏高 逐次交替）
-        popupWin.bottomAnchor = -1
-        // 隐身创建：定位是「先 show 再 clamp」两段式（高度要等卡片布局才收敛），
-        // 不隐身用户会看到弹窗从屏幕外跳到正确位置；doClamp 末尾恢复 opacity
-        popupWin.opacity = 0
-        popupWin.pendingClamp = true   // 必须在 show() 前置位：onVisibleChanged 同步触发
-        rebuildCards()                 // 提前重建，让高度尽量在 show 前收敛
-        popupWin.show()
-        popupWin.raise()
-        popupWin.requestActivate()
+        // 同一次 bar 点击若已由 PluginPopup 关窗，只消费 toggle，不重建卡片。
+        if (!popupWin.wasOpenOnBarPress)
+            rebuildCards()
+        popupWin.toggleFromBar()
     }
 
     function rebuildCards() {
@@ -438,65 +411,12 @@ Item {
         }
     }
 
-    Window {
+    PluginPopup {
         id: popupWin
-        transientParent: null
-        property bool pendingClamp: false
-        // >=0 时为「上翻」模式：弹窗底边锚定在该屏幕 y 处（部件上方 6px）。
-        // 卡片是 show 后异步填充的，高度会在 doClamp 之后继续变化（实测 520→394），
-        // 只 clamp 一次会让弹窗悬空——锚定底边后由 onHeightChanged 持续跟随。
-        property real bottomAnchor: -1
-
-        visible: false; width: 400
+        anchorItem: root
+        pluginContext: root.pluginContext
+        width: 400
         height: Math.min(520, Math.max(200, cardContainer.implicitHeight + 100))
-        color: "transparent"
-        flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
-
-        onActiveChanged: if (!active && visible) hide()
-        Shortcut { sequence: "Escape"; onActivated: popupWin.hide() }
-        onVisibleChanged: if (visible && pendingClamp) Qt.callLater(doClamp)
-        onHeightChanged: {
-            if (visible && bottomAnchor >= 0)
-                y = Math.round(bottomAnchor - height)
-            // 高度每变一次都把显现时间后推：等高度稳定 50ms 再显示，
-            // 否则用户会看到 doClamp 之后高度继续收敛带来的顶边收缩
-            if (visible) revealTimer.restart()
-        }
-
-        // 显现定时器：doClamp 或最后一次高度变化 50ms 后恢复 opacity
-        Timer {
-            id: revealTimer; interval: 50
-            onTriggered: popupWin.opacity = 1
-        }
-
-        function doClamp() {
-            pendingClamp = false
-            // 屏幕几何取宿主注入的 barScreenGeometry（当前屏 availableGeometry，
-            // 已排除任务栏占位）：弹窗先开在屏幕外时其内部 Item 的 Screen 无效；
-            // taskbar 模式下 bar 是任务栏子窗口，root.Screen 同样失效（实测 undefined）。
-            // 注意 QML rect 只有 x/y/width/height，right/bottom 要自己算。
-            const sg = pluginContext ? pluginContext.screenGeometry
-                                     : ((typeof barScreenGeometry !== "undefined")
-                                        ? barScreenGeometry : null)
-            if (!sg || sg.width === 0) { popupWin.opacity = 1; return }
-            const sRight = sg.x + sg.width; const sBottom = sg.y + sg.height
-            const w = popupWin.width; const h = popupWin.height
-            // y 不读当前值（onHeightChanged 可能在高度瞬变时改过它），
-            // 从锚点重算「下方展开」的目标位置再判断是否越界
-            let x = popupWin.x
-            const belowPt = root.mapToGlobal(Qt.point(root.width / 2, root.height + 6))
-            let y = Math.round(belowPt.y)
-            if (x + w > sRight)  x = Math.round(sRight - w)
-            if (x < sg.x)        x = sg.x
-            if (y + h > sBottom) {
-                const abovePt = root.mapToGlobal(Qt.point(root.width / 2, -6))
-                bottomAnchor = Math.round(abovePt.y)
-                y = Math.round(abovePt.y - h)
-            }
-            if (y < sg.y) y = sg.y
-            popupWin.x = x; popupWin.y = y
-            revealTimer.restart()   // 高度可能继续瞬变，由定时器在最后稳定后显现
-        }
 
         // ── 内容 ─────────────────────────────────────────────
         Rectangle {
