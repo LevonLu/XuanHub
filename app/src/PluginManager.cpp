@@ -10,6 +10,7 @@
 #include <QLibrary>
 #include <QDebug>
 #include <QDateTime>
+#include <QElapsedTimer>
 
 namespace {
 // position 校验：空默认 right；非法值告警并回落 right
@@ -103,12 +104,19 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
             ctx.pluginConfig = entry->config;
             auto eventScope = std::make_unique<xuanhub::PluginEventScope>(m_bus);
             ctx.eventScope = eventScope.get();
-            if (!plugin->init(&ctx)) {
-                qWarning() << "[Plugin] init failed:" << meta.id;
+            QElapsedTimer initTimer;
+            initTimer.start();
+            const bool initialized = plugin->init(&ctx);
+            const qint64 initDurationMs = initTimer.elapsed();
+            if (!initialized) {
+                qWarning() << "[Plugin] init failed:" << meta.id
+                           << "durationMs=" << initDurationMs;
                 loader->unload();
                 delete loader;
                 continue;
             }
+            qDebug() << "[Plugin] initialized:" << meta.id
+                     << "durationMs=" << initDurationMs;
 
             // host 插件（如 pybridge）：自身不进可见列表；
             // 先枚举子插件 id，核心按 config 过滤/去重后再让 host 实例化
@@ -131,9 +139,13 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
                         qDebug() << "[Plugin] sub-plugin not enabled in config, skip:" << sid;
                         continue;
                     }
+                    QElapsedTimer createTimer;
+                    createTimer.start();
                     const auto sp = host->createSubPlugin(sid, se->config);
+                    const qint64 createDurationMs = createTimer.elapsed();
                     if (!sp.viewModel) {
-                        qWarning() << "[Plugin] host createSubPlugin failed:" << sid;
+                        qWarning() << "[Plugin] host createSubPlugin failed:" << sid
+                                   << "durationMs=" << createDurationMs;
                         continue;
                     }
                     LoadedPlugin lp;
@@ -147,6 +159,7 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
                     lp.health.state = xuanhub::PluginState::Running;
                     lp.health.startedAt = QDateTime::currentDateTimeUtc();
                     lp.health.lastHealthyAt = lp.health.startedAt;
+                    lp.health.loadDurationMs = createDurationMs;
                     m_loaded.append(lp);
                     m_loadedIds.insert(sid);
                     qDebug() << "[Plugin] loaded:" << sid << "pos=" << lp.position
@@ -175,6 +188,7 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
             lp.health.state = xuanhub::PluginState::Running;
             lp.health.startedAt = QDateTime::currentDateTimeUtc();
             lp.health.lastHealthyAt = lp.health.startedAt;
+            lp.health.loadDurationMs = initDurationMs;
 
             m_eventScopes.push_back(std::move(eventScope));
             m_loaders.append(loader);
@@ -195,11 +209,21 @@ void PluginManager::shutdownAll() {
     // 顺序铁律：先让各插件 shutdown（删光各自 DLL 出身的 QObject），
     // 再 unload —— 根实例由 unload() 删除，随后 FreeLibrary
     for (const auto& lp : m_loaded) {
-        if (lp.iface) lp.iface->shutdown();
+        if (!lp.iface) continue;
+        QElapsedTimer timer;
+        timer.start();
+        lp.iface->shutdown();
+        qDebug() << "[Plugin] shutdown:" << lp.id
+                 << "durationMs=" << timer.elapsed();
     }
     // host 最后 shutdown：其子插件 VM 依赖 host 持有的运行时（如 CPython 解释器）
     for (auto* h : m_hosts) {
+        const QString id = h->metadata().id;
+        QElapsedTimer timer;
+        timer.start();
         h->shutdown();
+        qDebug() << "[Plugin] shutdown host:" << id
+                 << "durationMs=" << timer.elapsed();
     }
     m_hosts.clear();
     for (auto* loader : m_loaders) {

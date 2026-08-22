@@ -6,6 +6,8 @@ import XuanHub
 
 Item {
     id: wrapper
+    property double qmlLoadStartedAt: Date.now()
+    property int backendLoadDurationMs: 0
 
     function reportHealth() {
         var next = {}
@@ -23,10 +25,17 @@ Item {
             next.lastError = qsTranslate("xuanhub.pluginSlot", "无法加载插件界面：%1")
                                 .arg(slot.source)
         }
+        if (slot.status === Loader.Ready || slot.status === Loader.Error) {
+            next.loadDurationMs = wrapper.backendLoadDurationMs
+                                  + Math.max(0, Date.now() - wrapper.qmlLoadStartedAt)
+        }
         pluginModel.reportHealth(model.id, next)
     }
 
-    Component.onCompleted: reportHealth()
+    Component.onCompleted: {
+        backendLoadDurationMs = Number(model.loadDurationMs || 0)
+        reportHealth()
+    }
 
     Connections {
         target: model.viewModel
