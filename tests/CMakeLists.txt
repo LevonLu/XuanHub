@@ -104,6 +104,25 @@ add_custom_command(TARGET xuanhub_responsive_layout_tests POST_BUILD
 )
 add_test(NAME xuanhub_responsive_layout_tests COMMAND xuanhub_responsive_layout_tests)
 
+add_executable(xuanhub_pybridge_protocol_tests
+    PyBridgeProtocolTest.cpp
+    ${CMAKE_SOURCE_DIR}/plugins/pybridge/PyBridgeProtocol.h
+    ${CMAKE_SOURCE_DIR}/plugins/pybridge/PyBridgeProtocol.cpp
+)
+set_target_properties(xuanhub_pybridge_protocol_tests PROPERTIES AUTOMOC ON)
+target_include_directories(xuanhub_pybridge_protocol_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/plugins/pybridge
+)
+target_link_libraries(xuanhub_pybridge_protocol_tests PRIVATE Qt6::Core Qt6::Test)
+add_custom_command(TARGET xuanhub_pybridge_protocol_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Core>" "$<TARGET_FILE_DIR:xuanhub_pybridge_protocol_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Test>" "$<TARGET_FILE_DIR:xuanhub_pybridge_protocol_tests>"
+    VERBATIM
+)
+add_test(NAME xuanhub_pybridge_protocol_tests COMMAND xuanhub_pybridge_protocol_tests)
+
 add_executable(xuanhub_plugin_model_tests
     PluginListModelTest.cpp
     ${CMAKE_SOURCE_DIR}/app/src/PluginListModel.cpp

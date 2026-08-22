@@ -3,6 +3,8 @@
 add_library(pybridge MODULE
     PyBridgePlugin.h
     PyBridgePlugin.cpp
+    PyBridgeProtocol.h
+    PyBridgeProtocol.cpp
     PyWorkerViewModel.h
     PyWorkerViewModel.cpp
 )
