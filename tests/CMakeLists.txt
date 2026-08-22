@@ -258,6 +258,7 @@ target_link_libraries(xuanhub_plugin_package_tests PRIVATE
     Qt6::Core
     Qt6::CorePrivate
     Qt6::Test
+    bcrypt
 )
 add_custom_command(TARGET xuanhub_plugin_package_tests POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different

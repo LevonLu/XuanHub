@@ -14,6 +14,9 @@
 #include <QtCore/private/qzipwriter_p.h>
 #include <QtTest>
 
+#include <windows.h>
+#include <bcrypt.h>
+
 namespace {
 PluginValidationEnvironment testEnvironment() {
     return {QStringLiteral("0.3.0"), QStringLiteral("x64"),
@@ -59,6 +62,73 @@ QJsonObject packageManifest(
     };
 }
 
+class TestSigner final {
+public:
+    TestSigner() {
+        if (BCryptOpenAlgorithmProvider(
+                &m_algorithm, BCRYPT_ECDSA_P256_ALGORITHM, nullptr, 0) < 0)
+            return;
+        if (BCryptGenerateKeyPair(m_algorithm, &m_key, 256, 0) < 0
+            || BCryptFinalizeKeyPair(m_key, 0) < 0) {
+            if (m_key) BCryptDestroyKey(m_key);
+            m_key = nullptr;
+            return;
+        }
+        ULONG size = 0;
+        if (BCryptExportKey(m_key, nullptr, BCRYPT_ECCPUBLIC_BLOB,
+                            nullptr, 0, &size, 0) < 0)
+            return;
+        QByteArray blob(int(size), Qt::Uninitialized);
+        if (BCryptExportKey(m_key, nullptr, BCRYPT_ECCPUBLIC_BLOB,
+                            reinterpret_cast<PUCHAR>(blob.data()), size,
+                            &size, 0) < 0
+            || size != sizeof(BCRYPT_ECCKEY_BLOB) + 64) {
+            return;
+        }
+        m_publicKey.reserve(65);
+        m_publicKey.append(char(0x04));
+        m_publicKey.append(blob.constData() + sizeof(BCRYPT_ECCKEY_BLOB), 64);
+    }
+
+    ~TestSigner() {
+        if (m_key) BCryptDestroyKey(m_key);
+        if (m_algorithm) BCryptCloseAlgorithmProvider(m_algorithm, 0);
+    }
+
+    bool isValid() const { return m_key && m_publicKey.size() == 65; }
+    QByteArray publicKey() const { return m_publicKey; }
+    QString keyId() const {
+        return QStringLiteral("sha256:") + QString::fromLatin1(
+            QCryptographicHash::hash(m_publicKey, QCryptographicHash::Sha256).toHex());
+    }
+    QByteArray sign(const QByteArray& bytes) const {
+        const QByteArray digest = QCryptographicHash::hash(
+            bytes, QCryptographicHash::Sha256);
+        ULONG size = 0;
+        if (BCryptSignHash(
+                m_key, nullptr,
+                reinterpret_cast<PUCHAR>(const_cast<char*>(digest.constData())),
+                ULONG(digest.size()), nullptr, 0, &size, 0) < 0) {
+            return {};
+        }
+        QByteArray result(int(size), Qt::Uninitialized);
+        if (BCryptSignHash(
+                m_key, nullptr,
+                reinterpret_cast<PUCHAR>(const_cast<char*>(digest.constData())),
+                ULONG(digest.size()), reinterpret_cast<PUCHAR>(result.data()),
+                size, &size, 0) < 0) {
+            return {};
+        }
+        result.resize(int(size));
+        return result;
+    }
+
+private:
+    BCRYPT_ALG_HANDLE m_algorithm = nullptr;
+    BCRYPT_KEY_HANDLE m_key = nullptr;
+    QByteArray m_publicKey;
+};
+
 QMap<QString, QByteArray> nativeFiles(
     const QString& version = QStringLiteral("1.2.0"),
     const QByteArray& backend = QByteArray("stub-dll")) {
@@ -91,7 +161,8 @@ QString writePackage(const QString& directory,
                          QZipWriter::AutoCompress,
                      const QString& corruptPath = {},
                      const QStringList& duplicatePaths = {},
-                     const QMap<QString, QString>& links = {}) {
+                     const QMap<QString, QString>& links = {},
+                     const QByteArray& signatureJson = {}) {
     const QString path = QDir(directory).filePath(QStringLiteral("demo.xuanplugin"));
     QZipWriter writer(path);
     writer.setCompressionPolicy(compression);
@@ -99,6 +170,8 @@ QString writePackage(const QString& directory,
     for (auto it = files.cbegin(); it != files.cend(); ++it)
         writer.addFile(it.key(), it.value());
     writer.addFile(QStringLiteral("manifest.sha256"), hashes);
+    if (!signatureJson.isEmpty())
+        writer.addFile(QStringLiteral("signature.json"), signatureJson);
     for (const QString& duplicate : duplicatePaths)
         writer.addFile(duplicate, files.value(duplicate, QByteArray("duplicate")));
     for (auto it = links.cbegin(); it != links.cend(); ++it)
@@ -123,12 +196,79 @@ private Q_SLOTS:
         QCOMPARE(result.publisher, QStringLiteral("Example Publisher"));
         QVERIFY(result.packageHash.startsWith(QStringLiteral("sha256:")));
         QCOMPARE(result.packageHash.size(), 71);
+        QCOMPARE(result.signatureStatus, QStringLiteral("unsigned"));
+        QVERIFY(result.signerKeyId.isEmpty());
         QCOMPARE(result.declaredPermissions,
                  QStringList{QStringLiteral("native.anything")});
         QCOMPARE(result.grantedPermissions, result.declaredPermissions);
         QVERIFY(result.unsupportedPermissions.isEmpty());
         QVERIFY(QFileInfo(QDir(result.payloadDirectory)
             .filePath(QStringLiteral("demo.dll"))).isFile());
+    }
+
+    void verifiesSignatureAndRejectsTamperingOrRemoval() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        TestSigner signer;
+        QVERIFY(signer.isValid());
+
+        auto files = nativeFiles();
+        QJsonObject package = packageManifest();
+        package.insert(QStringLiteral("signature"), QJsonObject{
+            {QStringLiteral("algorithm"), QStringLiteral("ecdsa-p256-sha256")},
+            {QStringLiteral("keyId"), signer.keyId()},
+        });
+        files[QStringLiteral("plugin.json")] =
+            QJsonDocument(package).toJson(QJsonDocument::Compact);
+        const QByteArray hashes = hashManifest(files);
+        const QByteArray rawSignature = signer.sign(hashes);
+        QCOMPARE(rawSignature.size(), 64);
+        QJsonObject signature{
+            {QStringLiteral("schemaVersion"), 1},
+            {QStringLiteral("algorithm"), QStringLiteral("ecdsa-p256-sha256")},
+            {QStringLiteral("keyId"), signer.keyId()},
+            {QStringLiteral("publicKey"),
+             QString::fromLatin1(signer.publicKey().toBase64())},
+            {QStringLiteral("signed"), QStringLiteral("manifest.sha256")},
+            {QStringLiteral("signature"),
+             QString::fromLatin1(rawSignature.toBase64())},
+        };
+        const QByteArray signatureJson =
+            QJsonDocument(signature).toJson(QJsonDocument::Compact);
+        const auto valid = PluginPackageValidator::validateAndExtract(
+            writePackage(directory.path(), files, QZipWriter::AutoCompress,
+                         {}, {}, {}, signatureJson),
+            testEnvironment());
+        QVERIFY2(valid.ok, qPrintable(valid.error));
+        QCOMPARE(valid.signatureStatus, QStringLiteral("verified"));
+        QCOMPARE(valid.signatureAlgorithm, QStringLiteral("ecdsa-p256-sha256"));
+        QCOMPARE(valid.signerKeyId, signer.keyId());
+
+        QByteArray modifiedSignature = rawSignature;
+        modifiedSignature[0] = char(uchar(modifiedSignature[0]) ^ 0x01);
+        signature[QStringLiteral("signature")] =
+            QString::fromLatin1(modifiedSignature.toBase64());
+        const auto tampered = PluginPackageValidator::validateAndExtract(
+            writePackage(directory.path(), files, QZipWriter::AutoCompress,
+                         {}, {}, {},
+                         QJsonDocument(signature).toJson(QJsonDocument::Compact)),
+            testEnvironment());
+        QVERIFY(!tampered.ok);
+        QVERIFY(tampered.error.contains(QStringLiteral("signature"),
+                                         Qt::CaseInsensitive));
+
+        const auto removed = PluginPackageValidator::validateAndExtract(
+            writePackage(directory.path(), files), testEnvironment());
+        QVERIFY(!removed.ok);
+        QVERIFY(removed.error.contains(QStringLiteral("both")));
+
+        auto undeclaredFiles = nativeFiles();
+        const auto undeclared = PluginPackageValidator::validateAndExtract(
+            writePackage(directory.path(), undeclaredFiles, QZipWriter::AutoCompress,
+                         {}, {}, {}, signatureJson),
+            testEnvironment());
+        QVERIFY(!undeclared.ok);
+        QVERIFY(undeclared.error.contains(QStringLiteral("both")));
     }
 
     void validatesPythonCompatibilityAndPermissionPreview() {

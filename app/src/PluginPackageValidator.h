@@ -22,6 +22,9 @@ struct PluginPackageValidationResult {
     QString runtime;
     QString publisher;
     QString packageHash;
+    QString signatureStatus = QStringLiteral("unsigned");
+    QString signatureAlgorithm;
+    QString signerKeyId;
     QString payloadDirectory;
     QStringList declaredPermissions;
     QStringList grantedPermissions;

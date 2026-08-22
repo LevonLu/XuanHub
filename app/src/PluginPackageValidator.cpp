@@ -19,12 +19,18 @@
 #include <QtCore/private/qzipreader_p.h>
 #include <QtEndian>
 
+#include <cstring>
+#include <windows.h>
+#include <bcrypt.h>
+
 namespace {
 constexpr quint32 kEndOfCentralDirectorySignature = 0x06054b50;
 constexpr quint32 kCentralDirectorySignature = 0x02014b50;
 constexpr quint32 kLocalFileSignature = 0x04034b50;
 constexpr qint64 kMaximumZipComment = 65535;
 constexpr qint64 kMaximumControlFileBytes = 4LL * 1024 * 1024;
+constexpr auto kSignatureAlgorithm = "ecdsa-p256-sha256";
+constexpr auto kSignatureTarget = "manifest.sha256";
 
 struct ZipEntry {
     QString path;
@@ -453,6 +459,158 @@ bool stringArray(const QJsonObject& object, const QString& key,
     return true;
 }
 
+bool decodeCanonicalBase64(const QJsonObject& object, const QString& key,
+                           QByteArray* output, QString* error) {
+    const QJsonValue value = object.value(key);
+    if (!value.isString()) {
+        *error = QStringLiteral("signature field '%1' must be a string").arg(key);
+        return false;
+    }
+    const QByteArray encoded = value.toString().toLatin1();
+    if (encoded.isEmpty() || encoded.size() % 4 != 0) {
+        *error = QStringLiteral("signature field '%1' is not canonical Base64").arg(key);
+        return false;
+    }
+    const QByteArray decoded = QByteArray::fromBase64(encoded);
+    if (decoded.toBase64() != encoded) {
+        *error = QStringLiteral("signature field '%1' is not canonical Base64").arg(key);
+        return false;
+    }
+    *output = decoded;
+    return true;
+}
+
+bool verifyP256Signature(const QByteArray& publicKey,
+                         const QByteArray& signature,
+                         const QByteArray& signedBytes,
+                         QString* error) {
+    if (publicKey.size() != 65 || uchar(publicKey.front()) != 0x04) {
+        *error = QStringLiteral("signature publicKey must be an uncompressed P-256 point");
+        return false;
+    }
+    if (signature.size() != 64) {
+        *error = QStringLiteral("ECDSA P-256 signature must contain 64 bytes");
+        return false;
+    }
+
+    BCRYPT_ALG_HANDLE algorithm = nullptr;
+    BCRYPT_KEY_HANDLE key = nullptr;
+    NTSTATUS status = BCryptOpenAlgorithmProvider(
+        &algorithm, BCRYPT_ECDSA_P256_ALGORITHM, nullptr, 0);
+    if (status < 0) {
+        *error = QStringLiteral("cannot open Windows ECDSA P-256 provider");
+        return false;
+    }
+
+    QByteArray blob(int(sizeof(BCRYPT_ECCKEY_BLOB)) + 64, Qt::Uninitialized);
+    auto* header = reinterpret_cast<BCRYPT_ECCKEY_BLOB*>(blob.data());
+    header->dwMagic = BCRYPT_ECDSA_PUBLIC_P256_MAGIC;
+    header->cbKey = 32;
+    memcpy(blob.data() + sizeof(BCRYPT_ECCKEY_BLOB), publicKey.constData() + 1, 64);
+    status = BCryptImportKeyPair(
+        algorithm, nullptr, BCRYPT_ECCPUBLIC_BLOB, &key,
+        reinterpret_cast<PUCHAR>(blob.data()), ULONG(blob.size()), 0);
+    if (status >= 0) {
+        const QByteArray digest = QCryptographicHash::hash(
+            signedBytes, QCryptographicHash::Sha256);
+        status = BCryptVerifySignature(
+            key, nullptr,
+            reinterpret_cast<PUCHAR>(const_cast<char*>(digest.constData())),
+            ULONG(digest.size()),
+            reinterpret_cast<PUCHAR>(const_cast<char*>(signature.constData())),
+            ULONG(signature.size()), 0);
+    }
+    if (key) BCryptDestroyKey(key);
+    BCryptCloseAlgorithmProvider(algorithm, 0);
+    if (status < 0) {
+        *error = QStringLiteral("plugin package signature is invalid");
+        return false;
+    }
+    return true;
+}
+
+bool verifyPackageSignature(const QJsonObject& packageObject,
+                            const QByteArray& signatureBytes,
+                            bool signatureFilePresent,
+                            const QByteArray& hashManifestBytes,
+                            QString* status,
+                            QString* algorithm,
+                            QString* keyId,
+                            QString* error) {
+    const QJsonValue declarationValue = packageObject.value(QStringLiteral("signature"));
+    const bool declarationPresent = !declarationValue.isUndefined();
+    if (!declarationPresent && !signatureFilePresent) {
+        *status = QStringLiteral("unsigned");
+        return true;
+    }
+    if (!declarationPresent || !signatureFilePresent) {
+        *error = QStringLiteral("signed package requires both plugin.json signature metadata and signature.json");
+        return false;
+    }
+    if (!declarationValue.isObject()) {
+        *error = QStringLiteral("package signature declaration must be an object");
+        return false;
+    }
+    const QJsonObject declaration = declarationValue.toObject();
+    QString declaredAlgorithm;
+    QString declaredKeyId;
+    if (!requiredString(declaration, QStringLiteral("algorithm"),
+                        &declaredAlgorithm, error)
+        || !requiredString(declaration, QStringLiteral("keyId"),
+                           &declaredKeyId, error)) {
+        return false;
+    }
+    if (declaredAlgorithm != QLatin1String(kSignatureAlgorithm)) {
+        *error = QStringLiteral("unsupported plugin package signature algorithm");
+        return false;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(signatureBytes, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        *error = QStringLiteral("invalid signature.json: %1").arg(parseError.errorString());
+        return false;
+    }
+    const QJsonObject object = document.object();
+    const QJsonValue schemaVersion = object.value(QStringLiteral("schemaVersion"));
+    if (!schemaVersion.isDouble() || schemaVersion.toDouble() != 1.0) {
+        *error = QStringLiteral("unsupported signature schemaVersion");
+        return false;
+    }
+    QString actualAlgorithm;
+    QString actualKeyId;
+    QString signedTarget;
+    if (!requiredString(object, QStringLiteral("algorithm"), &actualAlgorithm, error)
+        || !requiredString(object, QStringLiteral("keyId"), &actualKeyId, error)
+        || !requiredString(object, QStringLiteral("signed"), &signedTarget, error)) {
+        return false;
+    }
+    if (actualAlgorithm != declaredAlgorithm || actualKeyId != declaredKeyId
+        || signedTarget != QLatin1String(kSignatureTarget)) {
+        *error = QStringLiteral("signature.json does not match the signed package declaration");
+        return false;
+    }
+    QByteArray publicKey;
+    QByteArray signature;
+    if (!decodeCanonicalBase64(object, QStringLiteral("publicKey"), &publicKey, error)
+        || !decodeCanonicalBase64(object, QStringLiteral("signature"), &signature, error)) {
+        return false;
+    }
+    const QString calculatedKeyId = QStringLiteral("sha256:")
+        + QString::fromLatin1(QCryptographicHash::hash(
+            publicKey, QCryptographicHash::Sha256).toHex());
+    if (calculatedKeyId != actualKeyId) {
+        *error = QStringLiteral("signature keyId does not match publicKey");
+        return false;
+    }
+    if (!verifyP256Signature(publicKey, signature, hashManifestBytes, error))
+        return false;
+    *status = QStringLiteral("verified");
+    *algorithm = actualAlgorithm;
+    *keyId = actualKeyId;
+    return true;
+}
+
 PluginManifestResult loadPythonManifest(
     const QString& payloadDirectory,
     const PluginValidationEnvironment& environment) {
@@ -602,12 +760,16 @@ PluginPackageValidationResult PluginPackageValidator::validateAndExtract(
     for (const ZipEntry& entry : entries) byPath.insert(entry.path, &entry);
     const ZipEntry* packageManifestEntry = byPath.value(QStringLiteral("plugin.json"));
     const ZipEntry* hashManifestEntry = byPath.value(QStringLiteral("manifest.sha256"));
+    const ZipEntry* signatureEntry = byPath.value(QStringLiteral("signature.json"));
     if (!packageManifestEntry || packageManifestEntry->directory
         || !hashManifestEntry || hashManifestEntry->directory) {
         return failed(QStringLiteral("package requires plugin.json and manifest.sha256 files"));
     }
     if (packageManifestEntry->uncompressedSize > kMaximumControlFileBytes
-        || hashManifestEntry->uncompressedSize > kMaximumControlFileBytes) {
+        || hashManifestEntry->uncompressedSize > kMaximumControlFileBytes
+        || (signatureEntry
+            && (signatureEntry->directory
+                || signatureEntry->uncompressedSize > kMaximumControlFileBytes))) {
         return failed(QStringLiteral("package control file exceeds the size limit"));
     }
 
@@ -678,6 +840,20 @@ PluginPackageValidationResult PluginPackageValidator::validateAndExtract(
     if (!publisherValue.isUndefined() && !publisherValue.isString())
         return failed(QStringLiteral("package publisher must be a string"));
 
+    QString signatureStatus;
+    QString signatureAlgorithm;
+    QString signerKeyId;
+    const QByteArray signatureBytes = signatureEntry
+        ? reader.fileData(QStringLiteral("signature.json")) : QByteArray();
+    if (signatureEntry && reader.status() != QZipReader::NoError)
+        return failed(QStringLiteral("cannot read signature.json"));
+    if (!verifyPackageSignature(
+            packageObject, signatureBytes, signatureEntry != nullptr,
+            hashManifestBytes, &signatureStatus, &signatureAlgorithm,
+            &signerKeyId, &error)) {
+        return failed(error);
+    }
+
     auto temporaryDirectory = QSharedPointer<QTemporaryDir>::create(
         QDir::tempPath() + QStringLiteral("/XuanHub-package-XXXXXX"));
     if (!temporaryDirectory->isValid())
@@ -730,6 +906,9 @@ PluginPackageValidationResult PluginPackageValidator::validateAndExtract(
     result.publisher = publisherValue.toString().trimmed();
     if (result.publisher.isEmpty()) result.publisher = runtimeResult.descriptor.author;
     result.packageHash = packageHash;
+    result.signatureStatus = signatureStatus;
+    result.signatureAlgorithm = signatureAlgorithm;
+    result.signerKeyId = signerKeyId;
     result.payloadDirectory = payloadDirectory;
     result.declaredPermissions = runtimeResult.descriptor.permissions;
     result.grantedPermissions = granted;

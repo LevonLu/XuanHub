@@ -7,7 +7,7 @@
 ```text
 plugin.json             包描述，必需
 manifest.sha256         文件哈希清单，必需
-signature.json          包签名，可选（Schema 1 预留）
+signature.json          发布者签名，可选
 LICENSE                 可选
 README.md               可选
 payload/                插件实际运行目录，必需
@@ -38,6 +38,19 @@ payload/                插件实际运行目录，必需
 - `runtime` 只能是 `native` 或 `python`。
 - `manifest` 不允许自定义：native 固定为 `payload/metadata.json`，Python 固定为 `payload/plugin.json`。
 - `publisher` 可选。它是待签名的显示信息；没有签名时不代表可信身份。
+- 签名包还必须在 `plugin.json` 声明签名算法和公钥标识：
+
+  ```json
+  {
+    "signature": {
+      "algorithm": "ecdsa-p256-sha256",
+      "keyId": "sha256:<64 个小写十六进制字符>"
+    }
+  }
+  ```
+
+  声明本身受 `manifest.sha256` 覆盖。`plugin.json` 有声明但缺少 `signature.json`，或只有
+  `signature.json` 而没有声明，均视为损坏包并拒绝，不能静默降级为未签名包。
 
 native payload 继续使用 `app/src/PluginManifest.cpp` 的 V1/V2 规则，包括宿主版本、Qt、编译器、CRT、入口文件与路径边界。Python payload 使用现有 pybridge 身份、版本、入口和权限规则，并复用同一宿主版本范围检查。
 
@@ -51,7 +64,28 @@ native payload 继续使用 `app/src/PluginManifest.cpp` 的 V1/V2 规则，包�
 
 路径按 Unicode 码点升序排列且不得重复。清单覆盖除 `manifest.sha256` 和可选 `signature.json` 外的每个普通文件，包括根 `plugin.json`、LICENSE、README 和 payload 全部文件。包内有未列文件、清单有多余文件或任一 SHA-256 不一致时，整包拒绝。
 
-`signature.json` 不进入哈希清单是为了避免签名自引用；PF-09 Phase C 将定义其签名算法和对 `manifest.sha256` 原始字节的覆盖方式。在该阶段完成前，出现 `signature.json` 只表示预留数据，不会被视为已签名。
+`signature.json` 不进入哈希清单以避免签名自引用。它使用以下 Schema 1：
+
+```json
+{
+  "schemaVersion": 1,
+  "algorithm": "ecdsa-p256-sha256",
+  "keyId": "sha256:<64 个小写十六进制字符>",
+  "publicKey": "<Base64 编码的 65 字节 SEC1 未压缩 P-256 公钥>",
+  "signed": "manifest.sha256",
+  "signature": "<Base64 编码的 64 字节 r || s>"
+}
+```
+
+签名输入是 `manifest.sha256` 的原始字节，先计算 SHA-256，再用 ECDSA P-256 验证。
+`keyId` 是 65 字节公钥（`04 || X || Y`）的 SHA-256，格式固定为 `sha256:<hex>`。
+Base64 必须是带标准 padding 的规范编码。算法、keyId、目标文件或签名字节任一不匹配，
+整包必须拒绝；不得按未签名包继续安装。
+
+签名证明包内容由对应私钥持有者签发，但内嵌公钥本身不等于受信任身份。首版设置页同时
+展示发布者文本、keyId 和包来源，由用户决定是否信任；后续更新源必须额外固定预期 keyId，
+防止索引或包被替换后使用另一把密钥重新签名。完全未声明签名且没有 `signature.json` 的本地
+包仍可安装，但界面必须明确显示“未签名”警告。
 
 ## 安全边界
 

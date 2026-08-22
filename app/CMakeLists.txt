@@ -142,6 +142,7 @@ target_link_libraries(XuanHub PRIVATE
     user32               # SetWindowPos / 工作区
     gdi32
     crypt32              # Windows DPAPI（插件 API Key 密钥库）
+    bcrypt               # .xuanplugin ECDSA P-256 发布者签名校验
 )
 
 target_compile_definitions(XuanHub PRIVATE
