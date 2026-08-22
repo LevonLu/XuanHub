@@ -54,7 +54,8 @@ plugins_py/
   "type": "hello",
   "protocol": 2,
   "pluginId": "py_hello",
-  "capabilities": ["requestResponseV1", "hostServicesV1", "eventBusV2"]
+  "capabilities": ["requestResponseV1", "callResults", "callProgress", "cancelQueued",
+                   "hostServicesV1", "eventBusV2"]
 }
 ```
 
@@ -65,6 +66,52 @@ plugins_py/
 协议帧为 4 字节大端长度加 UTF-8 JSON 对象。收发两端统一限制单帧 4 MiB、嵌套深度 32，
 不接受非对象顶层消息；整数、浮点和插件返回对象仍按本文 JSON/QML 安全集合转换。第三方插件
 只实现 `main.py` 契约，不自行连接 socket，也不依赖这些内部帧细节。
+
+### 异步调用结果、进度与取消
+
+`plugin.call(name, args)` 仍立即返回，不阻塞 QML；返回对象保留旧 `queued` 字段，并增加稳定 ID：
+
+```qml
+property string pendingCallId: ""
+
+function refresh() {
+    const request = plugin.call("refresh", [])
+    if (request.queued)
+        pendingCallId = request.id
+}
+
+Connections {
+    target: plugin
+    function onCallProgress(id, progress, details) {
+        if (id === pendingCallId)
+            console.log(progress, details.phase || "")
+    }
+    function onCallFinished(id, ok, result, error) {
+        if (id !== pendingCallId) return
+        pendingCallId = ""
+        if (!ok) console.warn(error.code, error.message)
+    }
+}
+```
+
+Python `invoke()` 的普通返回值作为 `result` 传给 `callFinished`。需要报告业务错误或进度时：
+
+```python
+from xuanhub_host import CallError, report_progress
+
+def invoke(name, args):
+    if name != "refresh":
+        raise CallError("unsupported_action", "unknown action", {"name": name})
+    report_progress(0.25, {"phase": "prepare"})
+    value = refresh_data()
+    report_progress(1.0, {"phase": "done"})
+    return {"value": value}
+```
+
+进度必须是 0–1 的有限数字，且只能在当前 `invoke()` 主线程内发送。未处理异常统一返回
+`plugin_exception`，异常类型和受限 traceback 位于 `error.details`。QML 可调用
+`plugin.cancelCall(id)` 取消尚未开始的队列项；已进入 Python 的调用返回
+`not_interruptible`，因为向运行中 CPython 注入异步异常无法保证资源和状态一致性。
 
 ### 配置版本与迁移
 
@@ -277,7 +324,7 @@ def stop():          # 可选。卸载/热重载前调用，用来停后台线�
 - 刷新节拍：`config.intervalMs`（毫秒，缺省 1000，合法范围 100–60000；越界值会被钳制，
   非数字回退缺省值）。下一次 `update()` 从上一次完成后开始计时，慢请求不会积压多个刷新任务。
 - `invoke()` 会异步排队；worker 返回后框架立即再拉一次 `update()`，交互反馈不用等下个 tick。
-  `plugin.call()` 的同步返回值仅表示是否成功入队，不能依赖 Python `invoke()` 的返回值。
+  `plugin.call()` 的同步返回只含 queued/id，真正结果由 `callFinished` 异步交付。
 - `update()` 返回的 dict 值支持：str / int / float / bool / list / dict（嵌套），其他类型转字符串。
 - main.py 所在目录会追加到 `sys.path` 末尾，可导入同目录的辅助模块。
 - 抛异常不会拖垮宿主：traceback 记入日志，UI 保留上一次的值。
@@ -347,7 +394,8 @@ Item {
 ```
 
 - 数据：`plugin.values.<key>`（dict 属性袋，整体替换触发刷新）。
-- 行为：`plugin.call(name, args)` → 异步 IPC → main.py 的 `invoke(name, args)`；不要依赖其同步返回值。
+- 行为：`plugin.call(name, args)` → 异步 IPC → main.py 的 `invoke(name, args)`；同步返回只含
+  queued/id，最终值经 `callFinished` 到达。
 - 宿主上下文：`pluginContext.colors/activeLocale/screenGeometry/barEdge/barPressed` 取代旧的
   全局 QML 属性；服务调用还提供稳定的 `success/errorCode/errorMessage` 结果。
 - 健康：`plugin.health` 提供稳定的 `state`、`lastError`、`lastErrorAt`、`startedAt`、

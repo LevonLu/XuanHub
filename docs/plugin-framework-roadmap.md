@@ -1189,10 +1189,10 @@ Connections {
 
 #### 阶段 B：调用结果与取消
 
-- [ ] 每次 QML 调用返回 request ID。
-- [ ] Worker 返回结果、稳定错误码和动态详情。
-- [ ] 支持取消尚未开始的请求。
-- [ ] 运行中 Python 代码无法强制安全取消时，明确返回“不支持中断”。
+- [x] 每次 QML 调用返回 request ID。
+- [x] Worker 返回结果、稳定错误码和动态详情。
+- [x] 支持取消尚未开始的请求。
+- [x] 运行中 Python 代码无法强制安全取消时，明确返回“不支持中断”。
 
 #### 阶段 C：主动推送
 
@@ -1228,6 +1228,11 @@ Connections {
   32 层 JSON 深度和对象消息校验；Worker V2 hello 绑定 protocol/pluginId/capabilities，宿主拒绝
   超前版本与身份不匹配，同时将缺少新字段的旧 hello 识别为 V1。协商版本和能力进入健康快照，
   无进程协议测试覆盖分片/连续帧、超限、深层 JSON、V1/V2 与非法握手，真实 Worker 集成通过。
+- 2026-08-22：阶段 B 完成。`plugin.call()` 保留 queued 字段并返回稳定 call ID，完成后通过
+  `callFinished` 交付结果或 code/message/details；Worker 将显式 `CallError`、参数错误、异常和
+  超时映射到稳定错误码，进度通过 `report_progress()` 与 `callProgress` 传递。`cancelCall()` 只
+  移除尚未执行的队列项；运行中调用明确返回 `not_interruptible`，Worker 故障会把所有未完成
+  调用收敛为确定失败。测试覆盖成功、业务错误、异常、进度和取消。
 
 ### 风险与回滚
 

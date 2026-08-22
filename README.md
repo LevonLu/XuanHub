@@ -540,7 +540,8 @@ Item {
 ```
 
 - 数据：`plugin.values.<key>`（`update()` 返回的 dict 属性袋，整体替换触发刷新）；
-- 行为：`plugin.call(name, args)` → `main.py` 的 `invoke(name, args)`。
+- 行为：`plugin.call(name, args)` → `main.py` 的 `invoke(name, args)`；同步返回 queued/id，
+  最终结果和进度由 `callFinished/callProgress` 信号交付，详见 `plugins_py/README.md`。
 
 ## 网络请求与后台线程（铁律）
 
