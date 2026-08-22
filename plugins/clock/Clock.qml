@@ -1,6 +1,6 @@
 // Clock.qml — 时钟显示 + 点击弹出日历气泡窗口。契约：根 Item 声明 property var plugin。
-// 设计取舍：日历用独立顶层 Window（非 Popup）——宿主 Bar 仅 40px 高，
-// Popup 在 overlay 层渲染会被窗口几何裁切；Window 是独立 native 窗口，不受此限。
+// 日历使用宿主 PluginPopup：仍是独立顶层 Window，不受状态栏窗口几何裁切，
+// 但定位、跨插件互斥、Esc/失焦/bar 点击关闭由宿主统一处理。
 // 配色、语言、屏幕范围和 bar 事件优先通过插件作用域 pluginContext 获取。
 //
 // MonthGrid/DayOfWeekRow/WeekNumberColumn 属 QtQuick.Controls（Qt6.2+），由 Basic 样式实现：
@@ -13,6 +13,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
+import XuanHub
 
 Item {
     id: root
@@ -55,22 +56,6 @@ Item {
         text: plugin ? plugin.timeText : "--:--:--"
     }
 
-    // 点 bar 任意处关闭日历：bar 是 WindowDoesNotAcceptFocus，点击不会让日历
-    // 失活（onActiveChanged 不触发），靠宿主 barWindow.barPressed 信号补齐；
-    // 点桌面/其他窗口仍走失活关闭。信号先于 item 的 onClicked 到达，
-    // 用 calOpenOnBarPress 记录按下瞬间日历状态，避免「点时钟关日历」
-    // 被 onClicked 当成 toggle 又立刻重开。
-    property bool calOpenOnBarPress: false
-
-    Connections {
-        target: pluginContext ? pluginContext
-                              : (typeof barWindow !== "undefined" ? barWindow : null)
-        function onBarPressed() {
-            root.calOpenOnBarPress = calendarWin.visible
-            calendarWin.hide()
-        }
-    }
-
     // 左键：切换日历显隐；右键：保留原日志（M4 交互验证遗留）
     MouseArea {
         id: barMa
@@ -79,11 +64,6 @@ Item {
         hoverEnabled: true
         onClicked: (mouse) => {
             if (mouse.button === Qt.LeftButton) {
-                if (root.calOpenOnBarPress) {
-                    // 本次按下已经由 barPressed 把日历关掉了，不再重开
-                    root.calOpenOnBarPress = false
-                    return
-                }
                 root.openCalendar()
             } else {
                 console.log("[Clock] right-clicked")
@@ -91,65 +71,25 @@ Item {
         }
     }
 
-    // 弹出日历：以时钟中心点为锚，日历水平居中于时钟下方弹出（气泡感）。
-    // 日历宽高固定（320×360），定位可以在 show 前一次算完，无需两段式修正：
-    // 锚点用 mapToGlobal（真实屏幕坐标，taskbar 嵌入下也可靠），屏幕边界用
-    // 宿主注入的 barScreenGeometry（当前屏 availableGeometry，已排除任务栏
-    // 占位；taskbar 模式下 bar 是任务栏子窗口，Item.Screen 实测 undefined）。
-    // 注意 QML rect 只有 x/y/width/height，right/bottom 要自己算。
+    // 打开前回到今天所在月；定位和 toggle 守卫交给 PluginPopup。
     function openCalendar() {
-        const w = calendarWin.width
-        const h = calendarWin.height
-        // 锚点取时钟水平中心、下沿 +6px 间隙
-        const belowPt = root.mapToGlobal(Qt.point(root.width / 2, root.height + 6))
-
-        // 日历水平居中于时钟中心，垂直贴时钟下沿
-        let x = Math.round(belowPt.x - w / 2)
-        let y = Math.round(belowPt.y)
-
-        // 越界修正：水平收进当前屏；下方越界 → 改从时钟上方弹出
-        const sg = pluginContext ? pluginContext.screenGeometry
-                                 : ((typeof barScreenGeometry !== "undefined")
-                                    ? barScreenGeometry : null)
-        if (sg && sg.width > 0) {
-            const sRight = sg.x + sg.width
-            const sBottom = sg.y + sg.height
-            if (x + w > sRight)  x = Math.round(sRight - w)
-            if (x < sg.x)        x = sg.x
-            if (y + h > sBottom) {
-                const abovePt = root.mapToGlobal(Qt.point(root.width / 2, -6))
-                y = Math.round(abovePt.y - h)
-            }
-            if (y < sg.y) y = sg.y
-        }
-        calendarWin.x = x
-        calendarWin.y = y
-
-        // 回到今天所在月（同时设置 month + year 两个 int 属性）
         const now = new Date()
         calendarWin.viewYear = now.getFullYear()
         calendarWin.viewMonth = now.getMonth()
-
-        calendarWin.show()
-        calendarWin.raise()
-        calendarWin.requestActivate()
+        calendarWin.toggleFromBar()
     }
 
     // ── 日历气泡窗口 ──────────────────────────────────────────
-    Window {
+    PluginPopup {
         id: calendarWin
-        transientParent: null
+        anchorItem: root
+        pluginContext: root.pluginContext
         // 当前显示月/年（int，MonthGrid.month/year 直接绑定）
         property int viewMonth: 0
         property int viewYear: 0
 
-        visible: false
         width: 320
         height: 360
-        color: "transparent"
-        // Tool：不进任务栏/Alt+Tab；Frameless：无系统标题栏（自绘）；
-        // StaysOnTop：与 Bar 同层级置顶；不加 NoFocus：日历需接收 Esc 与悬停高亮
-        flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
 
         // 圆角 + 边框：frameless 窗口自身不能圆角，透明窗口 + 底层 Rectangle 实现
         //（与用量中心弹窗同一范式）；ColumnLayout 叠在其上，z 序天然靠后声明者在上
@@ -160,15 +100,6 @@ Item {
             radius: 8
             border.width: 1
             border.color: root.colors.border
-        }
-
-        // 失活（点击窗口外）自动关闭——常见气泡行为
-        onActiveChanged: if (!active && visible) hide()
-
-        // Esc 关闭（窗口作用域 Shortcut）
-        Shortcut {
-            sequence: "Escape"
-            onActivated: calendarWin.hide()
         }
 
         // 统一使用宿主解析后的活动语言；system 已由 LocaleManager 归一为中/英文。
