@@ -84,7 +84,9 @@ PluginConfigMigrationResult DemoPlugin::migrateConfig(
 条件只读取本插件 config 顶层键，运算符为 `equals/notEquals/in/truthy`；若同时声明多个，
 按此顺序使用第一个。条件只影响呈现，隐藏或禁用不会删除既有值，也不会跳过保存时的最终
 Schema 校验。`settingsQml` 自绘页和通用表单均写入同一份设置草稿，最终都经过宿主的
-Schema 校验，未知键继续保留；插件侧保存前验证钩子将在后续阶段补齐。
+Schema 校验，未知键继续保留。已加载的 V2 插件还会在写文件前执行 `validateConfig()`；
+验证不调用 `applyConfig()`，拒绝时 config.json 与运行态均保持不变。未实现验证接口的 V1
+插件保持兼容，新启用但尚未加载的插件仍会在首次初始化时执行 V2 验证。
 
 ## HostServices 与权限
 

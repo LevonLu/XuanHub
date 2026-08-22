@@ -70,6 +70,10 @@ def validate_config(config):
 非法返回值都会停止本插件 Worker，旧配置保持不变。迁移函数不得自行写 `config.json` 或
 调用密钥存储。
 
+插件已运行且提供 `validate_config(config)` 时，设置窗口保存前还会通过隔离 IPC 再验证一次
+完整草稿；该请求不会调用 `set_config()`，拒绝或 5 秒超时时不写文件，也不改变运行态。
+尚未加载的新插件在首次 Worker `init()` 前执行同一验证；未提供此函数的旧插件继续兼容。
+
 ### HostServices 与权限
 
 `permissions` 使用稳定字符串声明需要的宿主能力；当前支持 `notifications`、
