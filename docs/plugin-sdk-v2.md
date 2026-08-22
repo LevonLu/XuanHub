@@ -76,6 +76,49 @@ API；隔离 Python 插件的 HostServices 请求会强制检查实际授予权�
 屏幕与 bar 边缘，以及 `log/notify/readText/writeText/openSettings/openUrl` 等受控调用。
 旧的 `themeManager/barWindow/barScreenGeometry/i18n` 全局仍保留一个兼容周期，新插件不要依赖。
 
+## EventBus V2
+
+V1 `EventBus::publish/subscribe` 保持同步语义以兼容旧插件。V2 必须通过
+`PluginContext2::eventScope` 使用，投递按宿主事件循环排队，作用域销毁会取消已排队回调、
+订阅和未完成请求：
+
+```cpp
+#include "barplugin/PluginEventScope.h"
+
+EventSubscriptionOptions options;
+options.replayRetained = true;
+context.eventScope->subscribeV2(
+    QStringLiteral("app.locale"), receiver,
+    "onLocaleEnvelope(QVariantMap)", options);
+context.eventScope->publish(
+    QStringLiteral("plugin.example.v2_demo.changed"),
+    {{QStringLiteral("value"), 1}});
+```
+
+Topic 只能使用 `app.*`、`service.<name>.*` 或 `plugin.<id>.*`。插件可发布和订阅自己的
+命名空间，也可订阅 `app.*`；跨插件订阅需声明
+`events.subscribe:plugin.<id>.*`，跨命名空间发布/请求需声明相应的
+`events.publish:<topic-pattern>`。`*` 只允许作为末尾整段通配符。
+
+V2 handler 收到的 envelope 为：
+
+```json
+{
+  "schemaVersion": 1,
+  "topic": "plugin.example.v2_demo.changed",
+  "source": "plugin.example.v2_demo",
+  "timestamp": "2026-08-22T12:00:00.000Z",
+  "kind": "event",
+  "data": {"value": 1}
+}
+```
+
+`setState()` 保存最后状态，订阅时可选择立即回放；插件状态默认随所有者卸载清除，宿主
+`app.locale/app.theme` 状态保留。`request/respond/cancelRequest` 使用相关 ID，首个响应生效，
+超时、取消和响应者卸载分别返回稳定错误码 `timeout/canceled/responder_unloaded`。
+Payload 只允许 JSON/QVariant 安全集合。每订阅者最多排队 256 条，超限丢弃最新事件并写入
+不含 Payload 的诊断日志；慢同步 V1 槽也只告警，不自动切线程。
+
 ## V1 迁移步骤
 
 1. 将基类从 `IBarPlugin` 改为 `IBarPlugin2`，IID 改为 `xuanhub.BarPlugin/2.0`。

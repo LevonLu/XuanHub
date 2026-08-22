@@ -69,6 +69,32 @@ Worker 请求中没有可填写的插件 ID，来源由宿主按子插件实例�
 该插件现有 IPC 队列中串行并受请求超时约束。原生 DLL 是进程内受信任插件；Python 后端是
 独立进程中的隔离插件，设置页会分别展示声明权限、实际授予权限与隔离级别。
 
+### EventBus V2
+
+从 `xuanhub_host` 导入 `events`。事件 handler 在 worker 主循环串行执行，不与
+`update/invoke` 并发；单次只下发一个事件并等待 ack，避免与同步服务响应交错。
+
+```python
+from xuanhub_host import events
+
+def on_locale(envelope):
+    locale = envelope.get("data", {}).get("locale", "en-US")
+
+def init(config):
+    events.subscribe("app.locale", on_locale, replay_retained=True)
+    events.publish("plugin.py_demo.ready", {"ready": True})
+
+def invoke(name, args):
+    if name == "query":
+        result = events.request("plugin.py_demo.query", {"value": 1}, 5000)
+```
+
+API 为 `publish/subscribe/request/respond/state`。插件自己的 `plugin.<id>.*` 和 `app.*`
+订阅不需要额外权限；跨插件订阅声明 `events.subscribe:plugin.other.*`，跨命名空间发布或
+请求声明 `events.publish:<topic-pattern>`。身份、source 和 timestamp 均由宿主填写，Worker
+不得自报插件 ID。每个 worker 最多缓存 128 个待下发事件，超限丢弃最新事件并记日志；停止
+插件会清除作用域订阅与未完成请求。可选 `set_event_bus(events)` 在 `init()` 前收到同一代理。
+
 ### 设置项声明（settings / settingsQml，M10）
 
 `plugin.json` 还可声明该插件在设置窗口里的设置区（均可选，C++ 插件的
@@ -213,6 +239,5 @@ Item {
 
 ## 已知限制（后续里程碑）
 
-- 无 EventBus 接入（Python 子插件暂不能收发总线事件）。
 - 依赖用户自装 CPython ≥3.12（未安装则整体停用 + 托盘提示）；
   `-PythonStrategy Bundle` 打包可内置标准库免除该依赖。
