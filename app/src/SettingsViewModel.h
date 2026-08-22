@@ -19,6 +19,7 @@ class SettingsPluginSortModel;
 class SettingsPluginProxy;
 class PluginListModel;
 class LocaleManager;
+class PluginManager;
 
 class SettingsViewModel : public QObject {
     Q_OBJECT
@@ -39,7 +40,8 @@ class SettingsViewModel : public QObject {
 public:
     SettingsViewModel(ConfigService* config, ThemeRegistry* registry,
                       ThemeManager* themeMgr, LocaleManager* locale, QString exeDir,
-                      PluginListModel* barPlugins, QObject* parent = nullptr);
+                      PluginListModel* barPlugins, PluginManager* pluginManager,
+                      QObject* parent = nullptr);
 
     int barHeight() const { return m_barHeight; }
     int barOpacity() const { return m_barOpacity; }    // 0-100 百分比（QML SpinBox 友好）
@@ -77,6 +79,7 @@ public:
     Q_INVOKABLE int pluginContentWidth(const QString& id) const;
     Q_INVOKABLE QVariantMap pluginHealth(const QString& id) const;
     Q_INVOKABLE bool restartPlugin(const QString& id);
+    Q_INVOKABLE bool acceptPluginMigration(const QString& id);
 
 signals:
     void barHeightChanged();
@@ -104,6 +107,7 @@ private:
     LocaleManager* m_locale;
     QString m_exeDir;
     PluginListModel* m_barPlugins;   // bar 的插件模型（部件实时内容宽度来源）
+    PluginManager* m_pluginManager;  // 只读取加载阶段生成的临时迁移建议
     SettingsPluginModel* m_pluginModel;
     SettingsPluginSortModel* m_sortModel;      // 启用状态、左/中/右分组排序 proxy（QML 拿到的是它）
     SettingsPluginProxy* m_pluginProxy;        // 自绘设置页的 config 草稿桥

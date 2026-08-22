@@ -84,8 +84,8 @@ private Q_SLOTS:
                             SettingsPluginModel::ConfigVersionRole).toInt(), 3);
         QCOMPARE(model.data(model.index(versionedRow),
                             SettingsPluginModel::TargetConfigVersionRole).toInt(), 5);
-        QVERIFY(model.data(model.index(versionedRow),
-                           SettingsPluginModel::MigrationAvailableRole).toBool());
+        QVERIFY(!model.data(model.index(versionedRow),
+                            SettingsPluginModel::MigrationAvailableRole).toBool());
 
         QJsonArray exported;
         QString error;
@@ -94,6 +94,25 @@ private Q_SLOTS:
             const QJsonObject object = value.toObject();
             if (object.value(QStringLiteral("id")).toString() == QStringLiteral("versioned"))
                 QCOMPARE(object.value(QStringLiteral("configVersion")).toInt(), 3);
+        }
+
+        QVERIFY(model.setMigrationSuggestion(
+            QStringLiteral("versioned"), 5,
+            {{QStringLiteral("migrated"), true}}, {}));
+        QVERIFY(model.data(model.index(versionedRow),
+                           SettingsPluginModel::MigrationAvailableRole).toBool());
+        QVERIFY(!model.isDirty());
+        QVERIFY(model.acceptMigration(QStringLiteral("versioned")));
+        QVERIFY(model.isDirty());
+        exported = {};
+        QVERIFY2(model.toPluginEntriesJson(&exported, &error), qPrintable(error));
+        for (const QJsonValue& value : exported) {
+            const QJsonObject object = value.toObject();
+            if (object.value(QStringLiteral("id")).toString() != QStringLiteral("versioned"))
+                continue;
+            QCOMPARE(object.value(QStringLiteral("configVersion")).toInt(), 5);
+            QCOMPARE(object.value(QStringLiteral("config")).toObject()
+                         .value(QStringLiteral("migrated")).toBool(), true);
         }
     }
 

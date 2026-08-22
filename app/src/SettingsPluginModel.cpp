@@ -270,7 +270,8 @@ QVariant SettingsPluginModel::data(const QModelIndex& index, int role) const {
         case TrustLevelRole:             return r.trustLevel;
         case ConfigVersionRole:          return r.configVersion;
         case TargetConfigVersionRole:    return r.targetConfigVersion;
-        case MigrationAvailableRole:     return r.targetConfigVersion > r.configVersion;
+        case MigrationAvailableRole:     return r.migrationReady;
+        case MigrationErrorRole:         return r.migrationError;
     }
     return {};
 }
@@ -307,6 +308,15 @@ bool SettingsPluginModel::setData(const QModelIndex& index, const QVariant& valu
             const QString key = m.value(QStringLiteral("key")).toString();
             const QVariant newValue = m.value(QStringLiteral("value"));
             if (key.isEmpty()) return false;
+            if (r.migrationReady) {
+                r.config = r.migrationConfig;
+                r.configVersion = r.targetConfigVersion;
+                r.migrationReady = false;
+                m_dirty = true;
+                emit dataChanged(index, index,
+                                 {ConfigRole, ConfigVersionRole,
+                                  MigrationAvailableRole});
+            }
             if (r.config.contains(key) && r.config.value(key) == newValue) return true;
             r.config.insert(key, newValue);
             m_dirty = true;
@@ -350,6 +360,7 @@ QHash<int, QByteArray> SettingsPluginModel::roleNames() const {
         { ConfigVersionRole, "configVersion" },
         { TargetConfigVersionRole, "targetConfigVersion" },
         { MigrationAvailableRole, "migrationAvailable" },
+        { MigrationErrorRole, "migrationError" },
     };
 }
 
@@ -479,12 +490,60 @@ bool SettingsPluginModel::setConfigValue(const QString& id, const QString& key,
                                          const QVariant& value) {
     for (int i = 0; i < m_rows.size(); ++i) {
         if (m_rows[i].id != id) continue;
+        if (m_rows[i].migrationReady) {
+            m_rows[i].config = m_rows[i].migrationConfig;
+            m_rows[i].configVersion = m_rows[i].targetConfigVersion;
+            m_rows[i].migrationReady = false;
+            m_dirty = true;
+            const QModelIndex modelIndex = index(i);
+            emit dataChanged(modelIndex, modelIndex,
+                             {ConfigRole, ConfigVersionRole,
+                              MigrationAvailableRole});
+        }
         if (m_rows[i].config.contains(key) && m_rows[i].config.value(key) == value)
             return true;
         m_rows[i].config.insert(key, value);
         m_dirty = true;
         const QModelIndex mi = index(i);
         emit dataChanged(mi, mi, {ConfigRole});
+        return true;
+    }
+    return false;
+}
+
+bool SettingsPluginModel::setMigrationSuggestion(
+    const QString& id, int targetVersion, const QVariantMap& config,
+    const QString& error) {
+    for (int i = 0; i < m_rows.size(); ++i) {
+        Row& row = m_rows[i];
+        if (row.id != id) continue;
+        row.targetConfigVersion = qMax(row.targetConfigVersion, targetVersion);
+        row.migrationConfig = config;
+        row.migrationError = error;
+        row.migrationReady = error.isEmpty()
+            && targetVersion > row.configVersion;
+        const QModelIndex modelIndex = index(i);
+        emit dataChanged(modelIndex, modelIndex,
+                         {TargetConfigVersionRole, MigrationAvailableRole,
+                          MigrationErrorRole});
+        return true;
+    }
+    return false;
+}
+
+bool SettingsPluginModel::acceptMigration(const QString& id) {
+    for (int i = 0; i < m_rows.size(); ++i) {
+        Row& row = m_rows[i];
+        if (row.id != id) continue;
+        if (!row.migrationReady) return false;
+        row.config = row.migrationConfig;
+        row.configVersion = row.targetConfigVersion;
+        row.migrationReady = false;
+        m_dirty = true;
+        const QModelIndex modelIndex = index(i);
+        emit dataChanged(modelIndex, modelIndex,
+                         {ConfigRole, ConfigVersionRole, MigrationAvailableRole,
+                          MigrationErrorRole});
         return true;
     }
     return false;

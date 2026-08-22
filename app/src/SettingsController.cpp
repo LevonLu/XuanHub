@@ -20,9 +20,11 @@ SettingsController::SettingsController(ConfigService* config, ThemeManager* them
                                        ThemeRegistry* registry,
                                        LocaleManager* locale, const QString& exeDir,
                                        PluginListModel* barPlugins,
+                                       PluginManager* pluginManager,
                                        QObject* parent)
     : QObject(parent), m_config(config), m_theme(theme), m_registry(registry),
       m_locale(locale), m_exeDir(exeDir), m_barPlugins(barPlugins),
+      m_pluginManager(pluginManager),
       m_uitest(QCoreApplication::arguments().contains(QStringLiteral("--uitest"))) {}
 
 SettingsController::~SettingsController() {
@@ -35,7 +37,7 @@ void SettingsController::open() {
         // 还会在每次首次打开设置窗口时产生“必须在加载 QML 前调用”的误导性警告。
 
         m_vm = new SettingsViewModel(m_config, m_registry, m_theme, m_locale,
-                                     m_exeDir, m_barPlugins, this);
+                                     m_exeDir, m_barPlugins, m_pluginManager, this);
         auto* w = new QQuickView();
         w->setTitle(QCoreApplication::translate(
             "xuanhub.settings", "玄枢设置 XuanHub Settings"));

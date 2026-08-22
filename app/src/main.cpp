@@ -193,7 +193,7 @@ int main(int argc, char* argv[]) {
                      &reloader, &ConfigHotReloader::forceReload);
 
     // 设置窗口（M8）：托盘 "设置..." 打开（懒建，关闭=隐藏不销毁）
-    SettingsController settingsCtl(&config, &theme, &registry, &locale, exeDir, &model);
+    SettingsController settingsCtl(&config, &theme, &registry, &locale, exeDir, &model, &pm);
     QObject::connect(&tray, &TrayIcon::settingsRequested,
                      &settingsCtl, &SettingsController::open);
     bus.subscribe(QStringLiteral("app.settings.open"), &settingsCtl,

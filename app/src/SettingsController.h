@@ -16,13 +16,14 @@ class ThemeRegistry;
 class SettingsViewModel;
 class PluginListModel;
 class LocaleManager;
+class PluginManager;
 
 class SettingsController : public QObject {
     Q_OBJECT
 public:
     SettingsController(ConfigService* config, ThemeManager* theme, ThemeRegistry* registry,
                        LocaleManager* locale, const QString& exeDir,
-                       PluginListModel* barPlugins,
+                       PluginListModel* barPlugins, PluginManager* pluginManager,
                        QObject* parent = nullptr);
     ~SettingsController() override;
 
@@ -42,6 +43,7 @@ private:
     LocaleManager* m_locale;
     QString m_exeDir;
     PluginListModel* m_barPlugins;   // bar 的插件模型：查询部件实时内容宽度（手动定宽初始值）
+    PluginManager* m_pluginManager;
     SettingsViewModel* m_vm = nullptr;   // 与窗口一同懒建（this 父子）
     QPointer<QQuickView> m_window;
     bool m_uitest = false;               // --uitest 启动参数置位

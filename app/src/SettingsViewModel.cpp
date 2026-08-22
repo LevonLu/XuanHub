@@ -3,6 +3,7 @@
 #include "AutoStart.h"
 #include "ConfigService.h"
 #include "PluginListModel.h"
+#include "PluginManager.h"
 #include "SettingsPluginModel.h"
 #include "SettingsPluginProxy.h"
 #include "SettingsPluginSortModel.h"
@@ -21,9 +22,11 @@
 SettingsViewModel::SettingsViewModel(ConfigService* config, ThemeRegistry* registry,
                                      ThemeManager* themeMgr, LocaleManager* locale,
                                      QString exeDir,
-                                     PluginListModel* barPlugins, QObject* parent)
+                                     PluginListModel* barPlugins,
+                                     PluginManager* pluginManager, QObject* parent)
     : QObject(parent), m_config(config), m_registry(registry), m_themeMgr(themeMgr),
       m_locale(locale), m_exeDir(std::move(exeDir)), m_barPlugins(barPlugins),
+      m_pluginManager(pluginManager),
       m_pluginModel(new SettingsPluginModel(this)),
       m_sortModel(new SettingsPluginSortModel(this)),
       m_pluginProxy(new SettingsPluginProxy(m_pluginModel, this)) {
@@ -66,6 +69,10 @@ QVariantMap SettingsViewModel::pluginHealth(const QString& id) const {
 
 bool SettingsViewModel::restartPlugin(const QString& id) {
     return m_barPlugins && m_barPlugins->restartPlugin(id);
+}
+
+bool SettingsViewModel::acceptPluginMigration(const QString& id) {
+    return m_pluginModel->acceptMigration(id);
 }
 
 QStringList SettingsViewModel::themePackNames() const {
@@ -154,6 +161,15 @@ void SettingsViewModel::reloadFromConfig() {
     m_pluginModel->reload(m_config->pluginEntries(),
                           m_config->rawConfig().value(QStringLiteral("plugins")).toArray(),
                           m_exeDir, m_config->activePath());
+    if (m_pluginManager) {
+        for (const PluginConfigEntry& entry : m_config->pluginEntries()) {
+            const auto* suggestion = m_pluginManager->migrationSuggestion(entry.id);
+            if (!suggestion) continue;
+            m_pluginModel->setMigrationSuggestion(
+                entry.id, suggestion->targetVersion,
+                suggestion->config, suggestion->error);
+        }
+    }
     // 快照配置指纹：窗口打开期间的草稿以此为底，apply 前据此判定外部改动
     m_openFingerprint = currentFingerprint();
     setErrorMessage({});

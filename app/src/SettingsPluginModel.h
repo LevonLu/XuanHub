@@ -34,7 +34,8 @@ public:
         TrustLevelRole,
         ConfigVersionRole,
         TargetConfigVersionRole,
-        MigrationAvailableRole
+        MigrationAvailableRole,
+        MigrationErrorRole
     };
 
     explicit SettingsPluginModel(QObject* parent = nullptr);
@@ -53,6 +54,11 @@ public:
     // 按 id 读写 config 草稿单字段（SettingsPluginProxy 用，绕过 QModelIndex）
     QVariant configValue(const QString& id, const QString& key) const;
     bool setConfigValue(const QString& id, const QString& key, const QVariant& value);
+    // PluginManager 在加载时只计算临时迁移建议；此处不标脏、不写盘。
+    bool setMigrationSuggestion(const QString& id, int targetVersion,
+                                const QVariantMap& config, const QString& error);
+    // 用户明确接受后才把建议提升为当前草稿版本，最终仍由 apply() 原子保存。
+    bool acceptMigration(const QString& id);
 
     // 在同一状态栏区域内移动插件。order 仍是持久化格式，但仅由上移/下移操作
     // 维护，避免让用户手动猜数字；sourceRow 是本模型的行号。
@@ -87,6 +93,9 @@ private:
         int apiVersion = 1;
         int configVersion = 1;       // 当前 config.json 条目版本
         int targetConfigVersion = 1; // sidecar 声明的最新版本
+        QVariantMap migrationConfig;
+        QString migrationError;
+        bool migrationReady = false;
         QStringList capabilities;
         QStringList declaredPermissions;
         QStringList grantedPermissions;

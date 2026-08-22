@@ -762,6 +762,10 @@ Pane {
                                         "declaredPermissions": m.roleValue(currentRow, "declaredPermissions"),
                                         "grantedPermissions": m.roleValue(currentRow, "grantedPermissions"),
                                         "trustLevel": m.roleValue(currentRow, "trustLevel"),
+                                        "configVersion": m.roleValue(currentRow, "configVersion"),
+                                        "targetConfigVersion": m.roleValue(currentRow, "targetConfigVersion"),
+                                        "migrationAvailable": m.roleValue(currentRow, "migrationAvailable"),
+                                        "migrationError": m.roleValue(currentRow, "migrationError"),
                                         "health": settingsVM.pluginHealth(pluginList.currentId)
                                     }
                                 }
@@ -872,6 +876,38 @@ Pane {
                                             checked: detailPanel.rowData.enabled === true
                                             onToggled: settingsVM.pluginModel.setRoleValue(
                                                            detailPanel.currentRow, "enabled", checked)
+                                        }
+                                    }
+
+                                    UiCard {
+                                        Layout.fillWidth: true
+                                        visible: detailPanel.rowData.migrationAvailable === true
+                                                 || String(detailPanel.rowData.migrationError || "").length > 0
+                                        title: root.trText("配置迁移")
+                                        description: detailPanel.rowData.migrationAvailable === true
+                                            ? root.trText("检测到插件配置版本 %1，可迁移到版本 %2。迁移只修改当前草稿，点击保存后才会原子写入。")
+                                                .arg(Number(detailPanel.rowData.configVersion || 1))
+                                                .arg(Number(detailPanel.rowData.targetConfigVersion || 1))
+                                            : root.trText("插件配置迁移失败，当前插件已停用；旧配置保持不变。")
+
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: UiMetrics.space2
+                                            Text {
+                                                Layout.fillWidth: true
+                                                visible: String(detailPanel.rowData.migrationError || "").length > 0
+                                                color: root.c.danger
+                                                font.pixelSize: UiMetrics.fontS
+                                                wrapMode: Text.Wrap
+                                                text: String(detailPanel.rowData.migrationError || "")
+                                            }
+                                            UiButton {
+                                                visible: detailPanel.rowData.migrationAvailable === true
+                                                         && String(detailPanel.rowData.migrationError || "").length === 0
+                                                variant: "outline"
+                                                text: root.trText("采用迁移结果")
+                                                onClicked: settingsVM.acceptPluginMigration(pluginList.currentId)
+                                            }
                                         }
                                     }
 
