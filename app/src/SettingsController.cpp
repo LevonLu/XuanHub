@@ -93,6 +93,20 @@ void SettingsController::open() {
     m_window->requestActivate();
 }
 
+void SettingsController::openForPlugin(QVariantMap payload) {
+    const QString pluginId = payload.value(QStringLiteral("pluginId")).toString();
+    open();
+    if (pluginId.isEmpty() || !m_window || !m_window->rootObject()) return;
+
+    // QML 只接收宿主服务附加的稳定 id；插件不传行号，也不能借排序变化把
+    // 请求导向另一个插件。窗口和模型均已由 open() 同步初始化，可直接选中。
+    if (!QMetaObject::invokeMethod(m_window->rootObject(), "selectPlugin",
+                                   Qt::DirectConnection,
+                                   Q_ARG(QVariant, QVariant(pluginId)))) {
+        qWarning() << "[Settings] selectPlugin entry missing for" << pluginId;
+    }
+}
+
 namespace {
 // 深度优先找首个「可见且文本匹配」的 item；匹配属性依次为
 // text / placeholderText / displayText / currentText（覆盖 Text、TextField、

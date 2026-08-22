@@ -7,6 +7,7 @@
 #include <QObject>
 #include <QString>
 #include <QPointer>
+#include <QVariantMap>
 
 class QQuickView;
 class ConfigService;
@@ -27,6 +28,7 @@ public:
 
 public slots:
     void open();   // 首次调用懒建窗口；随后 show + raise
+    void openForPlugin(QVariantMap payload);  // HostServices：打开并按宿主绑定 id 选中
 
     // devUiEvent(spec)：仅 --uitest 模式生效。spec 形如
     // "click:x,y"（窗口本地坐标，先移真光标再投 Qt 鼠标事件，含 hover/焦点语义）

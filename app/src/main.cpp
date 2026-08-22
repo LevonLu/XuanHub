@@ -196,6 +196,8 @@ int main(int argc, char* argv[]) {
     SettingsController settingsCtl(&config, &theme, &registry, &locale, exeDir, &model);
     QObject::connect(&tray, &TrayIcon::settingsRequested,
                      &settingsCtl, &SettingsController::open);
+    bus.subscribe(QStringLiteral("app.settings.open"), &settingsCtl,
+                  "openForPlugin(QVariantMap)");
 
     // 调试入口：--settings 启动即打开设置窗口（开发/验收用，免去托盘点击）
     if (QCoreApplication::arguments().contains(QStringLiteral("--settings")))
