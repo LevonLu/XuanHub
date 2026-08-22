@@ -50,6 +50,7 @@ SUSPICIOUS_NAMES = {
 SUSPICIOUS_SUFFIXES = {".pyc", ".pyo", ".log", ".lock"}
 FIELD_TYPES = {"bool", "int", "double", "string", "color", "enum", "json", "object", "array"}
 MAX_FRAME_BYTES = 4 * 1024 * 1024
+PE_MACHINE_AMD64 = 0x8664
 
 
 class DuplicateKeyError(ValueError):
@@ -537,6 +538,12 @@ def find_worker(plugin_dir: Path, explicit: Path | None) -> Path:
     return candidates[0]
 
 
+def find_dependency_doctor(explicit: Path | None) -> Path:
+    if explicit is not None:
+        return explicit.resolve()
+    return Path(__file__).resolve().parents[1] / "plugins_py" / "dependency_doctor.py"
+
+
 def test_plugin(args: argparse.Namespace) -> dict[str, Any]:
     validation = Validator(args.plugin_dir).validate()
     diagnostics = list(validation["diagnostics"])
@@ -719,6 +726,115 @@ def package_plugin_command(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def _native_doctor(validator: Validator) -> dict[str, Any]:
+    diagnostics: list[Diagnostic] = []
+    entry = validator.manifest.get("entry", {})
+    backend = entry.get("backend") if isinstance(entry, dict) else None
+    backend_path = validator.plugin_dir / str(backend or "")
+    if not backend or not backend_path.is_file():
+        diagnostics.append(Diagnostic(
+            "warning", "doctor.native_backend_missing",
+            "源码目录没有已构建 DLL；构建后应对运行目录再次执行 doctor",
+            str(backend or "")))
+        return {"ok": True, "runtime": {"kind": "native", "built": False},
+                "diagnostics": diagnostics}
+    try:
+        data = backend_path.read_bytes()
+        if len(data) < 0x40 or data[:2] != b"MZ":
+            raise ValueError("missing DOS header")
+        pe_offset = struct.unpack_from("<I", data, 0x3C)[0]
+        if pe_offset + 6 > len(data) or data[pe_offset:pe_offset + 4] != b"PE\0\0":
+            raise ValueError("missing PE header")
+        machine = struct.unpack_from("<H", data, pe_offset + 4)[0]
+    except (OSError, ValueError, struct.error) as error:
+        diagnostics.append(Diagnostic(
+            "error", "doctor.native_invalid_pe", f"无法解析原生 DLL：{error}", str(backend)))
+        return {"ok": False, "runtime": {"kind": "native", "built": True},
+                "diagnostics": diagnostics}
+    if machine != PE_MACHINE_AMD64:
+        diagnostics.append(Diagnostic(
+            "error", "doctor.native_architecture_mismatch",
+            f"原生 DLL machine=0x{machine:04x}，宿主要求 Windows x64", str(backend)))
+    iid = f"xuanhub.BarPlugin/{validator.manifest.get('apiVersion', 1)}.0".encode("ascii")
+    if iid not in data:
+        diagnostics.append(Diagnostic(
+            "error", "doctor.native_iid_missing", "DLL 中未找到 Manifest 对应的插件 IID",
+            str(backend)))
+    lowered = data.lower()
+    if b"qt6core.dll" not in lowered:
+        diagnostics.append(Diagnostic(
+            "error", "doctor.native_qt_missing", "DLL 导入表未发现 Qt6Core.dll",
+            str(backend)))
+    if b"vcruntime140d.dll" in lowered:
+        diagnostics.append(Diagnostic(
+            "error", "doctor.native_debug_crt", "DLL 链接了 Debug CRT，不能用于 Release 宿主",
+            str(backend)))
+    elif b"vcruntime140.dll" not in lowered:
+        diagnostics.append(Diagnostic(
+            "warning", "doctor.native_crt_unverified", "无法从导入表确认动态 MSVC CRT",
+            str(backend)))
+    return {
+        "ok": not any(item.severity == "error" for item in diagnostics),
+        "runtime": {"kind": "native", "built": True,
+                    "machine": f"0x{machine:04x}", "bytes": len(data)},
+        "diagnostics": diagnostics,
+    }
+
+
+def doctor_plugin(args: argparse.Namespace) -> dict[str, Any]:
+    validator = Validator(args.plugin_dir)
+    validation = validator.validate()
+    validation["command"] = "doctor"
+    if validation["summary"]["errors"]:
+        return validation
+    if validation["plugin"]["runtime"] == "native":
+        native = _native_doctor(validator)
+        diagnostics = [asdict(item) for item in native.pop("diagnostics")]
+        validation["diagnostics"].extend(diagnostics)
+        validation["summary"]["errors"] += sum(
+            item["severity"] == "error" for item in diagnostics)
+        validation["summary"]["warnings"] += sum(
+            item["severity"] == "warning" for item in diagnostics)
+        validation["ok"] = validation["summary"]["errors"] == 0
+        validation["doctor"] = native
+        return validation
+
+    doctor_script = find_dependency_doctor(args.doctor_script)
+    specification = validator.manifest.get("python", {
+        "version": ">=3.12", "packages": [],
+    })
+    if not isinstance(specification, dict):
+        specification = {}
+    try:
+        completed = subprocess.run(
+            [str(args.python or Path(sys.executable)), str(doctor_script)],
+            input=json.dumps(specification, ensure_ascii=True),
+            capture_output=True, text=True, encoding="utf-8",
+            timeout=args.timeout, check=False,
+        )
+        diagnosed = json.loads(completed.stdout)
+        if not isinstance(diagnosed, dict) or not isinstance(diagnosed.get("issues"), list):
+            raise ValueError("doctor output is invalid")
+    except (OSError, subprocess.TimeoutExpired, UnicodeError,
+            json.JSONDecodeError, ValueError) as error:
+        diagnosed = {"ok": False, "runtime": {}, "issues": [{
+            "code": "doctor_failed", "message": str(error),
+            "suggestion": "检查 Python 解释器与 dependency_doctor.py",
+        }]}
+    for issue in diagnosed["issues"]:
+        message = str(issue.get("message", "Python dependency check failed"))
+        suggestion = str(issue.get("suggestion", ""))
+        if suggestion:
+            message = f"{message}；建议：{suggestion}"
+        validation["diagnostics"].append(asdict(Diagnostic(
+            "error", f"doctor.{issue.get('code', 'failed')}", message,
+            str(issue.get("package", "")))))
+        validation["summary"]["errors"] += 1
+    validation["ok"] = validation["summary"]["errors"] == 0
+    validation["doctor"] = diagnosed
+    return validation
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="xuanhub-plugin", description="XuanHub 插件开发者工具")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -759,6 +875,13 @@ def build_parser() -> argparse.ArgumentParser:
     package.add_argument("--publisher", default="")
     package.add_argument("--signing-key", type=Path)
     package.add_argument("--json", action="store_true", dest="json_output")
+    doctor = subparsers.add_parser("doctor", help="检查 Python 依赖或原生 DLL 兼容性")
+    doctor.add_argument("plugin_dir", type=Path)
+    doctor.add_argument("--python", type=Path, help="Python 插件要检查的解释器")
+    doctor.add_argument("--doctor-script", type=Path,
+                        help="显式指定 dependency_doctor.py")
+    doctor.add_argument("--timeout", type=float, default=15.0)
+    doctor.add_argument("--json", action="store_true", dest="json_output")
     return parser
 
 
@@ -829,6 +952,16 @@ def main(argv: list[str] | None = None) -> int:
                 package = result["package"]
                 print(f"PACKAGE {package['path']}")
                 print(package["sha256"])
+        return 0 if result["ok"] else 1
+    if args.command == "doctor":
+        result = doctor_plugin(args)
+        if args.json_output:
+            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_text(result))
+            runtime = result.get("doctor", {}).get("runtime", {})
+            if runtime:
+                print("RUNTIME " + json.dumps(runtime, ensure_ascii=False, sort_keys=True))
         return 0 if result["ok"] else 1
     return 2
 

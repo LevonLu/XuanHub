@@ -25,6 +25,7 @@ plugin-test = { cmd = "python scripts/xuanhub_plugin.py test", description = "�
 plugin-run = { cmd = "python scripts/xuanhub_plugin.py run", description = "在最小 Qt 上下文中加载插件 QML；在命令末尾追加插件路径" }
 plugin-create = { cmd = "python scripts/xuanhub_plugin.py create", description = "生成 C++/Python 插件模板；在命令末尾追加参数" }
 plugin-package = { cmd = "python scripts/xuanhub_plugin.py package", description = "校验并创建 PF-09 .xuanplugin；在命令末尾追加参数" }
+plugin-doctor = { cmd = "python scripts/xuanhub_plugin.py doctor", description = "检查 Python 依赖或原生 DLL；在命令末尾追加插件路径" }
 
 # ── 分发 ──────────────────────────────────────────────
 deploy = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy_qt.ps1", description = "手动重新部署 Qt 依赖（windeployqt 自动定位：PATH → CMakeCache，Qt 升级或未重新链接时用）" }

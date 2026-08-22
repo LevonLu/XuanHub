@@ -171,6 +171,45 @@ class PackageCommandTest(unittest.TestCase):
             self.assertFalse(output.exists())
 
 
+class DoctorCommandTest(unittest.TestCase):
+    def test_checks_python_runtime_without_qt(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_plugin(root)
+            completed = subprocess.run(
+                [sys.executable, str(CLI_PATH), "doctor", str(root), "--json"],
+                check=False, capture_output=True, text=True, encoding="utf-8",
+            )
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            result = json.loads(completed.stdout)
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["command"], "doctor")
+            self.assertEqual(result["doctor"]["runtime"]["pointerBits"], 64)
+
+    def test_reports_missing_python_distribution_with_stable_code(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_plugin(root)
+            manifest_path = root / "plugin.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["python"] = {
+                "version": ">=3.12", "packages": [{
+                    "name": "xuanhub-package-that-does-not-exist",
+                    "import": "xuanhub_package_that_does_not_exist",
+                    "version": "*",
+                }],
+            }
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            completed = subprocess.run(
+                [sys.executable, str(CLI_PATH), "doctor", str(root), "--json"],
+                check=False, capture_output=True, text=True, encoding="utf-8",
+            )
+            self.assertEqual(completed.returncode, 1)
+            result = json.loads(completed.stdout)
+            self.assertIn("doctor.package_missing",
+                          {item["code"] for item in result["diagnostics"]})
+
+
 class WorkerHarnessTest(unittest.TestCase):
     def test_runs_protocol_v2_lifecycle_without_qt(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
