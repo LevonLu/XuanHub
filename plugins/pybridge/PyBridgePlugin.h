@@ -9,6 +9,7 @@
 #include "barplugin/IBarPluginHost.h"
 #include "barplugin/IBarPluginHostLifecycle.h"
 #include "barplugin/IBarPluginHostConfigurable.h"
+#include "barplugin/IBarPluginHostConfigMigration.h"
 #include "barplugin/IBarPluginHostEventBus.h"
 #include "barplugin/IBarPluginHostServices.h"
 
@@ -16,6 +17,7 @@ class PyBridgePlugin : public QObject, public xuanhub::IBarPlugin,
                        public xuanhub::IBarPluginHost,
                        public xuanhub::IBarPluginHostLifecycle,
                        public xuanhub::IBarPluginHostConfigurable,
+                       public xuanhub::IBarPluginHostConfigMigration,
                        public xuanhub::IBarPluginHostEventBus,
                        public xuanhub::IBarPluginHostServices {
     Q_OBJECT
@@ -23,6 +25,7 @@ class PyBridgePlugin : public QObject, public xuanhub::IBarPlugin,
     Q_INTERFACES(xuanhub::IBarPlugin xuanhub::IBarPluginHost
                  xuanhub::IBarPluginHostLifecycle
                  xuanhub::IBarPluginHostConfigurable
+                 xuanhub::IBarPluginHostConfigMigration
                  xuanhub::IBarPluginHostEventBus
                  xuanhub::IBarPluginHostServices)
 public:
@@ -39,6 +42,8 @@ public:
     bool destroySubPlugin(const QString& id) override;
     bool canApplySubPluginConfig(const QString& id) const override;
     bool applySubPluginConfig(const QString& id, const QVariantMap& config) override;
+    void setSubPluginConfigVersion(const QString& id,
+                                   int currentVersion) override;
     bool bindSubPluginHostServices(const QString& id,
                                    xuanhub::IHostServices* services) override;
     bool bindSubPluginEventScope(const QString& id,
@@ -48,6 +53,7 @@ private:
     xuanhub::BarPluginContext m_ctx;   // 拷贝保存（init 传入的 ctx 是核心栈上对象）
     QHash<QString, QString> m_dirs;    // id → 子插件目录（subPluginIds 扫描结果）
     QHash<QString, QJsonObject> m_manifests; // id → 已通过预检的 plugin.json
+    QHash<QString, int> m_configVersions; // id → config.json 当前版本
     QString m_pythonExe;               // 已验证的 python.exe；worker 由它启动
     QString m_workerScript;             // <exeDir>/plugins_py/bridge_worker.py
     QHash<QString, QObject*> m_vms;     // id → 隔离代理 VM，可单独销毁或 shutdown 全量回收

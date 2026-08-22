@@ -38,7 +38,8 @@ QString processStatusText(QProcess::ExitStatus status) {
 }
 } // namespace
 
-PyWorkerViewModel::PyWorkerViewModel(QString id, QString dirPath, QVariantMap cfg, QString pythonExe,
+PyWorkerViewModel::PyWorkerViewModel(QString id, QString dirPath, QVariantMap cfg,
+                                     QString pythonExe,
                                      QString workerScript, xuanhub::EventBus* bus,
                                      xuanhub::PluginEventScope* eventScope,
                                      QObject* parent)
@@ -218,6 +219,13 @@ bool PyWorkerViewModel::applyConfig(const QVariantMap& config) {
     return true;
 }
 
+void PyWorkerViewModel::setConfigVersions(int currentVersion,
+                                          int targetVersion) {
+    if (m_process || m_server) return;
+    m_configVersion = qMax(1, currentVersion);
+    m_targetConfigVersion = qMax(1, targetVersion);
+}
+
 void PyWorkerViewModel::acceptConnection() {
     if (!m_server) return;
     while (m_server->hasPendingConnections()) {
@@ -281,6 +289,8 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
         Q_EMIT runningChanged();
         enqueue({QStringLiteral("init"), {
             {QStringLiteral("config"), QJsonObject::fromVariantMap(m_cfg)},
+            {QStringLiteral("configVersion"), m_configVersion},
+            {QStringLiteral("targetConfigVersion"), m_targetConfigVersion},
             {QStringLiteral("locale"), m_locale}
         }});
         return;
@@ -330,15 +340,28 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
         qWarning().noquote() << "[PyBridge]" << m_id << op << "failed:"
                              << message.value(QStringLiteral("error")).toString();
         if (op == QLatin1String("init")) {
+            if (m_configVersion != m_targetConfigVersion) {
+                Q_EMIT configMigrationFailed(
+                    m_id, m_configVersion, m_targetConfigVersion,
+                    message.value(QStringLiteral("error")).toString());
+            }
             failWorker(QStringLiteral("worker failed during plugin initialization"), false);
             return;
         }
     } else if (op == QLatin1String("init")) {
-        const QJsonArray capabilities = message.value(QStringLiteral("result"))
-                                            .toObject()
+        const QJsonObject initResult = message.value(QStringLiteral("result")).toObject();
+        const QJsonArray capabilities = initResult
                                             .value(QStringLiteral("capabilities"))
                                             .toArray();
         m_supportsHotConfig = capabilities.contains(QStringLiteral("set_config"));
+        const QJsonObject migration = initResult.value(QStringLiteral("migration")).toObject();
+        if (migration.value(QStringLiteral("required")).toBool(false)) {
+            const QVariantMap migratedConfig = migration.value(QStringLiteral("config"))
+                                                   .toObject().toVariantMap();
+            m_cfg = migratedConfig;
+            Q_EMIT configMigrationReady(
+                m_id, m_configVersion, m_targetConfigVersion, migratedConfig);
+        }
     } else if (op == QLatin1String("set_config")) {
         m_cfg = requestData.value(QStringLiteral("config")).toObject().toVariantMap();
         bool intervalOk = false;

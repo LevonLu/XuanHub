@@ -191,6 +191,63 @@ private Q_SLOTS:
         QCOMPARE(manager.dependentPluginIds(host.id), QStringList{child.id});
         manager.shutdownAll();
     }
+
+    void pythonSubPluginReportsMigrationSuggestion() {
+        const QString pythonPlugins = QDir(QCoreApplication::applicationDirPath())
+                                          .filePath(QStringLiteral("plugins_py"));
+        QTemporaryDir pluginDirectory(
+            QDir(pythonPlugins).filePath(QStringLiteral("migration-test-XXXXXX")));
+        QVERIFY(pluginDirectory.isValid());
+        const QString pluginId = QStringLiteral("py_migration_test");
+
+        QFile qml(QDir(pluginDirectory.path()).filePath(QStringLiteral("Migration.qml")));
+        QVERIFY(qml.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        QVERIFY(qml.write("import QtQuick\nItem { property var plugin }") > 0);
+        qml.close();
+        QFile python(QDir(pluginDirectory.path()).filePath(QStringLiteral("main.py")));
+        QVERIFY(python.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        QVERIFY(python.write(
+            "CONFIG_VERSION = 2\n"
+            "state = {}\n"
+            "def migrate_config(old_version, config):\n"
+            "    config['prefix'] = 'migrated'\n"
+            "    config['fromVersion'] = old_version\n"
+            "    return config\n"
+            "def validate_config(config):\n"
+            "    return {'ok': config.get('prefix') == 'migrated', 'errors': []}\n"
+            "def init(config): state.update(config)\n"
+            "def update(): return dict(state)\n") > 0);
+        python.close();
+        QFile manifest(QDir(pluginDirectory.path()).filePath(QStringLiteral("plugin.json")));
+        QVERIFY(manifest.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        QVERIFY(manifest.write(QJsonDocument(QJsonObject{
+            {QStringLiteral("id"), pluginId},
+            {QStringLiteral("name"), QStringLiteral("Migration Test")},
+            {QStringLiteral("version"), QStringLiteral("1.0.0")},
+            {QStringLiteral("apiVersion"), 2},
+            {QStringLiteral("configVersion"), 2},
+            {QStringLiteral("qml"), QStringLiteral("Migration.qml")},
+        }).toJson(QJsonDocument::Compact)) > 0);
+        manifest.close();
+
+        const QString pluginsDir = qEnvironmentVariable("XUANHUB_TEST_PLUGINS");
+        xuanhub::EventBus bus;
+        PluginManager manager(&bus, QDir::tempPath());
+        PluginConfigEntry child = entry(pluginId);
+        child.configVersion = 1;
+        manager.loadFrom(pluginsDir,
+                         {entry(QStringLiteral("pybridge")), child});
+        QVERIFY(manager.loadedPlugin(pluginId));
+        QTRY_VERIFY_WITH_TIMEOUT(manager.migrationSuggestion(pluginId), 5000);
+        const auto* suggestion = manager.migrationSuggestion(pluginId);
+        QVERIFY(suggestion->ready());
+        QCOMPARE(suggestion->currentVersion, 1);
+        QCOMPARE(suggestion->targetVersion, 2);
+        QCOMPARE(suggestion->config.value(QStringLiteral("prefix")).toString(),
+                 QStringLiteral("migrated"));
+        QCOMPARE(suggestion->config.value(QStringLiteral("fromVersion")).toInt(), 1);
+        manager.shutdownAll();
+    }
 };
 
 QTEST_GUILESS_MAIN(PluginManagerTest)

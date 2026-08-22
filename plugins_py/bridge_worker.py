@@ -192,8 +192,8 @@ def _recv(sock: socket.socket) -> dict[str, Any]:
     return message
 
 
-def _load_plugin(plugin_dir: Path, plugin_id: str, config: dict[str, Any], locale: str,
-                 host_services: HostServices, event_bus: EventBusServices) -> Any:
+def _import_plugin(plugin_dir: Path, plugin_id: str,
+                   host_services: HostServices, event_bus: EventBusServices) -> Any:
     main_file = plugin_dir / "main.py"
     if not main_file.is_file():
         raise RuntimeError("main.py is missing")
@@ -214,13 +214,57 @@ def _load_plugin(plugin_dir: Path, plugin_id: str, config: dict[str, Any], local
         module.set_host_services(host_services)
     if hasattr(module, "set_event_bus"):
         module.set_event_bus(event_bus)
+    return module
+
+
+def _prepare_config(module: Any, current_version: int, target_version: int,
+                    config: dict[str, Any]) -> dict[str, Any]:
+    declared_version = getattr(module, "CONFIG_VERSION", target_version)
+    if isinstance(declared_version, bool) or not isinstance(declared_version, int) \
+            or declared_version < 1:
+        raise ValueError("CONFIG_VERSION must be a positive integer")
+    if declared_version != target_version:
+        raise ValueError(
+            f"CONFIG_VERSION {declared_version} does not match manifest {target_version}")
+    if current_version > target_version:
+        raise ValueError(
+            f"config version {current_version} is newer than plugin target {target_version}")
+
+    migrated = dict(config)
+    if current_version < target_version:
+        migrator = getattr(module, "migrate_config", None)
+        if not callable(migrator):
+            raise RuntimeError("plugin does not provide migrate_config()")
+        migrated = migrator(current_version, dict(config))
+        if not isinstance(migrated, dict):
+            raise TypeError("migrate_config() must return a dict")
+
+    validator = getattr(module, "validate_config", None)
+    if callable(validator):
+        verdict = validator(dict(migrated))
+        if isinstance(verdict, bool):
+            if not verdict:
+                raise ValueError("validate_config() rejected the configuration")
+        elif isinstance(verdict, dict):
+            if not bool(verdict.get("ok", False)):
+                errors = verdict.get("errors", [])
+                if isinstance(errors, list):
+                    detail = "; ".join(str(item) for item in errors)
+                else:
+                    detail = str(errors)
+                raise ValueError(detail or "validate_config() rejected the configuration")
+        else:
+            raise TypeError("validate_config() must return bool or {ok, errors}")
+    return migrated
+
+
+def _initialize_plugin(module: Any, config: dict[str, Any], locale: str) -> None:
     if hasattr(module, "init"):
         module.init(config)
     if hasattr(module, "set_locale"):
         module.set_locale(locale)
     if not hasattr(module, "update"):
         raise RuntimeError("main.py must define update()")
-    return module
 
 
 def _stop_plugin(module: Any) -> None:
@@ -274,14 +318,33 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
                         locale = data.get("locale", "en-US")
                         if not isinstance(locale, str):
                             raise ValueError("init locale must be a string")
-                        module = _load_plugin(plugin_dir, plugin_id, config, locale,
-                                              host_services, event_bus)
+                        current_version = data.get("configVersion", 1)
+                        target_version = data.get("targetConfigVersion", 1)
+                        if isinstance(current_version, bool) or not isinstance(current_version, int) \
+                                or current_version < 1:
+                            raise ValueError("init configVersion must be a positive integer")
+                        if isinstance(target_version, bool) or not isinstance(target_version, int) \
+                                or target_version < 1:
+                            raise ValueError("init targetConfigVersion must be a positive integer")
+                        module = _import_plugin(plugin_dir, plugin_id,
+                                                host_services, event_bus)
+                        prepared_config = _prepare_config(
+                            module, current_version, target_version, config)
+                        _initialize_plugin(module, prepared_config, locale)
                         capabilities = []
                         if hasattr(module, "set_config"):
                             capabilities.append("set_config")
                         capabilities.append("host_services.v1")
                         capabilities.append("event_bus.v2")
-                        result: Any = {"ready": True, "capabilities": capabilities}
+                        capabilities.append("config_migration.v1")
+                        result: Any = {
+                            "ready": True,
+                            "capabilities": capabilities,
+                            "migration": {
+                                "required": current_version < target_version,
+                                "config": prepared_config,
+                            },
+                        }
                     elif module is None:
                         raise RuntimeError("worker is not initialized")
                     elif op == "update":

@@ -327,6 +327,7 @@ void PyBridgePlugin::shutdown() {
     m_vms.clear();
     m_dirs.clear();
     m_manifests.clear();
+    m_configVersions.clear();
     m_pythonExe.clear();
     m_workerScript.clear();
 }
@@ -335,6 +336,7 @@ QStringList PyBridgePlugin::subPluginIds() {
     QStringList ids;
     m_dirs.clear();
     m_manifests.clear();
+    m_configVersions.clear();
     if (!pyAvailable() || m_pythonExe.isEmpty()) return ids;
     const QDir base(QCoreApplication::applicationDirPath() + QStringLiteral("/plugins_py"));
     if (!base.exists()) {
@@ -385,9 +387,13 @@ xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const 
     const QJsonObject object = manifest.object;
     const QString viewQml = object.value(QStringLiteral("qml")).toString().trimmed();
 
+    const int currentConfigVersion = qMax(1, m_configVersions.value(id, 1));
+    const int targetConfigVersion = qMax(
+        1, object.value(QStringLiteral("configVersion")).toInt(1));
     auto* viewModel = new PyWorkerViewModel(id, dirPath, cfg, m_pythonExe,
                                             m_workerScript, m_ctx.eventBus,
                                             m_ctx.eventScope, this);
+    viewModel->setConfigVersions(currentConfigVersion, targetConfigVersion);
     // Worker 要到核心按子插件身份绑定 HostServices 后再启动，避免插件 init()
     // 抢先发服务请求时仍只有 pybridge 的宿主身份。
     m_vms.insert(id, viewModel);
@@ -409,6 +415,7 @@ bool PyBridgePlugin::destroySubPlugin(const QString& id) {
     QObject* viewModel = m_vms.take(id);
     if (!viewModel) return false;
     delete viewModel;
+    m_configVersions.remove(id);
     qDebug() << "[PyBridge] destroyed sub-plugin:" << id;
     return true;
 }
@@ -422,6 +429,11 @@ bool PyBridgePlugin::applySubPluginConfig(const QString& id,
                                           const QVariantMap& config) {
     auto* viewModel = qobject_cast<PyWorkerViewModel*>(m_vms.value(id));
     return viewModel && viewModel->applyConfig(config);
+}
+
+void PyBridgePlugin::setSubPluginConfigVersion(const QString& id,
+                                                int currentVersion) {
+    if (!id.isEmpty()) m_configVersions.insert(id, qMax(1, currentVersion));
 }
 
 bool PyBridgePlugin::bindSubPluginHostServices(

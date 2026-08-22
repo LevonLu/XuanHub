@@ -84,6 +84,10 @@ public:
     void shutdownAll();   // 重载周期约定：必须先 shutdownAll() 再 loadFrom()（入口有重入保护）
 
 private:
+    Q_SLOT void onHostedMigrationReady(const QString& id, int currentVersion,
+                                       int targetVersion, const QVariantMap& config);
+    Q_SLOT void onHostedMigrationFailed(const QString& id, int currentVersion,
+                                        int targetVersion, const QString& error);
     void loadFromImpl(const QString& pluginsDir, const QList<PluginConfigEntry>& enabled,
                       bool allowExisting);
     bool createHostedPlugin(const QString& hostId, xuanhub::IBarPluginHost* host,

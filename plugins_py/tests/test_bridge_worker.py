@@ -52,6 +52,23 @@ class BridgeWorkerTests(unittest.TestCase):
         )
         host_import = ""
         host_init = ""
+        migration_code = ""
+        if self._testMethodName == "test_config_migration_runs_before_init":
+            migration_code = (
+                "CONFIG_VERSION = 3\n"
+                "def migrate_config(old_version, config):\n"
+                "    config['prefix'] = config.get('legacyPrefix', '')\n"
+                "    config['migratedFrom'] = old_version\n"
+                "    return config\n"
+                "def validate_config(config):\n"
+                "    return {'ok': bool(config.get('prefix')), 'errors': ['prefix required']}\n"
+            )
+        elif self._testMethodName == "test_invalid_config_migration_is_rejected":
+            migration_code = (
+                "CONFIG_VERSION = 2\n"
+                "def migrate_config(old_version, config):\n"
+                "    return []\n"
+            )
         if self._testMethodName == "test_host_services_are_available_during_init":
             host_import = "from xuanhub_host import log, notify\n"
             host_init = (
@@ -69,7 +86,7 @@ class BridgeWorkerTests(unittest.TestCase):
             )
         (self.plugin_dir / "main.py").write_text(
             "import os\n"
-            + host_import +
+            + host_import + migration_code +
             "state = {'count': 0, 'prefix': '', 'locale': 'unset'}\n"
             "def init(config):\n"
             "    state['prefix'] = config.get('prefix', '')\n"
@@ -163,7 +180,9 @@ class BridgeWorkerTests(unittest.TestCase):
                          {"type": "response", "id": "1", "ok": True,
                           "result": {"ready": True,
                                      "capabilities": ["set_config", "host_services.v1",
-                                                      "event_bus.v2"]}})
+                                                      "event_bus.v2", "config_migration.v1"],
+                                     "migration": {"required": False,
+                                                   "config": {"prefix": "worker"}}}})
         self.assertEqual(self.request("update", {}),
                          {"type": "response", "id": "2", "ok": True,
                           "result": {"count": 0, "prefix": "worker", "locale": "en-US"}})
@@ -182,7 +201,7 @@ class BridgeWorkerTests(unittest.TestCase):
         initialized = self.request("init", {"config": {}, "locale": "en-US"})
         self.assertTrue(initialized["ok"])
         self.assertEqual(initialized["result"]["capabilities"],
-                         ["host_services.v1", "event_bus.v2"])
+                         ["host_services.v1", "event_bus.v2", "config_migration.v1"])
         self.assertTrue(self.request("set_locale", {"locale": "zh-CN"})["ok"])
         self.assertEqual(self.request("update", {})["result"]["locale"], "unset")
         self.assertTrue(self.request("stop", {})["ok"])
@@ -218,6 +237,29 @@ class BridgeWorkerTests(unittest.TestCase):
         self.assertTrue(self.request("invoke", {"name": "request", "args": []})["ok"])
         state = self.request("update", {})["result"]
         self.assertEqual(state["request"]["data"]["answer"], 42)
+
+    def test_config_migration_runs_before_init(self) -> None:
+        initialized = self.request("init", {
+            "config": {"legacyPrefix": "migrated"},
+            "configVersion": 1,
+            "targetConfigVersion": 3,
+            "locale": "en-US",
+        })
+        self.assertTrue(initialized["ok"], initialized.get("error"))
+        self.assertEqual(initialized["result"]["migration"], {
+            "required": True,
+            "config": {"legacyPrefix": "migrated", "prefix": "migrated",
+                       "migratedFrom": 1},
+        })
+        self.assertEqual(self.request("update", {})["result"]["prefix"], "migrated")
+
+    def test_invalid_config_migration_is_rejected(self) -> None:
+        initialized = self.request("init", {
+            "config": {}, "configVersion": 1,
+            "targetConfigVersion": 2, "locale": "en-US",
+        })
+        self.assertFalse(initialized["ok"])
+        self.assertIn("migrate_config() must return a dict", initialized["error"])
 
 
 if __name__ == "__main__":

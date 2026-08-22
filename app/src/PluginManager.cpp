@@ -11,6 +11,7 @@
 #include "barplugin/IBarPluginHost.h"
 #include "barplugin/IBarPluginHostLifecycle.h"
 #include "barplugin/IBarPluginHostConfigurable.h"
+#include "barplugin/IBarPluginHostConfigMigration.h"
 #include "barplugin/IBarPluginHostEventBus.h"
 #include "barplugin/IBarPluginHostServices.h"
 #include "barplugin/PluginEventScope.h"
@@ -428,6 +429,13 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
                                        xuanhub::IBarPluginHost* host,
                                        const PluginConfigEntry& entry) {
     if (!host || m_loadedIds.contains(entry.id)) return false;
+    auto* hostRuntime = m_runtimeById.value(hostId);
+    auto* hostObject = hostRuntime ? hostRuntime->instance() : nullptr;
+    if (auto* migrationHost = hostObject
+            ? qobject_cast<xuanhub::IBarPluginHostConfigMigration*>(hostObject)
+            : nullptr) {
+        migrationHost->setSubPluginConfigVersion(entry.id, entry.configVersion);
+    }
     QElapsedTimer createTimer;
     createTimer.start();
     const auto sp = host->createSubPlugin(entry.id, entry.config);
@@ -438,6 +446,16 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
         recordLoadError(entry.id, QStringLiteral("host failed to create sub-plugin"));
         return false;
     }
+    QObject::connect(
+        sp.viewModel,
+        SIGNAL(configMigrationReady(QString,int,int,QVariantMap)),
+        this,
+        SLOT(onHostedMigrationReady(QString,int,int,QVariantMap)));
+    QObject::connect(
+        sp.viewModel,
+        SIGNAL(configMigrationFailed(QString,int,int,QString)),
+        this,
+        SLOT(onHostedMigrationFailed(QString,int,int,QString)));
     LoadedPlugin lp;
     lp.id = entry.id;
     lp.position = sanitizePosition(entry.position, entry.id);
@@ -451,8 +469,6 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
         sp.permissions, grantedPermissions);
     auto eventScope = std::make_unique<xuanhub::PluginEventScope>(
         m_bus, entry.id, grantedPermissions);
-    auto* hostRuntime = m_runtimeById.value(hostId);
-    auto* hostObject = hostRuntime ? hostRuntime->instance() : nullptr;
     if (auto* eventBinder = hostObject
             ? qobject_cast<xuanhub::IBarPluginHostEventBus*>(hostObject) : nullptr) {
         if (!eventBinder->bindSubPluginEventScope(entry.id, eventScope.get())) {
@@ -499,6 +515,28 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
     qDebug() << "[Plugin] loaded:" << entry.id << "pos=" << lp.position
              << "qml=" << lp.qmlUrl.toLocalFile() << "(via host" << hostId << ")";
     return true;
+}
+
+void PluginManager::onHostedMigrationReady(
+    const QString& id, int currentVersion, int targetVersion,
+    const QVariantMap& config) {
+    m_migrationSuggestions.insert(id, {
+        currentVersion, targetVersion, config, {}});
+    m_loadErrors.remove(id);
+    qDebug() << "[Plugin] hosted config migration suggested:" << id
+             << currentVersion << "->" << targetVersion;
+}
+
+void PluginManager::onHostedMigrationFailed(
+    const QString& id, int currentVersion, int targetVersion,
+    const QString& error) {
+    const QString migrationError = QStringLiteral(
+        "config migration %1 -> %2 failed: %3")
+        .arg(currentVersion).arg(targetVersion).arg(error);
+    m_migrationSuggestions.insert(id, {
+        currentVersion, targetVersion, {}, migrationError});
+    recordLoadError(id, migrationError);
+    qWarning() << "[Plugin]" << id << migrationError;
 }
 
 bool PluginManager::loadOne(const QString& pluginsDir, const PluginConfigEntry& entry) {

@@ -51,6 +51,7 @@ public:
     // 只重建当前插件的 worker；同时解除熔断，供设置页和插件错误界面手动恢复。
     Q_INVOKABLE bool restart();
     bool applyConfig(const QVariantMap& config);
+    void setConfigVersions(int currentVersion, int targetVersion);
     void setHostServices(xuanhub::IHostServices* services) { m_hostServices = services; }
     void setEventScope(xuanhub::PluginEventScope* eventScope) {
         m_pluginEventScope = eventScope;
@@ -67,6 +68,10 @@ Q_SIGNALS:
     void circuitOpenChanged();
     void consecutiveFailuresChanged();
     void healthChanged();
+    void configMigrationReady(const QString& id, int currentVersion,
+                              int targetVersion, const QVariantMap& config);
+    void configMigrationFailed(const QString& id, int currentVersion,
+                               int targetVersion, const QString& error);
 
 private:
     friend class PyWorkerViewModelTest;
@@ -102,6 +107,8 @@ private:
     QString m_id;
     QString m_dirPath;
     QVariantMap m_cfg;
+    int m_configVersion = 1;
+    int m_targetConfigVersion = 1;
     QString m_pythonExe;
     QString m_workerScript;
     QString m_locale = QStringLiteral("en-US");
