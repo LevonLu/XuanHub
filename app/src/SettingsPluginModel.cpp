@@ -84,22 +84,6 @@ QJsonObject readJsonFile(const QString& path) {
     return QJsonDocument::fromJson(f.readAll()).object();
 }
 
-QVariantMap migrateBuiltInConfig(const QString& pluginId, QVariantMap config) {
-    // 内置插件旧版曾把中文显示标签直接写进配置；设置草稿加载时归一化为稳定值。
-    if (pluginId == QLatin1String("py_countdown")) {
-        const QString mode = config.value(QStringLiteral("mode")).toString();
-        if (mode == QStringLiteral("每日重复")) config[QStringLiteral("mode")] = QStringLiteral("daily");
-        else if (mode == QStringLiteral("指定日期") || mode == QStringLiteral("once"))
-            config[QStringLiteral("mode")] = QStringLiteral("date");
-    } else if (pluginId == QLatin1String("py_todo")) {
-        const QString mode = config.value(QStringLiteral("barMode")).toString();
-        if (mode == QStringLiteral("数量")) config[QStringLiteral("barMode")] = QStringLiteral("count");
-        else if (mode == QStringLiteral("最近一项"))
-            config[QStringLiteral("barMode")] = QStringLiteral("latest");
-    }
-    return config;
-}
-
 // 导出时的 schema 字段校验（双保险；QML 控件是第一道）。失败原因写入 why。
 bool validateField(const QJsonObject& f, const QVariant& v, QString* why) {
     const QString type = f.value(QStringLiteral("type")).toString();
@@ -347,7 +331,7 @@ void SettingsPluginModel::reload(const QList<PluginConfigEntry>& entries,
         r.position = e.position.isEmpty() ? QStringLiteral("right") : e.position;
         r.order = e.order;
         r.width = e.width;
-        r.config = migrateBuiltInConfig(e.id, e.config); // 未知键保留，旧中文枚举转稳定值
+        r.config = e.config; // 插件自有迁移器负责版本兼容；宿主只保留未知键。
         r.raw = rawById.value(e.id);
         // kind 先按 id 前缀猜，磁盘发现命中后会被纠正
         r.kind = e.id.startsWith(QStringLiteral("py_")) ? QStringLiteral("python")

@@ -184,7 +184,7 @@ private Q_SLOTS:
         QCOMPARE(missingUi.language(), QStringLiteral("system"));
     }
 
-    void schemaEnumFormatsAndLegacyBuiltInValuesAreMigrated() {
+    void schemaEnumFormatsUseStableValues() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         const QString pluginDir = dir.filePath(QStringLiteral("plugins_py/py_enum"));
@@ -212,33 +212,17 @@ private Q_SLOTS:
         metadata.write(QJsonDocument(schemaPlugin).toJson(QJsonDocument::Compact));
         metadata.close();
 
-        PluginConfigEntry countdown;
-        countdown.id = QStringLiteral("py_countdown");
-        countdown.config = {{QStringLiteral("mode"), QStringLiteral("每日重复")}};
-        PluginConfigEntry todo;
-        todo.id = QStringLiteral("py_todo");
-        todo.config = {{QStringLiteral("barMode"), QStringLiteral("最近一项")}};
         PluginConfigEntry enumEntry;
         enumEntry.id = QStringLiteral("py_enum");
         enumEntry.config = {{QStringLiteral("legacy"), QStringLiteral("one")},
                             {QStringLiteral("stable"), QStringLiteral("daily")}};
 
         SettingsPluginModel model;
-        model.reload({countdown, todo, enumEntry}, {}, dir.path(),
+        model.reload({enumEntry}, {}, dir.path(),
                      dir.filePath(QStringLiteral("config.json")));
         QJsonArray exported;
         QString error;
         QVERIFY2(model.toPluginEntriesJson(&exported, &error), qPrintable(error));
-        QHash<QString, QJsonObject> byId;
-        for (const QJsonValue& value : exported) {
-            const QJsonObject object = value.toObject();
-            byId.insert(object.value(QStringLiteral("id")).toString(), object);
-        }
-        QCOMPARE(byId.value(QStringLiteral("py_countdown")).value(QStringLiteral("config"))
-                     .toObject().value(QStringLiteral("mode")).toString(), QStringLiteral("daily"));
-        QCOMPARE(byId.value(QStringLiteral("py_todo")).value(QStringLiteral("config"))
-                     .toObject().value(QStringLiteral("barMode")).toString(), QStringLiteral("latest"));
-
         int enumRow = -1;
         for (int row = 0; row < model.rowCount(); ++row) {
             if (model.data(model.index(row), SettingsPluginModel::IdRole).toString()
@@ -723,14 +707,14 @@ private Q_SLOTS:
                                                 {{QStringLiteral("mode"),
                                                   QStringLiteral("每日重复")}})},
                      {}, {});
-        // 兼容迁移只建立内存草稿，不应让一次纯语言保存变成插件配置修改。
+        // SettingsPluginModel 不再按具体插件 ID 隐式迁移，原值保持且不标脏。
         QVERIFY(!model.isDirty());
         QVERIFY(model.setConfigValue(QStringLiteral("py_countdown"),
-                                     QStringLiteral("mode"), QStringLiteral("daily")));
+                                     QStringLiteral("mode"), QStringLiteral("每日重复")));
         QVERIFY(!model.isDirty());
 
         QVERIFY(model.setConfigValue(QStringLiteral("py_countdown"),
-                                     QStringLiteral("mode"), QStringLiteral("date")));
+                                     QStringLiteral("mode"), QStringLiteral("daily")));
         QVERIFY(model.isDirty());
     }
 };
