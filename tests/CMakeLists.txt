@@ -156,4 +156,35 @@ if(Python_Interpreter_FOUND)
     add_test(NAME xuanhub_pyworker_viewmodel_tests COMMAND xuanhub_pyworker_viewmodel_tests)
     set_tests_properties(xuanhub_pyworker_viewmodel_tests PROPERTIES
         ENVIRONMENT "XUANHUB_TEST_PYTHON=${Python_EXECUTABLE};XUANHUB_TEST_WORKER=${CMAKE_SOURCE_DIR}/plugins_py/bridge_worker.py")
+
+    add_executable(xuanhub_plugin_manager_tests
+        PluginManagerTest.cpp
+        ${CMAKE_SOURCE_DIR}/app/src/PluginManager.h
+        ${CMAKE_SOURCE_DIR}/app/src/PluginManager.cpp
+    )
+    set_target_properties(xuanhub_plugin_manager_tests PROPERTIES AUTOMOC ON)
+    target_include_directories(xuanhub_plugin_manager_tests PRIVATE
+        ${CMAKE_SOURCE_DIR}/app/src
+    )
+    target_link_libraries(xuanhub_plugin_manager_tests PRIVATE
+        barplugin
+        Qt6::Core
+        Qt6::Test
+    )
+    add_dependencies(xuanhub_plugin_manager_tests clock xuanhub_menu pybridge)
+    add_custom_command(TARGET xuanhub_plugin_manager_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:barplugin>" "$<TARGET_FILE_DIR:xuanhub_plugin_manager_tests>"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:Qt6::Core>" "$<TARGET_FILE_DIR:xuanhub_plugin_manager_tests>"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:Qt6::Test>" "$<TARGET_FILE_DIR:xuanhub_plugin_manager_tests>"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/plugins_py"
+            "$<TARGET_FILE_DIR:xuanhub_plugin_manager_tests>/plugins_py"
+        VERBATIM
+    )
+    add_test(NAME xuanhub_plugin_manager_tests COMMAND xuanhub_plugin_manager_tests)
+    set_tests_properties(xuanhub_plugin_manager_tests PROPERTIES
+        ENVIRONMENT "XUANHUB_TEST_PLUGINS=${CMAKE_BINARY_DIR}/dist/$<CONFIG>/plugins")
 endif()

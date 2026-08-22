@@ -10,6 +10,7 @@
 #include <QSet>
 #include <QUrl>
 #include <QPluginLoader>
+#include <QHash>
 
 #include <memory>
 #include <vector>
@@ -20,6 +21,7 @@
 struct PluginConfigEntry;
 namespace xuanhub { class EventBus; }
 namespace xuanhub { class PluginEventScope; }
+namespace xuanhub { class IBarPluginHost; }
 
 class PluginManager : public QObject {
     Q_OBJECT
@@ -39,11 +41,21 @@ public:
     ~PluginManager() override;
 
     void loadFrom(const QString& pluginsDir, const QList<PluginConfigEntry>& enabled);
+    bool loadOne(const QString& pluginsDir, const PluginConfigEntry& entry);
+    bool stopOne(const QString& id);
+    bool restartOne(const QString& pluginsDir, const PluginConfigEntry& entry);
+    QStringList dependentPluginIds(const QString& id) const;
+    const LoadedPlugin* loadedPlugin(const QString& id) const;
 
     const QVector<LoadedPlugin>& loaded() const { return m_loaded; }
     void shutdownAll();   // 重载周期约定：必须先 shutdownAll() 再 loadFrom()（入口有重入保护）
 
 private:
+    void loadFromImpl(const QString& pluginsDir, const QList<PluginConfigEntry>& enabled,
+                      bool allowExisting);
+    bool createHostedPlugin(const QString& hostId, xuanhub::IBarPluginHost* host,
+                            const PluginConfigEntry& entry);
+
     xuanhub::EventBus* m_bus;
     QString m_configDir;
     QVector<LoadedPlugin> m_loaded;
@@ -52,6 +64,11 @@ private:
     // 其子插件 VM 依赖 host 持有的运行时（如 CPython 解释器）
     QVector<xuanhub::IBarPlugin*> m_hosts;
     std::vector<std::unique_ptr<xuanhub::PluginEventScope>> m_eventScopes;
+    QHash<QString, QPluginLoader*> m_loaderById;             // 原生插件/host id → loader
+    QHash<QString, xuanhub::IBarPlugin*> m_ifaceById;        // 原生插件/host id → 接口
+    QHash<QString, xuanhub::IBarPluginHost*> m_hostById;     // host id → host 接口
+    QHash<QString, QString> m_subPluginHostId;               // 子插件 id → host id
+    QHash<QString, xuanhub::PluginEventScope*> m_scopeById;  // 原生插件/host id → 作用域
     QSet<QString> m_loadedIds;   // 按 metadata.id 去重
     bool m_shut = false;
 };

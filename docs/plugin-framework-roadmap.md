@@ -344,10 +344,10 @@ unchanged
 
 #### 阶段 B：PluginManager 单实例操作
 
-- [ ] 增加 `loadOne/stopOne/restartOne`。
-- [ ] 保留 `shutdownAll` 作为退出和灾难回退路径。
-- [ ] host 子插件增加按 ID 创建和销毁能力。
-- [ ] pybridge 不再只通过整体 `shutdown()` 管理全部 VM。
+- [x] 增加 `loadOne/stopOne/restartOne`。
+- [x] 保留 `shutdownAll` 作为退出和灾难回退路径。
+- [x] host 子插件增加按 ID 创建和销毁能力。
+- [x] pybridge 不再只通过整体 `shutdown()` 管理全部 VM。
 
 #### 阶段 C：模型增量更新
 

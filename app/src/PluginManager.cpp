@@ -3,6 +3,7 @@
 #include "ConfigService.h"
 #include "barplugin/EventBus.h"
 #include "barplugin/IBarPluginHost.h"
+#include "barplugin/IBarPluginHostLifecycle.h"
 #include "barplugin/PluginEventScope.h"
 
 #include <QDir>
@@ -11,6 +12,8 @@
 #include <QDebug>
 #include <QDateTime>
 #include <QElapsedTimer>
+
+#include <algorithm>
 
 namespace {
 // position 校验：空默认 right；非法值告警并回落 right
@@ -34,9 +37,15 @@ PluginManager::~PluginManager() {
 }
 
 void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfigEntry>& enabled) {
+    loadFromImpl(pluginsDir, enabled, false);
+}
+
+void PluginManager::loadFromImpl(const QString& pluginsDir,
+                                 const QList<PluginConfigEntry>& enabled,
+                                 bool allowExisting) {
     // 重入保护：必须先 shutdownAll() 再 loadFrom()——直接重入会把新 id 追加进
     // m_loaded（旧 id 靠 m_loadedIds 挡住刷 duplicate 告警），模型与 manager 状态分裂
-    if (!m_loaded.isEmpty() || !m_loaders.isEmpty()) {
+    if (!allowExisting && (!m_loaded.isEmpty() || !m_loaders.isEmpty())) {
         qWarning() << "[Plugin] loadFrom called without prior shutdownAll, ignored";
         return;
     }
@@ -121,6 +130,10 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
             // host 插件（如 pybridge）：自身不进可见列表；
             // 先枚举子插件 id，核心按 config 过滤/去重后再让 host 实例化
             if (auto* host = qobject_cast<xuanhub::IBarPluginHost*>(obj)) {
+                m_loaderById.insert(meta.id, loader);
+                m_ifaceById.insert(meta.id, plugin);
+                m_hostById.insert(meta.id, host);
+                m_scopeById.insert(meta.id, eventScope.get());
                 m_eventScopes.push_back(std::move(eventScope));
                 m_loaders.append(loader);
                 m_loadedIds.insert(meta.id);
@@ -139,31 +152,7 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
                         qDebug() << "[Plugin] sub-plugin not enabled in config, skip:" << sid;
                         continue;
                     }
-                    QElapsedTimer createTimer;
-                    createTimer.start();
-                    const auto sp = host->createSubPlugin(sid, se->config);
-                    const qint64 createDurationMs = createTimer.elapsed();
-                    if (!sp.viewModel) {
-                        qWarning() << "[Plugin] host createSubPlugin failed:" << sid
-                                   << "durationMs=" << createDurationMs;
-                        continue;
-                    }
-                    LoadedPlugin lp;
-                    lp.id = sid;
-                    lp.position = sanitizePosition(se->position, sid);
-                    lp.order = se->order;
-                    lp.width = se->width;
-                    lp.viewModel = sp.viewModel;
-                    lp.qmlUrl = QUrl::fromLocalFile(QDir(sp.dirPath).absoluteFilePath(sp.qmlFilePath));
-                    lp.iface = nullptr;   // 生命周期归 host，shutdownAll 由 host 统一 shutdown
-                    lp.health.state = xuanhub::PluginState::Running;
-                    lp.health.startedAt = QDateTime::currentDateTimeUtc();
-                    lp.health.lastHealthyAt = lp.health.startedAt;
-                    lp.health.loadDurationMs = createDurationMs;
-                    m_loaded.append(lp);
-                    m_loadedIds.insert(sid);
-                    qDebug() << "[Plugin] loaded:" << sid << "pos=" << lp.position
-                             << "qml=" << lp.qmlUrl.toLocalFile() << "(via host" << meta.id << ")";
+                    createHostedPlugin(meta.id, host, *se);
                 }
                 continue;
             }
@@ -192,12 +181,147 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
 
             m_eventScopes.push_back(std::move(eventScope));
             m_loaders.append(loader);
+            m_loaderById.insert(meta.id, loader);
+            m_ifaceById.insert(meta.id, plugin);
+            m_scopeById.insert(meta.id, m_eventScopes.back().get());
             m_loaded.append(lp);
             m_loadedIds.insert(meta.id);
             qDebug() << "[Plugin] loaded:" << meta.id
                      << "pos=" << lp.position << "qml=" << qmlUrl.toString();
         }
     }
+}
+
+bool PluginManager::createHostedPlugin(const QString& hostId,
+                                       xuanhub::IBarPluginHost* host,
+                                       const PluginConfigEntry& entry) {
+    if (!host || m_loadedIds.contains(entry.id)) return false;
+    QElapsedTimer createTimer;
+    createTimer.start();
+    const auto sp = host->createSubPlugin(entry.id, entry.config);
+    const qint64 createDurationMs = createTimer.elapsed();
+    if (!sp.viewModel) {
+        qWarning() << "[Plugin] host createSubPlugin failed:" << entry.id
+                   << "durationMs=" << createDurationMs;
+        return false;
+    }
+    LoadedPlugin lp;
+    lp.id = entry.id;
+    lp.position = sanitizePosition(entry.position, entry.id);
+    lp.order = entry.order;
+    lp.width = entry.width;
+    lp.viewModel = sp.viewModel;
+    lp.qmlUrl = QUrl::fromLocalFile(QDir(sp.dirPath).absoluteFilePath(sp.qmlFilePath));
+    lp.iface = nullptr;
+    lp.health.state = xuanhub::PluginState::Running;
+    lp.health.startedAt = QDateTime::currentDateTimeUtc();
+    lp.health.lastHealthyAt = lp.health.startedAt;
+    lp.health.loadDurationMs = createDurationMs;
+    m_loaded.append(lp);
+    m_loadedIds.insert(entry.id);
+    m_subPluginHostId.insert(entry.id, hostId);
+    qDebug() << "[Plugin] loaded:" << entry.id << "pos=" << lp.position
+             << "qml=" << lp.qmlUrl.toLocalFile() << "(via host" << hostId << ")";
+    return true;
+}
+
+bool PluginManager::loadOne(const QString& pluginsDir, const PluginConfigEntry& entry) {
+    if (entry.id.isEmpty() || m_loadedIds.contains(entry.id)) return false;
+    m_shut = false;
+
+    // 已加载 host 优先尝试创建子插件，不扫描或重启其他运行实例。
+    for (auto it = m_hostById.cbegin(); it != m_hostById.cend(); ++it) {
+        if (!it.value()->subPluginIds().contains(entry.id)) continue;
+        return createHostedPlugin(it.key(), it.value(), entry);
+    }
+
+    loadFromImpl(pluginsDir, {entry}, true);
+    return m_loadedIds.contains(entry.id);
+}
+
+const PluginManager::LoadedPlugin* PluginManager::loadedPlugin(const QString& id) const {
+    for (const auto& plugin : m_loaded) {
+        if (plugin.id == id) return &plugin;
+    }
+    return nullptr;
+}
+
+QStringList PluginManager::dependentPluginIds(const QString& id) const {
+    QStringList result;
+    for (auto it = m_subPluginHostId.cbegin(); it != m_subPluginHostId.cend(); ++it) {
+        if (it.value() == id) result.append(it.key());
+    }
+    result.sort();
+    return result;
+}
+
+bool PluginManager::stopOne(const QString& id) {
+    const QString hostId = m_subPluginHostId.value(id);
+    if (!hostId.isEmpty()) {
+        auto* hostIface = m_ifaceById.value(hostId);
+        auto* hostObject = dynamic_cast<QObject*>(hostIface);
+        auto* lifecycle = hostObject
+            ? qobject_cast<xuanhub::IBarPluginHostLifecycle*>(hostObject) : nullptr;
+        if (!lifecycle) {
+            qWarning() << "[Plugin] host cannot stop sub-plugin independently:" << hostId << id;
+            return false;
+        }
+        if (!lifecycle->destroySubPlugin(id)) return false;
+        for (int i = 0; i < m_loaded.size(); ++i) {
+            if (m_loaded.at(i).id == id) {
+                m_loaded.removeAt(i);
+                break;
+            }
+        }
+        m_subPluginHostId.remove(id);
+        m_loadedIds.remove(id);
+        return true;
+    }
+
+    auto* iface = m_ifaceById.value(id);
+    auto* loader = m_loaderById.value(id);
+    if (!iface || !loader) return false;
+
+    // host 自身停止前先销毁全部子实例；调用方必须先从 QML 模型移除这些 id。
+    for (const QString& childId : dependentPluginIds(id)) {
+        if (!stopOne(childId)) return false;
+    }
+    if (auto* scope = m_scopeById.take(id)) {
+        scope->clear();
+        const auto scopeIt = std::find_if(m_eventScopes.begin(), m_eventScopes.end(),
+            [scope](const auto& owned) { return owned.get() == scope; });
+        if (scopeIt != m_eventScopes.end()) m_eventScopes.erase(scopeIt);
+    }
+
+    QElapsedTimer timer;
+    timer.start();
+    iface->shutdown();
+    qDebug() << "[Plugin] shutdown one:" << id << "durationMs=" << timer.elapsed();
+
+    m_hosts.removeAll(iface);
+    m_hostById.remove(id);
+    m_ifaceById.remove(id);
+    m_loaderById.remove(id);
+    m_loaders.removeAll(loader);
+    for (int i = 0; i < m_loaded.size(); ++i) {
+        if (m_loaded.at(i).id == id) {
+            m_loaded.removeAt(i);
+            break;
+        }
+    }
+    m_loadedIds.remove(id);
+    if (!loader->unload()) {
+        qWarning() << "[Plugin] unload one failed:" << loader->fileName()
+                   << loader->errorString();
+    }
+    delete loader;
+    return true;
+}
+
+bool PluginManager::restartOne(const QString& pluginsDir,
+                               const PluginConfigEntry& entry) {
+    if (!stopOne(entry.id)) return false;
+    return loadOne(pluginsDir, entry);
 }
 
 void PluginManager::shutdownAll() {
@@ -236,6 +360,11 @@ void PluginManager::shutdownAll() {
     }
     m_loaders.clear();
     m_eventScopes.clear();
+    m_loaderById.clear();
+    m_ifaceById.clear();
+    m_hostById.clear();
+    m_subPluginHostId.clear();
+    m_scopeById.clear();
     m_loaded.clear();
     m_loadedIds.clear();
 }
