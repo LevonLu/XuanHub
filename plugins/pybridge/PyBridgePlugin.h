@@ -12,8 +12,11 @@
 #include "barplugin/IBarPluginHostConfigMigration.h"
 #include "barplugin/IBarPluginHostConfigValidation.h"
 #include "barplugin/IBarPluginHostDiagnostics.h"
+#include "barplugin/IBarPluginHostDependencies.h"
 #include "barplugin/IBarPluginHostEventBus.h"
 #include "barplugin/IBarPluginHostServices.h"
+
+class QProcess;
 
 class PyBridgePlugin : public QObject, public xuanhub::IBarPlugin,
                        public xuanhub::IBarPluginHost,
@@ -22,6 +25,7 @@ class PyBridgePlugin : public QObject, public xuanhub::IBarPlugin,
                        public xuanhub::IBarPluginHostConfigMigration,
                        public xuanhub::IBarPluginHostConfigValidation,
                        public xuanhub::IBarPluginHostDiagnostics,
+                       public xuanhub::IBarPluginHostDependencies,
                        public xuanhub::IBarPluginHostEventBus,
                        public xuanhub::IBarPluginHostServices {
     Q_OBJECT
@@ -32,6 +36,7 @@ class PyBridgePlugin : public QObject, public xuanhub::IBarPlugin,
                  xuanhub::IBarPluginHostConfigMigration
                  xuanhub::IBarPluginHostConfigValidation
                  xuanhub::IBarPluginHostDiagnostics
+                 xuanhub::IBarPluginHostDependencies
                  xuanhub::IBarPluginHostEventBus
                  xuanhub::IBarPluginHostServices)
 public:
@@ -57,6 +62,12 @@ public:
     bool bindSubPluginEventScope(const QString& id,
                                  xuanhub::PluginEventScope* eventScope) override;
     QString subPluginLoadError(const QString& id) const override;
+    QVariantMap subPluginDependencyPlan(const QString& id) const override;
+    bool installSubPluginDependencies(const QString& id) override;
+
+Q_SIGNALS:
+    void subPluginDependencyInstallFinished(const QString& id, bool success,
+                                            const QString& error);
 
 private:
     xuanhub::BarPluginContext m_ctx;   // 拷贝保存（init 传入的 ctx 是核心栈上对象）
@@ -66,6 +77,9 @@ private:
     QString m_pythonExe;               // 已验证的 python.exe；worker 由它启动
     QString m_workerScript;             // <exeDir>/plugins_py/bridge_worker.py
     QString m_doctorScript;             // <exeDir>/plugins_py/dependency_doctor.py
+    QString m_installerScript;          // 用户确认后才执行的离线环境安装器
     QHash<QString, QObject*> m_vms;     // id → 隔离代理 VM，可单独销毁或 shutdown 全量回收
     QHash<QString, QString> m_subPluginErrors; // 实例化前 doctor/Manifest 的确定错误
+    QHash<QString, QVariantMap> m_dependencyPlans; // 含私有内部路径，仅接口返回时裁剪
+    QHash<QString, QProcess*> m_dependencyInstallers; // 每插件最多一个异步安装器
 };

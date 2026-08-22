@@ -138,6 +138,64 @@ struct PythonManifestResult {
     QString error;
 };
 
+QVariantMap privateEnvironmentPlan(const QString& id, const QString& pluginDir,
+                                   const QString& configDir,
+                                   const PythonDependencySpec& spec) {
+    QVariantMap plan{
+        {QStringLiteral("available"), false},
+        {QStringLiteral("requiresConfirmation"), true},
+        {QStringLiteral("mode"), spec.environmentMode},
+    };
+    if (spec.environmentMode != QLatin1String("private")) return plan;
+    if (spec.wheelDirectory.isEmpty()) {
+        plan.insert(QStringLiteral("reason"),
+                    QStringLiteral("private environment requires an offline wheel directory"));
+        return plan;
+    }
+    const QString pluginCanonical = QFileInfo(pluginDir).canonicalFilePath();
+    const QFileInfo wheelInfo(QDir(pluginDir).absoluteFilePath(spec.wheelDirectory));
+    const QString wheelCanonical = wheelInfo.canonicalFilePath();
+    const QString prefix = pluginCanonical + QDir::separator();
+    if (pluginCanonical.isEmpty() || wheelCanonical.isEmpty() || !wheelInfo.isDir()
+        || (!wheelCanonical.startsWith(prefix, Qt::CaseInsensitive)
+            && wheelCanonical.compare(pluginCanonical, Qt::CaseInsensitive) != 0)) {
+        plan.insert(QStringLiteral("reason"),
+                    QStringLiteral("offline wheel directory is missing or outside plugin root"));
+        return plan;
+    }
+    const QDir wheelDir(wheelCanonical);
+    const QStringList wheels = wheelDir.entryList({QStringLiteral("*.whl")}, QDir::Files);
+    if (wheels.isEmpty()) {
+        plan.insert(QStringLiteral("reason"),
+                    QStringLiteral("offline wheel directory contains no .whl files"));
+        return plan;
+    }
+    QStringList requirements;
+    QStringList packages;
+    for (const PythonPackageRequirement& package : spec.packages) {
+        packages.append(package.name);
+        QString constraint = package.versionConstraint;
+        constraint.remove(QLatin1Char(' '));
+        requirements.append(package.versionConstraint == QLatin1String("*")
+            ? package.name : package.name + constraint);
+    }
+    if (requirements.isEmpty()) {
+        plan.insert(QStringLiteral("reason"),
+                    QStringLiteral("private environment declares no packages"));
+        return plan;
+    }
+    const QString environment = QDir(configDir).absoluteFilePath(
+        QStringLiteral("python-envs/") + id);
+    plan.insert(QStringLiteral("available"), true);
+    plan.insert(QStringLiteral("packages"), packages);
+    plan.insert(QStringLiteral("wheelCount"), wheels.size());
+    plan.insert(QStringLiteral("wheelDirectory"), spec.wheelDirectory);
+    plan.insert(QStringLiteral("_environment"), QDir::cleanPath(environment));
+    plan.insert(QStringLiteral("_wheels"), wheelCanonical);
+    plan.insert(QStringLiteral("_requirements"), requirements);
+    return plan;
+}
+
 bool readPythonActions(const QJsonObject& object,
                        QVector<xuanhub::PluginAction>* output,
                        QString* error) {
@@ -445,6 +503,8 @@ bool PyBridgePlugin::init(xuanhub::BarPluginContext* ctx) {
                          .absoluteFilePath(QStringLiteral("plugins_py/bridge_worker.py"));
     m_doctorScript = QDir(QCoreApplication::applicationDirPath())
                          .absoluteFilePath(QStringLiteral("plugins_py/dependency_doctor.py"));
+    m_installerScript = QDir(QCoreApplication::applicationDirPath())
+                            .absoluteFilePath(QStringLiteral("plugins_py/environment_installer.py"));
     if (pyAvailable() && !QFileInfo(m_workerScript).isFile()) {
         qWarning() << "[PyBridge] bridge worker is missing:" << m_workerScript;
         setPyAvailable(false);
@@ -469,15 +529,29 @@ QUrl PyBridgePlugin::qmlUrl() const { return {}; }
 
 void PyBridgePlugin::shutdown() {
     qDebug() << "[PyBridge] shutdown:" << m_vms.size() << "isolated worker VM(s)";
+    const QList<QProcess*> installers = m_dependencyInstallers.values();
+    m_dependencyInstallers.clear();
+    for (QProcess* installer : installers) {
+        if (!installer) continue;
+        disconnect(installer, nullptr, this, nullptr);
+        installer->terminate();
+        if (!installer->waitForFinished(1000)) {
+            installer->kill();
+            installer->waitForFinished(1000);
+        }
+    }
+    qDeleteAll(installers);
     qDeleteAll(m_vms);
     m_vms.clear();
     m_dirs.clear();
     m_manifests.clear();
     m_configVersions.clear();
     m_subPluginErrors.clear();
+    m_dependencyPlans.clear();
     m_pythonExe.clear();
     m_workerScript.clear();
     m_doctorScript.clear();
+    m_installerScript.clear();
 }
 
 QStringList PyBridgePlugin::subPluginIds() {
@@ -486,6 +560,7 @@ QStringList PyBridgePlugin::subPluginIds() {
     m_manifests.clear();
     m_configVersions.clear();
     m_subPluginErrors.clear();
+    m_dependencyPlans.clear();
     if (!pyAvailable() || m_pythonExe.isEmpty()) return ids;
     const QDir base(QCoreApplication::applicationDirPath() + QStringLiteral("/plugins_py"));
     if (!base.exists()) {
@@ -509,6 +584,13 @@ QStringList PyBridgePlugin::subPluginIds() {
         ids << id;
         m_dirs.insert(id, directory.absolutePath());
         m_manifests.insert(id, manifest.object);
+        PythonDependencySpec dependencies;
+        QString dependencyError;
+        if (readPythonDependencySpec(manifest.object, &dependencies, &dependencyError)
+            && dependencies.environmentMode == QLatin1String("private")) {
+            m_dependencyPlans.insert(id, privateEnvironmentPlan(
+                id, directory.absolutePath(), m_ctx.configDir, dependencies));
+        }
         qDebug() << "[PyBridge] found sub-plugin:" << id << "@" << directory.path();
     }
     return ids;
@@ -545,9 +627,24 @@ xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const 
         m_subPluginErrors.insert(id, dependencyParseError);
         return info;
     }
+    QString runtimeExecutable = m_pythonExe;
+    if (dependencies.environmentMode == QLatin1String("private")) {
+        const QVariantMap plan = m_dependencyPlans.value(id);
+        const QString environment = plan.value(QStringLiteral("_environment")).toString();
+        const QString privatePython = QDir(environment).absoluteFilePath(
+            QStringLiteral("Scripts/python.exe"));
+        if (environment.isEmpty() || !QFileInfo(privatePython).isFile()) {
+            const QString reason = plan.value(QStringLiteral("reason")).toString();
+            m_subPluginErrors.insert(id, reason.isEmpty()
+                ? QStringLiteral("private Python environment is not prepared; confirm offline installation")
+                : reason);
+            return info;
+        }
+        runtimeExecutable = privatePython;
+    }
     if (dependencies.declared) {
         const PythonDependencyReport report = PythonDependencyDoctor::run(
-            m_pythonExe, m_doctorScript, dependencies);
+            runtimeExecutable, m_doctorScript, dependencies);
         if (!report.ok) {
             const QString summary = report.summary().isEmpty()
                 ? QStringLiteral("Python dependency doctor failed") : report.summary();
@@ -569,7 +666,7 @@ xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const 
     const int currentConfigVersion = qMax(1, m_configVersions.value(id, 1));
     const int targetConfigVersion = qMax(
         1, object.value(QStringLiteral("configVersion")).toInt(1));
-    auto* viewModel = new PyWorkerViewModel(id, dirPath, cfg, m_pythonExe,
+    auto* viewModel = new PyWorkerViewModel(id, dirPath, cfg, runtimeExecutable,
                                             m_workerScript, m_ctx.eventBus,
                                             m_ctx.eventScope, this);
     viewModel->setConfigVersions(currentConfigVersion, targetConfigVersion);
@@ -617,6 +714,87 @@ bool PyBridgePlugin::destroySubPlugin(const QString& id) {
 
 QString PyBridgePlugin::subPluginLoadError(const QString& id) const {
     return m_subPluginErrors.value(id);
+}
+
+QVariantMap PyBridgePlugin::subPluginDependencyPlan(const QString& id) const {
+    QVariantMap plan = m_dependencyPlans.value(id);
+    plan.remove(QStringLiteral("_environment"));
+    plan.remove(QStringLiteral("_wheels"));
+    plan.remove(QStringLiteral("_requirements"));
+    plan.insert(QStringLiteral("installing"), m_dependencyInstallers.contains(id));
+    return plan;
+}
+
+bool PyBridgePlugin::installSubPluginDependencies(const QString& id) {
+    if (m_dependencyInstallers.contains(id)) return false;
+    const QVariantMap plan = m_dependencyPlans.value(id);
+    if (!plan.value(QStringLiteral("available")).toBool()
+        || !plan.value(QStringLiteral("requiresConfirmation")).toBool()
+        || !QFileInfo(m_installerScript).isFile()) {
+        return false;
+    }
+
+    const QString environment = plan.value(QStringLiteral("_environment")).toString();
+    const QString configRoot = QDir(m_ctx.configDir).absolutePath();
+    const QString environmentPath = QFileInfo(environment).absoluteFilePath();
+    const QString expectedPrefix = QDir(configRoot).absoluteFilePath(
+        QStringLiteral("python-envs")) + QDir::separator();
+    if (!environmentPath.startsWith(expectedPrefix, Qt::CaseInsensitive)) {
+        qWarning() << "[PyBridge] refused dependency environment outside config root:" << id;
+        return false;
+    }
+
+    auto* process = new QProcess(this);
+    process->setProgram(m_pythonExe);
+    process->setArguments({QStringLiteral("-B"), m_installerScript});
+    process->setProcessChannelMode(QProcess::SeparateChannels);
+    m_dependencyInstallers.insert(id, process);
+    connect(process, &QProcess::errorOccurred, this,
+            [this, id, process](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart || m_dependencyInstallers.value(id) != process)
+            return;
+        m_dependencyInstallers.remove(id);
+        const QString message = QStringLiteral("dependency installer failed to start: %1")
+                                    .arg(process->errorString());
+        m_subPluginErrors.insert(id, message);
+        Q_EMIT subPluginDependencyInstallFinished(id, false, message);
+        process->deleteLater();
+    });
+    connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+            [this, id, process](int exitCode, QProcess::ExitStatus exitStatus) {
+        if (m_dependencyInstallers.value(id) != process) return;
+        m_dependencyInstallers.remove(id);
+        const QByteArray output = process->readAllStandardOutput();
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(output, &parseError);
+        const QJsonObject result = document.isObject() ? document.object() : QJsonObject{};
+        const bool success = exitStatus == QProcess::NormalExit && exitCode == 0
+            && result.value(QStringLiteral("ok")).toBool();
+        QString message;
+        if (!success) {
+            message = result.value(QStringLiteral("error")).toString();
+            if (message.isEmpty())
+                message = parseError.error == QJsonParseError::NoError
+                    ? QStringLiteral("offline dependency installation failed")
+                    : QStringLiteral("dependency installer returned invalid JSON");
+            m_subPluginErrors.insert(id, message);
+        } else {
+            m_subPluginErrors.remove(id);
+        }
+        Q_EMIT subPluginDependencyInstallFinished(id, success, message);
+        process->deleteLater();
+    });
+    process->start();
+    if (!process->waitForStarted(3000)) return false;
+    const QJsonObject input{
+        {QStringLiteral("environment"), environmentPath},
+        {QStringLiteral("wheels"), plan.value(QStringLiteral("_wheels")).toString()},
+        {QStringLiteral("requirements"), QJsonArray::fromStringList(
+            plan.value(QStringLiteral("_requirements")).toStringList())},
+    };
+    process->write(QJsonDocument(input).toJson(QJsonDocument::Compact));
+    process->closeWriteChannel();
+    return true;
 }
 
 bool PyBridgePlugin::canApplySubPluginConfig(const QString& id) const {
