@@ -122,6 +122,7 @@
       "应为文本": "Must be text", "插件声明的正则表达式无效": "The plugin declares an invalid regular expression", "格式不符合要求": "The format does not meet the requirements",
       "应为 JSON 对象": "Must be a JSON object", "应为 JSON 数组": "Must be a JSON array",
       "插件 %1 拒绝配置：%2": "Plugin %1 rejected the configuration: %2",
+      "无法安全保存插件凭据": "Unable to save plugin credentials securely",
       "py_usage_hub：厂商凭据引用无效": "py_usage_hub: invalid provider credential reference",
       "py_usage_hub：无法安全保存厂商凭据": "py_usage_hub: could not securely save provider credentials",
       "py_usage_hub：无法清除已删除厂商的凭据": "py_usage_hub: could not remove credentials for a deleted provider",

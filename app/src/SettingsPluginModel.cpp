@@ -192,7 +192,8 @@ bool validateField(const QJsonObject& f, const QVariant& v, QString* why) {
 // 自绘设置页的动态 vendors 数组没有静态 schema 字段可逐项标 secret。
 // 使用稳定 UUID 作为路径的一部分，确保排序、增删同类厂商时凭据不会串位。
 bool protectUsageHubVendorSecrets(const QString& pluginId, QVariantMap* config,
-                                  const QJsonObject& rawConfig, const SecretStore& secrets,
+                                  const QJsonObject& rawConfig,
+                                  SecretStore::Transaction* transaction,
                                   QString* err) {
     if (pluginId != QLatin1String("py_usage_hub") || !config) return true;
 
@@ -233,7 +234,7 @@ bool protectUsageHubVendorSecrets(const QString& pluginId, QVariantMap* config,
                 vendor.insert(QStringLiteral("apiKey"), SecretStore::referenceValue(secretId).toVariant());
             } else {
                 const QString plaintext = vendor.value(QStringLiteral("apiKey")).toString();
-                if (!secrets.write(secretId, plaintext)) {
+                if (!transaction->stageWrite(secretId, plaintext)) {
                     *err = settingsError("py_usage_hub：无法安全保存厂商凭据");
                     return false;
                 }
@@ -254,7 +255,8 @@ bool protectUsageHubVendorSecrets(const QString& pluginId, QVariantMap* config,
         if (activeTokens.contains(it.key())) continue;
         const QString secretId = SecretStore::idForPluginField(
             pluginId, QStringLiteral("vendors.%1.apiKey").arg(it.key()));
-        if (SecretStore::referenceId(it.value()) == secretId && !secrets.write(secretId, {})) {
+        if (SecretStore::referenceId(it.value()) == secretId
+            && !transaction->stageWrite(secretId, {})) {
             *err = settingsError("py_usage_hub：无法清除已删除厂商的凭据");
             return false;
         }
@@ -618,10 +620,15 @@ bool SettingsPluginModel::moveWithinPosition(int sourceRow, int direction) {
     return true;
 }
 
-bool SettingsPluginModel::toPluginEntriesJson(QJsonArray* out, QString* err) const {
+bool SettingsPluginModel::toPluginEntriesJson(
+    QJsonArray* out, QString* err,
+    SecretStore::Transaction* secretTransaction) const {
     QJsonArray arr;
     bool anyPython = false;
     const SecretStore secrets(m_secretDir);
+    auto localTransaction = secrets.beginTransaction();
+    SecretStore::Transaction* transaction = secretTransaction
+        ? secretTransaction : &localTransaction;
     for (const auto& r : m_rows) {
         if (!r.enabled) continue;
         if (r.position != QStringLiteral("left") && r.position != QStringLiteral("center")
@@ -675,7 +682,7 @@ bool SettingsPluginModel::toPluginEntriesJson(QJsonArray* out, QString* err) con
                     continue;
                 }
                 const QString plaintext = config.value(key).toString();
-                if (!secrets.write(secretId, plaintext)) {
+                if (!transaction->stageWrite(secretId, plaintext)) {
                     *err = settingsError("%1：无法安全保存 %2")
                                .arg(r.id, f.value(QStringLiteral("label")).toString(key));
                     return false;
@@ -684,7 +691,7 @@ bool SettingsPluginModel::toPluginEntriesJson(QJsonArray* out, QString* err) con
                 else config.insert(key, SecretStore::referenceValue(secretId).toVariant());
             }
         }
-        if (!protectUsageHubVendorSecrets(r.id, &config, rawConfig, secrets, err)) return false;
+        if (!protectUsageHubVendorSecrets(r.id, &config, rawConfig, transaction, err)) return false;
         o[QStringLiteral("id")] = r.id;
         o[QStringLiteral("configVersion")] = r.configVersion;
         o[QStringLiteral("position")] = r.position;
@@ -703,6 +710,13 @@ bool SettingsPluginModel::toPluginEntriesJson(QJsonArray* out, QString* err) con
         pb[QStringLiteral("order")] = 9;
         pb[QStringLiteral("config")] = QJsonObject();
         arr.append(pb);
+    }
+    if (!secretTransaction) {
+        if (!localTransaction.commit()) {
+            *err = settingsError("无法安全保存插件凭据");
+            return false;
+        }
+        localTransaction.finalize();
     }
     *out = arr;
     return true;

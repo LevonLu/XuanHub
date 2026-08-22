@@ -445,7 +445,9 @@ private Q_SLOTS:
         model.reload({entry}, QJsonArray{rawEntry}, {}, dir.filePath(QStringLiteral("config.json")));
         QJsonArray exported;
         QString error;
-        QVERIFY2(model.toPluginEntriesJson(&exported, &error), qPrintable(error));
+        SecretStore store(dir.path());
+        auto transaction = store.beginTransaction();
+        QVERIFY2(model.toPluginEntriesJson(&exported, &error, &transaction), qPrintable(error));
 
         const QJsonObject saved = exported.first().toObject();
         const QJsonObject savedVendor = saved.value(QStringLiteral("config")).toObject()
@@ -455,9 +457,12 @@ private Q_SLOTS:
         const QString secretId = SecretStore::idForPluginField(
             QStringLiteral("py_usage_hub"), QStringLiteral("vendors.%1.apiKey").arg(token));
         QCOMPARE(SecretStore::referenceId(savedVendor.value(QStringLiteral("apiKey"))), secretId);
-        QCOMPARE(SecretStore(dir.path()).read(secretId).value_or({}), QStringLiteral("plain-key"));
+        QVERIFY(!store.read(secretId).has_value());
 
+        QVERIFY(transaction.commit());
         QVERIFY(writeJson(dir.path(), QJsonDocument(configWithPlugins({saved}))));
+        transaction.finalize();
+        QCOMPARE(store.read(secretId).value_or({}), QStringLiteral("plain-key"));
         ConfigService service;
         QVERIFY(service.load(dir.path(), dir.path()));
         const QVariantMap hydrated = service.pluginEntries().first().config

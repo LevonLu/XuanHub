@@ -7,6 +7,7 @@
 #include "SettingsPluginModel.h"
 #include "SettingsPluginProxy.h"
 #include "SettingsPluginSortModel.h"
+#include "SecretStore.h"
 #include "ThemeManager.h"
 #include "ThemeRegistry.h"
 #include "LocaleManager.h"
@@ -14,6 +15,7 @@
 #include <QDebug>
 #include <QCoreApplication>
 #include <QDir>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -237,8 +239,10 @@ bool SettingsViewModel::apply() {
     }
     QJsonArray plugins;
     QString err;
+    SecretStore secretStore(QFileInfo(m_config->activePath()).absolutePath());
+    auto secretTransaction = secretStore.beginTransaction();
     if (m_pluginModel->isDirty()) {
-        if (!m_pluginModel->toPluginEntriesJson(&plugins, &err)) {
+        if (!m_pluginModel->toPluginEntriesJson(&plugins, &err, &secretTransaction)) {
             setErrorMessage(err);
             return false;
         }
@@ -277,11 +281,21 @@ bool SettingsViewModel::apply() {
     ui[QStringLiteral("language")] = m_language;
     root[QStringLiteral("ui")] = ui;
     root[QStringLiteral("plugins")] = plugins;
+    // 密钥库先原子提交；若随后 config 提交失败，事务恢复旧密钥文件。只有两个文件
+    // 都成功后才 finalize，避免出现新引用配旧密钥或旧引用配新密钥的半提交状态。
+    if (!secretTransaction.commit()) {
+        setErrorMessage(QCoreApplication::translate(
+            "xuanhub.settings.errors", "无法安全保存插件凭据"));
+        return false;
+    }
     if (!m_config->save(root)) {
+        if (!secretTransaction.rollback())
+            qCritical() << "[Settings] config save failed and secret rollback also failed";
         setErrorMessage(QCoreApplication::translate(
             "xuanhub.settings.errors", "写入 config.json 失败（权限/磁盘，详见日志）"));
         return false;
     }
+    secretTransaction.finalize();
     autostart::setEnabled(m_autoStart);
     // 更新指纹到刚保存的状态：本次保存触发的热重载不算外部修改
     //（save() 已把 m_raw 更新为同一内容，此处重算即新快照）

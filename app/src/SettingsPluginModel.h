@@ -14,6 +14,7 @@
 #include <QVector>
 
 #include "ConfigService.h"   // PluginConfigEntry
+#include "SecretStore.h"
 
 class SettingsPluginModel : public QAbstractListModel {
     Q_OBJECT
@@ -67,7 +68,9 @@ public:
 
     // 导出保存用 plugins 数组（含 position/order/schema 字段校验与 pybridge 托管）；
     // 校验失败 err 带原因、返回 false
-    bool toPluginEntriesJson(QJsonArray* out, QString* err) const;
+    bool toPluginEntriesJson(
+        QJsonArray* out, QString* err,
+        SecretStore::Transaction* secretTransaction = nullptr) const;
 
     // 仅插件草稿被用户实际改动时为 true。语言、主题等宿主设置单独保存时，
     // SettingsViewModel 据此原样保留 plugins 数组，避免把兼容迁移或默认值整理
