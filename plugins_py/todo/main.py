@@ -22,6 +22,7 @@ _cache: dict = {
     "barMode": "count",
     "lastErrorKey": None,
     "lastErrorDetail": None,
+    "actionStates": {"clear_done": {"enabled": False}},
 }
 _db: sqlite3.Connection | None = None
 
@@ -56,6 +57,7 @@ def _set_database_error(error):
         "barMode": _normalized_bar_mode(_config.get("barMode", "count")),
         "lastErrorKey": "databaseUnavailable",
         "lastErrorDetail": str(error),
+        "actionStates": {"clear_done": {"enabled": False}},
     }
 
 
@@ -126,6 +128,9 @@ def _rebuild_cache():
         "barMode": _normalized_bar_mode(_config.get("barMode", "count")),
         "lastErrorKey": None,
         "lastErrorDetail": None,
+        "actionStates": {
+            "clear_done": {"enabled": len(todos) > len(active)},
+        },
     }
 
 

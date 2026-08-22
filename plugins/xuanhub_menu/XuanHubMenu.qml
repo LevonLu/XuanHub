@@ -17,6 +17,12 @@ Item {
         "border": "#45475a", "onAccent": "#1e1e2e"
     }))
     property bool menuOpenOnBarPress: false
+    readonly property var declaredActions: {
+        if (typeof pluginActions === "undefined" || !pluginActions) return []
+        // revision 建立动态状态依赖；actions() 返回当前本地化后的快照。
+        const currentRevision = pluginActions.revision
+        return pluginActions.actions("quickMenu")
+    }
 
     Rectangle {
         anchors.fill: parent
@@ -95,6 +101,7 @@ Item {
 
         width: parent ? parent.width : 248
         height: subtitle.length > 0 ? 52 : 44
+        opacity: enabled ? 1.0 : 0.45
 
         Rectangle {
             anchors.fill: parent
@@ -154,7 +161,8 @@ Item {
             id: rowArea
             anchors.fill: parent
             hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
+            enabled: row.enabled
+            cursorShape: row.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
             onClicked: row.triggered()
         }
     }
@@ -165,7 +173,8 @@ Item {
         transientParent: null
         visible: false
         width: 280
-        height: 364
+        height: Math.min(560, 364 + (root.declaredActions.length > 0
+                                    ? 3 + root.declaredActions.length * 46 : 0))
         color: "transparent"
         flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
 
@@ -181,9 +190,16 @@ Item {
             border.color: root.colors.border
         }
 
-        Column {
+        Flickable {
             anchors.fill: parent
             anchors.margins: 12
+            contentWidth: width
+            contentHeight: menuColumn.implicitHeight
+            clip: true
+
+        Column {
+            id: menuColumn
+            width: parent.width
             spacing: 2
 
             Item {
@@ -256,6 +272,29 @@ Item {
                 }
             }
 
+            Rectangle {
+                visible: root.declaredActions.length > 0
+                width: parent.width
+                height: visible ? 1 : 0
+                color: root.colors.border
+            }
+
+            Repeater {
+                model: root.declaredActions
+                delegate: MenuRow {
+                    required property var modelData
+                    title: modelData.label
+                    checkable: modelData.checkable
+                    checked: modelData.checked
+                    enabled: modelData.enabled
+                    onTriggered: {
+                        menuWin.hide()
+                        if (typeof pluginActions !== "undefined" && pluginActions)
+                            pluginActions.invoke(modelData.pluginId, modelData.actionId)
+                    }
+                }
+            }
+
             Rectangle { width: parent.width; height: 1; color: root.colors.border }
 
             MenuRow {
@@ -266,6 +305,7 @@ Item {
                     if (root.plugin) root.plugin.invokeAction("quit")
                 }
             }
+        }
         }
     }
 }

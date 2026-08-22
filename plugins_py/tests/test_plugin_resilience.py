@@ -41,6 +41,7 @@ class PluginResilienceTests(unittest.TestCase):
         self.assertEqual(values["activeCount"], 0)
         self.assertEqual(values["prefix"], "T")
         self.assertEqual(values["lastErrorKey"], "databaseUnavailable")
+        self.assertFalse(values["actionStates"]["clear_done"]["enabled"])
         self.assertIn("simulated database failure", values["lastErrorDetail"])
         plugin.invoke("add", ["不会写入的数据"])
         self.assertEqual(plugin.update()["lastErrorKey"], "databaseUnavailable")

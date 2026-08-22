@@ -2,6 +2,7 @@
   "locale": "en-US",
   "contexts": {
     "plugin.py_todo.metadata": { "待办事项": "Todo" },
+    "plugin.py_todo.actions": { "清空已完成": "Clear completed" },
     "plugin.py_todo.main": {
       "无待办": "No pending items", "%1 项": "%1 items", "待办事项": "Todo",
       "输入新待办，回车添加": "Enter a new item and press Enter",

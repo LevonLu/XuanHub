@@ -2,6 +2,7 @@
   "locale": "zh-CN",
   "contexts": {
     "plugin.py_todo.metadata": { "待办事项": "待办事项" },
+    "plugin.py_todo.actions": { "清空已完成": "清空已完成" },
     "plugin.py_todo.main": {
       "无待办": "无待办", "%1 项": "%1 项", "待办事项": "待办事项",
       "输入新待办，回车添加": "输入新待办，回车添加", "添加": "添加",
