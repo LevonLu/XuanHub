@@ -3,6 +3,28 @@
 SDK V2 用可预检的 `metadata.json` 和独立 IID 替代“先加载 DLL 再判断是否兼容”。
 宿主仍支持 V1，旧插件不需要重新编译；新插件应使用 V2。
 
+## 开发者 CLI
+
+仓库统一入口是 `scripts/xuanhub_plugin.py`。以下命令同时是自动化测试覆盖的 SDK 示例：
+
+```powershell
+python scripts/xuanhub_plugin.py create plugins/my_plugin --runtime native --id my_plugin --name "My Plugin"
+python scripts/xuanhub_plugin.py validate plugins/my_plugin
+python scripts/xuanhub_plugin.py run build/default/dist/Release/plugins/my_plugin
+python scripts/xuanhub_plugin.py doctor build/default/dist/Release/plugins/my_plugin
+python scripts/xuanhub_plugin.py package build/default/dist/Release/plugins/my_plugin --output dist/my_plugin-0.1.0.xuanplugin
+```
+
+`create` 原子生成 CMake、C++、QML、Manifest、i18n 和 README；目标目录已存在时拒绝覆盖。
+源码目录可先执行 `validate`，未构建 DLL 只会提示警告；`run`、`doctor` 和 `package` 应对
+Release 运行目录执行，才能校验 PE x64、IID、Qt、MSVC 和 CRT。`validate --json` 输出稳定
+机器协议。若已构建 `xuanhub_plugin_contract_probe.exe`，CLI 会自动追加宿主权威的 Manifest、
+Schema、i18n 校验；没有 Qt/MSVC 时仍可做不执行插件代码的静态预检。
+
+`package` 复用 PF-09 `.xuanplugin` 安全门禁，先拒绝缓存、日志、VCS 元数据、凭据形状、
+用户绝对路径和越界文件，再生成哈希清单和可选 ECDSA P-256 签名。发布前至少运行
+`validate`、`run`、`doctor`、`package`，并在真实宿主做多 DPI、主题和语言的人工验收。
+
 ## 构建约束
 
 - Windows x64、MSVC 2022、C++17。
@@ -133,6 +155,11 @@ PluginInitResult DemoPlugin::initialize(const PluginContext2& context) {
 
 原生 DLL 与宿主同进程，设置页显示的权限是信任说明，不能阻止插件直接调用 Win32 或文件
 API；隔离 Python 插件的 HostServices 请求会强制检查实际授予权限。
+
+宿主日志统一为单行 `[Plugin:<id>] [code=<稳定错误码>] message`。面向用户的业务文字可以
+本地化，但自动化判断必须使用稳定错误码。设置页可查看启动耗时、最近成功时间、重启次数和
+最近错误，并导出仅含目标插件身份、健康信息和过滤日志的脱敏 JSON；诊断不包含 config、
+密钥库、Cookie、完整用户路径或凭据明文。
 
 插件 bar QML 根对象除 `property var plugin` 外应声明 `property var pluginContext`。
 它提供 `pluginId/apiVersion/trustLevel/declaredPermissions/grantedPermissions`、主题色、语言、

@@ -1417,7 +1417,7 @@ README.md
 
 **优先级：** P1
 **目标版本：** 持续交付
-**状态：** 进行中（阶段 B、C、D 已完成；阶段 A 共享解析器与阶段 E 待完成）
+**状态：** 已完成
 
 ### 目标
 
@@ -1503,7 +1503,7 @@ CPU/内存（可选采样）
 
 #### 阶段 A：Validator
 
-- [ ] 先实现只读 `validate`，复用宿主 Manifest/Schema/i18n 解析器。
+- [x] 先实现只读 `validate`，复用宿主 Manifest/Schema/i18n 解析器。
 - [x] 输出机器可读 JSON 和用户可读文本。
 - [x] CI 对所有内置插件执行。
 
@@ -1527,9 +1527,9 @@ CPU/内存（可选采样）
 
 #### 阶段 E：创建和打包
 
-- [ ] `create` 生成 C++/Python 模板。
-- [ ] `package` 接入 PF-09 包格式和安全门禁。
-- [ ] 文档示例全部由模板生成或验证，避免漂移。
+- [x] `create` 生成 C++/Python 模板。
+- [x] `package` 接入 PF-09 包格式和安全门禁。
+- [x] 文档示例全部由模板生成或验证，避免漂移。
 
 ### 测试与验收
 
@@ -1549,6 +1549,11 @@ CPU/内存（可选采样）
   独立测试覆盖 API Key、Bearer、密码、用户路径及跨插件日志隔离。
 - 2026-08-22：`PluginLog` 统一输出 `[Plugin:<id>] [code=<稳定码>]`，HostServices logger
   与 Python Worker 故障路径接入；旧 `[Plugin]/[PyBridge]/[PyWorker]` 日志继续可过滤。
+- 2026-08-22：`create` 原子生成可立即校验的 C++/Python 模板，`package` 复用 PF-09
+  哈希、签名和敏感信息门禁，`doctor` 检查真实 Python 依赖或原生 PE/Qt/MSVC/CRT/IID。
+- 2026-08-22：安装包与 `xuanhub_plugin_contract_probe` 复用同一 C++ Manifest、Schema、
+  i18n 校验；CLI 在 Qt 构建存在时自动追加权威复核，无 Qt 的 Python 预检路径保持可用。
+  原生 SDK 与 Python 契约中的六个命令由 CLI 单测验证，模板输出继续接受 Validator 回归。
 
 ### 风险与回滚
 
@@ -1558,10 +1563,10 @@ CPU/内存（可选采样）
 
 ### 完成定义
 
-- [ ] create/validate/test/doctor/package 最小闭环可用。
-- [ ] CI 覆盖全部内置插件。
-- [ ] 设置页健康和诊断导出可用。
-- [ ] 插件 SDK 文档中的命令都由自动化测试验证。
+- [x] create/validate/test/doctor/package 最小闭环可用。
+- [x] CI 覆盖全部内置插件。
+- [x] 设置页健康和诊断导出可用。
+- [x] 插件 SDK 文档中的命令都由自动化测试验证。
 
 ---
 

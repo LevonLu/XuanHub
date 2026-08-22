@@ -45,6 +45,35 @@ plugins_py/
 
 - 另需保留 `{ "id": "pybridge", ... }` 条目作为总开关；删掉它则所有 Python 子插件都不加载。
 
+## 开发者 CLI
+
+Python 插件不需要 Qt/MSVC 即可完成创建、静态校验、真实 Worker 生命周期测试和依赖诊断：
+
+```powershell
+python scripts/xuanhub_plugin.py create plugins_py/py_weather --runtime python --id py_weather --name "Weather"
+python scripts/xuanhub_plugin.py validate plugins_py/py_weather
+python scripts/xuanhub_plugin.py test plugins_py/py_weather
+python scripts/xuanhub_plugin.py run plugins_py/py_weather
+python scripts/xuanhub_plugin.py doctor plugins_py/py_weather
+python scripts/xuanhub_plugin.py package plugins_py/py_weather --output dist/py_weather-0.1.0.xuanplugin
+```
+
+- `create` 生成 `plugin.json/main.py/QML/i18n/README`，目标目录存在时不覆盖。
+- `validate` 不执行插件代码，检查 Manifest、路径、QML、Schema、i18n、缓存、凭据形状与
+  本机绝对路径；`--json` 可直接用于 CI。若仓库已有 Qt 构建产物，还会自动调用宿主契约
+  探针复核；无 Qt 环境不受影响。
+- `test` 通过真实 `bridge_worker.py` 验证 `init/update/invoke/set_locale/stop`；可用
+  `--repeat` 验证重启，用 `--timeout` 限制卡死插件。
+- `run` 是离屏 QML Smoke Test，可用 `--screenshot` 生成只供人工比较的图片；它不代替
+  真实状态栏的 DPI、弹窗和多屏验收。
+- `doctor` 使用目标解释器检查版本、位数、distribution、导入根和原生扩展 ABI，不联网、
+  不安装依赖、也不导入插件 `main.py`。
+- `package` 先走 Validator 和 PF-09 安全门禁，再创建 `.xuanplugin`；签名时传
+  `--signing-key <private-key.json>`，私钥不得放进插件目录或版本库。
+
+所有命令返回非零表示失败。QML 或 `main.py` 修改后仍需重启真实宿主，因为 QML 文件组件会
+在进程内缓存。
+
 ### Python 版本与包依赖
 
 需要第三方包时在 `plugin.json` 声明 `python`。旧插件省略该字段时继续按 Python 3.12+

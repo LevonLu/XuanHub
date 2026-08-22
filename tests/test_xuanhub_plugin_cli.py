@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -115,6 +116,29 @@ class ValidatorTest(unittest.TestCase):
             self.assertFalse(result["ok"])
             self.assertIn("host.contract_rejected",
                           {item["code"] for item in result["diagnostics"]})
+
+    def test_sdk_documented_commands_are_parser_backed(self) -> None:
+        expected = {"create", "validate", "test", "run", "doctor", "package"}
+        documented: set[str] = set()
+        for path in (REPOSITORY / "docs" / "plugin-sdk-v2.md",
+                     REPOSITORY / "plugins_py" / "README.md"):
+            documented.update(re.findall(
+                r"python scripts/xuanhub_plugin\.py ([a-z]+)",
+                path.read_text(encoding="utf-8-sig")))
+        self.assertEqual(documented, expected)
+
+        examples = {
+            "create": ["create", "target", "--runtime", "python",
+                       "--id", "py_target", "--name", "Target"],
+            "validate": ["validate", "target"],
+            "test": ["test", "target"],
+            "run": ["run", "target"],
+            "doctor": ["doctor", "target"],
+            "package": ["package", "target", "--output", "target.xuanplugin"],
+        }
+        parser = CLI.build_parser()
+        for command, arguments in examples.items():
+            self.assertEqual(parser.parse_args(arguments).command, command)
 
 
 class CreateTemplateTest(unittest.TestCase):
