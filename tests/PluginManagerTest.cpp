@@ -31,7 +31,15 @@ private Q_SLOTS:
 
         QVERIFY(manager.loadedPlugin(clock.id));
         const QObject* menuViewModel = manager.loadedPlugin(menu.id)->viewModel;
+        const QObject* clockViewModel = manager.loadedPlugin(clock.id)->viewModel;
         QVERIFY(menuViewModel);
+        PluginConfigEntry updatedClock = clock;
+        updatedClock.config.insert(QStringLiteral("format"), QStringLiteral("HH:mm"));
+        QCOMPARE(manager.applyConfig(updatedClock),
+                 PluginManager::ConfigApplyResult::Applied);
+        QCOMPARE(manager.loadedPlugin(clock.id)->viewModel, clockViewModel);
+        QCOMPARE(manager.applyConfig(menu),
+                 PluginManager::ConfigApplyResult::Unsupported);
         QVERIFY(manager.stopOne(clock.id));
         QVERIFY(!manager.loadedPlugin(clock.id));
         QCOMPARE(manager.loadedPlugin(menu.id)->viewModel, menuViewModel);

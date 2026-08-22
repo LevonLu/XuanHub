@@ -32,6 +32,7 @@ QHash<int, QByteArray> SysInfoViewModel::roleNames() const {
 }
 
 void SysInfoViewModel::setLayout(const QVariantList& layoutData, int itemsPerColumn) {
+    const int oldItemsPerColumn = m_itemsPerColumn;
     beginResetModel();
     m_items.clear();
     m_items.reserve(layoutData.size());
@@ -51,6 +52,7 @@ void SysInfoViewModel::setLayout(const QVariantList& layoutData, int itemsPerCol
     // itemsPerColumn 钳到合理范围（至少 1，至多项数）
     m_itemsPerColumn = qBound(1, itemsPerColumn, qMax(1, m_items.size()));
     endResetModel();
+    if (m_itemsPerColumn != oldItemsPerColumn) emit itemsPerColumnChanged();
 }
 
 void SysInfoViewModel::onMetricsChanged(double cpuPct, double memPct, double gpuPct,

@@ -4,15 +4,17 @@
 #include <QUrl>
 #include <QPointer>
 #include "barplugin/IBarPlugin.h"
+#include "barplugin/IBarPluginConfigurable.h"
 
 class SysInfoWorker;
 class SysInfoViewModel;
 class QThread;
 
-class SysInfoPlugin : public QObject, public xuanhub::IBarPlugin {
+class SysInfoPlugin : public QObject, public xuanhub::IBarPlugin,
+                      public xuanhub::IBarPluginConfigurable {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID "xuanhub.BarPlugin/1.0" FILE "metadata.json")
-    Q_INTERFACES(xuanhub::IBarPlugin)
+    Q_INTERFACES(xuanhub::IBarPlugin xuanhub::IBarPluginConfigurable)
 
 public:
     xuanhub::PluginMetadata metadata() const override;
@@ -20,6 +22,8 @@ public:
     QObject* viewModel() override;
     QUrl    qmlUrl() const override;
     void    shutdown() override;
+    QString validateConfig(const QVariantMap& config) const override;
+    bool applyConfig(const QVariantMap& config) override;
 
 private:
     QPointer<SysInfoViewModel> m_vm;

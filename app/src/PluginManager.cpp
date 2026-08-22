@@ -4,6 +4,7 @@
 #include "barplugin/EventBus.h"
 #include "barplugin/IBarPluginHost.h"
 #include "barplugin/IBarPluginHostLifecycle.h"
+#include "barplugin/IBarPluginConfigurable.h"
 #include "barplugin/PluginEventScope.h"
 
 #include <QDir>
@@ -333,6 +334,26 @@ bool PluginManager::updateLayout(const PluginConfigEntry& entry) {
         return true;
     }
     return false;
+}
+
+PluginManager::ConfigApplyResult PluginManager::applyConfig(
+    const PluginConfigEntry& entry) {
+    auto* iface = m_ifaceById.value(entry.id);
+    auto* object = dynamic_cast<QObject*>(iface);
+    auto* configurable = object
+        ? qobject_cast<xuanhub::IBarPluginConfigurable*>(object) : nullptr;
+    if (!configurable) return ConfigApplyResult::Unsupported;
+    const QString error = configurable->validateConfig(entry.config);
+    if (!error.isEmpty()) {
+        qWarning() << "[Plugin] config rejected:" << entry.id << error;
+        return ConfigApplyResult::Rejected;
+    }
+    if (!configurable->applyConfig(entry.config)) {
+        qWarning() << "[Plugin] applyConfig failed:" << entry.id;
+        return ConfigApplyResult::Rejected;
+    }
+    qDebug() << "[Plugin] config applied in place:" << entry.id;
+    return ConfigApplyResult::Applied;
 }
 
 void PluginManager::shutdownAll() {

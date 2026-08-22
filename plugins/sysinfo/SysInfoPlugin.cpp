@@ -38,6 +38,37 @@ static QVariantList defaultLayout() {
     return items;
 }
 
+static QVariantList parseLayout(const QVariantMap& config) {
+    QVariantList layout;
+    const QVariant itemsVar = config.value(QStringLiteral("items"));
+    if (itemsVar.isValid() && itemsVar.canConvert<QVariantList>()) {
+        const QVariantList arr = itemsVar.toList();
+        const auto colorOrEmpty = [](const QVariant& value) -> QString {
+            const QString color = value.toString().trimmed();
+            if (color.isEmpty()) return {};
+            if (!QColor::isValidColorName(color)) {
+                qWarning() << "[SysInfo] invalid color in config:" << color
+                           << "-> fallback to theme";
+                return {};
+            }
+            return color;
+        };
+        for (const QVariant& value : arr) {
+            const QVariantMap itemConfig = value.toMap();
+            const QString metric = itemConfig.value(QStringLiteral("metric")).toString();
+            if (metric != QStringLiteral("cpu") && metric != QStringLiteral("mem")
+                && metric != QStringLiteral("gpu") && metric != QStringLiteral("netDown")
+                && metric != QStringLiteral("netUp")) continue;
+            layout.append(QVariantMap{
+                {QStringLiteral("metric"), metric},
+                {QStringLiteral("prefix"), itemConfig.value(QStringLiteral("prefix")).toString()},
+                {QStringLiteral("color"), colorOrEmpty(itemConfig.value(QStringLiteral("color")))},
+            });
+        }
+    }
+    return layout.isEmpty() ? defaultLayout() : layout;
+}
+
 PluginMetadata SysInfoPlugin::metadata() const { return kMeta; }
 
 bool SysInfoPlugin::init(BarPluginContext* ctx) {
@@ -45,42 +76,9 @@ bool SysInfoPlugin::init(BarPluginContext* ctx) {
     // 钳制采样间隔：0 会让 worker 线程每事件循环都 tick（PDH collect + GetIfTable2）
     // 占满一个核并狂发跨线程信号；负值 QTimer 直接不启动。200ms 下限兼顾流畅与开销
     m_intervalMs = qBound(200, cfg.value(QStringLiteral("intervalMs"), 1000).toInt(), 60000);
-    const int itemsPerColumn = cfg.value(QStringLiteral("itemsPerColumn"), 1).toInt();
-
-    // 解析 items 布局（config 无则播种默认 5 项）；颜色校验非法→空串（跟随主题）
-    QVariantList layout;
-    const QVariant itemsVar = cfg.value(QStringLiteral("items"));
-    if (itemsVar.isValid() && itemsVar.canConvert<QVariantList>()) {
-        const QVariantList arr = itemsVar.toList();
-        const auto colorOrEmpty = [](const QVariant& v) -> QString {
-            const QString s = v.toString().trimmed();
-            if (s.isEmpty()) return QString();
-            if (!QColor::isValidColorName(s)) {
-                qWarning() << "[SysInfo] invalid color in config:" << s << "-> fallback to theme";
-                return QString();
-            }
-            return s;
-        };
-        for (const QVariant& v : arr) {
-            const QVariantMap m = v.toMap();
-            const QString metric = m.value(QStringLiteral("metric")).toString();
-            // metric 非法跳过（ViewModel.setLayout 也会二次校验，这里提前过滤）
-            if (metric != QStringLiteral("cpu") && metric != QStringLiteral("mem")
-                && metric != QStringLiteral("gpu")
-                && metric != QStringLiteral("netDown") && metric != QStringLiteral("netUp"))
-                continue;
-            QVariantMap item;
-            item.insert(QStringLiteral("metric"), metric);
-            item.insert(QStringLiteral("prefix"), m.value(QStringLiteral("prefix")).toString());
-            item.insert(QStringLiteral("color"), colorOrEmpty(m.value(QStringLiteral("color"))));
-            layout.append(item);
-        }
-    }
-    if (layout.isEmpty()) layout = defaultLayout();
-
     m_worker = new SysInfoWorker();
     m_vm = new SysInfoViewModel();
-    m_vm->setLayout(layout, itemsPerColumn);
+    m_vm->setLayout(parseLayout(cfg), cfg.value(QStringLiteral("itemsPerColumn"), 1).toInt());
     m_thread = new QThread();
 
     m_worker->moveToThread(m_thread.data());
@@ -94,6 +92,30 @@ bool SysInfoPlugin::init(BarPluginContext* ctx) {
     QMetaObject::invokeMethod(m_worker.data(), "start",
                               Qt::QueuedConnection,
                               Q_ARG(int, m_intervalMs));
+    return true;
+}
+
+QString SysInfoPlugin::validateConfig(const QVariantMap& config) const {
+    bool intervalOk = false;
+    config.value(QStringLiteral("intervalMs"), 1000).toInt(&intervalOk);
+    if (!intervalOk) return QStringLiteral("intervalMs must be an integer");
+    bool columnsOk = false;
+    config.value(QStringLiteral("itemsPerColumn"), 1).toInt(&columnsOk);
+    if (!columnsOk) return QStringLiteral("itemsPerColumn must be an integer");
+    return {};
+}
+
+bool SysInfoPlugin::applyConfig(const QVariantMap& config) {
+    if (!m_vm || !m_worker || !validateConfig(config).isEmpty()) return false;
+    const int interval = qBound(200,
+        config.value(QStringLiteral("intervalMs"), 1000).toInt(), 60000);
+    m_vm->setLayout(parseLayout(config),
+                    config.value(QStringLiteral("itemsPerColumn"), 1).toInt());
+    if (interval != m_intervalMs) {
+        m_intervalMs = interval;
+        QMetaObject::invokeMethod(m_worker.data(), "start", Qt::QueuedConnection,
+                                  Q_ARG(int, m_intervalMs));
+    }
     return true;
 }
 

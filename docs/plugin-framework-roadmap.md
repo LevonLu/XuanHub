@@ -357,8 +357,8 @@ unchanged
 
 #### 阶段 D：可选热配置接口
 
-- [ ] SDK V2 定义 `validateConfig/applyConfig`。
-- [ ] 内置 clock/sysinfo 迁移并验证无状态丢失。
+- [x] SDK V2 定义 `validateConfig/applyConfig`。
+- [x] 内置 clock/sysinfo 迁移并验证无状态丢失。
 - [ ] Python V2 增加 `set_config`，旧插件继续单实例重启。
 
 ### 主要修改点

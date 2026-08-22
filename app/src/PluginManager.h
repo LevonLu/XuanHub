@@ -26,6 +26,7 @@ namespace xuanhub { class IBarPluginHost; }
 class PluginManager : public QObject {
     Q_OBJECT
 public:
+    enum class ConfigApplyResult { Applied, Unsupported, Rejected };
     struct LoadedPlugin {
         QString id;
         QString position;            // left/center/right
@@ -45,6 +46,7 @@ public:
     bool stopOne(const QString& id);
     bool restartOne(const QString& pluginsDir, const PluginConfigEntry& entry);
     bool updateLayout(const PluginConfigEntry& entry);
+    ConfigApplyResult applyConfig(const PluginConfigEntry& entry);
     QStringList dependentPluginIds(const QString& id) const;
     const LoadedPlugin* loadedPlugin(const QString& id) const;
 

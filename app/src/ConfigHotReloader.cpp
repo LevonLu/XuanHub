@@ -115,11 +115,20 @@ void ConfigHotReloader::reloadImpl(bool force) {
         QHash<QString, PluginConfigEntry> nextById;
         for (const auto& entry : nextEntries) nextById.insert(entry.id, entry);
 
+        QSet<QString> restartConfigIds;
+        for (const QString& id : changes.configChanged) {
+            const auto entryIt = nextById.constFind(id);
+            if (entryIt == nextById.cend()) continue;
+            const auto result = m_pm->applyConfig(entryIt.value());
+            if (result == PluginManager::ConfigApplyResult::Unsupported)
+                restartConfigIds.insert(id);
+        }
+
         // host 被移除或重启时，其当前子插件也必须先从 QML 模型解除引用，并在
         // host 重新加载后按现配置恢复；普通目标插件不会波及任何同级实例。
         QSet<QString> stopIds;
         for (const QString& id : changes.removed) stopIds.insert(id);
-        for (const QString& id : changes.configChanged) stopIds.insert(id);
+        for (const QString& id : std::as_const(restartConfigIds)) stopIds.insert(id);
         const QStringList initialStopIds = stopIds.values();
         for (const QString& id : initialStopIds) {
             for (const QString& child : m_pm->dependentPluginIds(id)) stopIds.insert(child);
@@ -145,7 +154,7 @@ void ConfigHotReloader::reloadImpl(bool force) {
         if (incrementalSafe) {
             QSet<QString> loadIds;
             for (const QString& id : changes.added) loadIds.insert(id);
-            for (const QString& id : changes.configChanged) loadIds.insert(id);
+            for (const QString& id : std::as_const(restartConfigIds)) loadIds.insert(id);
             for (const QString& id : std::as_const(stopIds)) {
                 if (nextById.contains(id)) loadIds.insert(id);
             }

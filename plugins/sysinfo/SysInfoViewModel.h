@@ -17,7 +17,7 @@
 
 class SysInfoViewModel : public QAbstractListModel {
     Q_OBJECT
-    Q_PROPERTY(int itemsPerColumn READ itemsPerColumn CONSTANT)   // 每列显示几项（QML Grid 用）
+    Q_PROPERTY(int itemsPerColumn READ itemsPerColumn NOTIFY itemsPerColumnChanged)
 
 public:
     enum Roles {
@@ -41,6 +41,9 @@ public:
     // itemsPerColumn 为每列显示项数（决定 Grid 的行数，多余项向右另起一列）。
     // 整体替换，begin/endResetModel 驱动 QML Repeater 重建。
     void setLayout(const QVariantList& layoutData, int columns);
+
+signals:
+    void itemsPerColumnChanged();
 
     // ── 指标值接收（worker 跨线程信号，AutoConnection 排队到 GUI 线程）──
 public slots:
