@@ -251,6 +251,62 @@ private Q_SLOTS:
                      .toObject().value(QStringLiteral("value")).toString(), QStringLiteral("daily"));
     }
 
+    void schemaExtendedTypesAndRegexAreValidated() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString pluginDir = dir.filePath(QStringLiteral("plugins_py/py_schema_v2"));
+        QVERIFY(QDir().mkpath(pluginDir));
+        QFile metadata(pluginDir + QStringLiteral("/plugin.json"));
+        QVERIFY(metadata.open(QIODevice::WriteOnly));
+        metadata.write(QJsonDocument(QJsonObject{
+            {QStringLiteral("id"), QStringLiteral("py_schema_v2")},
+            {QStringLiteral("name"), QStringLiteral("Schema V2")},
+            {QStringLiteral("settings"), QJsonArray{QJsonObject{
+                {QStringLiteral("group"), QStringLiteral("常规")},
+                {QStringLiteral("fields"), QJsonArray{
+                    QJsonObject{{QStringLiteral("key"), QStringLiteral("slug")},
+                                {QStringLiteral("label"), QStringLiteral("标识")},
+                                {QStringLiteral("type"), QStringLiteral("string")},
+                                {QStringLiteral("regex"), QStringLiteral("^[a-z]+$")}},
+                    QJsonObject{{QStringLiteral("key"), QStringLiteral("mapping")},
+                                {QStringLiteral("label"), QStringLiteral("映射")},
+                                {QStringLiteral("type"), QStringLiteral("object")}},
+                    QJsonObject{{QStringLiteral("key"), QStringLiteral("items")},
+                                {QStringLiteral("label"), QStringLiteral("项目")},
+                                {QStringLiteral("type"), QStringLiteral("array")}}
+                }}
+            }}}
+        }).toJson(QJsonDocument::Compact));
+        metadata.close();
+
+        PluginConfigEntry entry;
+        entry.id = QStringLiteral("py_schema_v2");
+        entry.config = {{QStringLiteral("slug"), QStringLiteral("valid")},
+                        {QStringLiteral("mapping"), QVariantMap{{QStringLiteral("x"), 1}}},
+                        {QStringLiteral("items"), QVariantList{1, 2}}};
+        SettingsPluginModel model;
+        model.reload({entry}, {}, dir.path(), dir.filePath(QStringLiteral("config.json")));
+        QJsonArray exported;
+        QString error;
+        QVERIFY2(model.toPluginEntriesJson(&exported, &error), qPrintable(error));
+
+        QVERIFY(model.setConfigValue(entry.id, QStringLiteral("slug"), QStringLiteral("Invalid-1")));
+        QVERIFY(!model.toPluginEntriesJson(&exported, &error));
+        QVERIFY(error.contains(QStringLiteral("标识")));
+        QVERIFY(model.setConfigValue(entry.id, QStringLiteral("slug"), QStringLiteral("valid")));
+
+        QVERIFY(model.setConfigValue(entry.id, QStringLiteral("mapping"), QVariantList{1}));
+        QVERIFY(!model.toPluginEntriesJson(&exported, &error));
+        QVERIFY(error.contains(QStringLiteral("JSON 对象")));
+        QVERIFY(model.setConfigValue(entry.id, QStringLiteral("mapping"),
+                                     QVariantMap{{QStringLiteral("x"), 1}}));
+
+        QVERIFY(model.setConfigValue(entry.id, QStringLiteral("items"),
+                                     QVariantMap{{QStringLiteral("x"), 1}}));
+        QVERIFY(!model.toPluginEntriesJson(&exported, &error));
+        QVERIFY(error.contains(QStringLiteral("JSON 数组")));
+    }
+
     void pluginPermissionRolesDistinguishTrustedAndIsolatedRuntimes() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());

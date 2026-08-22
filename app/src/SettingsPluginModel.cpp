@@ -10,6 +10,7 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonDocument>
+#include <QRegularExpression>
 #include <QUuid>
 #include <QtMath>
 
@@ -154,8 +155,37 @@ bool validateField(const QJsonObject& f, const QVariant& v, QString* why) {
             *why = settingsError("不在可选值内");
             return false;
         }
+    } else if (type == QStringLiteral("string")) {
+        if (v.metaType().id() != QMetaType::QString) {
+            *why = settingsError("应为文本");
+            return false;
+        }
+        const QString pattern = f.value(QStringLiteral("regex")).toString();
+        if (!pattern.isEmpty()) {
+            const QRegularExpression expression(pattern);
+            if (!expression.isValid()) {
+                *why = settingsError("插件声明的正则表达式无效");
+                return false;
+            }
+            if (!expression.match(v.toString()).hasMatch()) {
+                *why = settingsError("格式不符合要求");
+                return false;
+            }
+        }
+    } else if (type == QStringLiteral("object")) {
+        if (v.metaType().id() != QMetaType::QVariantMap
+            && v.metaType().id() != QMetaType::QVariantHash) {
+            *why = settingsError("应为 JSON 对象");
+            return false;
+        }
+    } else if (type == QStringLiteral("array")) {
+        if (v.metaType().id() != QMetaType::QVariantList
+            && v.metaType().id() != QMetaType::QStringList) {
+            *why = settingsError("应为 JSON 数组");
+            return false;
+        }
     }
-    // string/json：任意结构化值皆可
+    // json：任意可由 QVariant 表示的 JSON 值皆可。
     return true;
 }
 

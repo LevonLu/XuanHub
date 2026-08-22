@@ -119,6 +119,8 @@
       "写入 config.json 失败（权限/磁盘，详见日志）": "Could not write config.json. Check permissions, disk space, and the log.",
       "应为 %1-%2 的整数": "Must be an integer from %1 to %2", "应为 %1-%2 的数字": "Must be a number from %1 to %2",
       "应为布尔值": "Must be a Boolean", "不是合法颜色": "Invalid color", "不在可选值内": "Not one of the allowed values",
+      "应为文本": "Must be text", "插件声明的正则表达式无效": "The plugin declares an invalid regular expression", "格式不符合要求": "The format does not meet the requirements",
+      "应为 JSON 对象": "Must be a JSON object", "应为 JSON 数组": "Must be a JSON array",
       "py_usage_hub：厂商凭据引用无效": "py_usage_hub: invalid provider credential reference",
       "py_usage_hub：无法安全保存厂商凭据": "py_usage_hub: could not securely save provider credentials",
       "py_usage_hub：无法清除已删除厂商的凭据": "py_usage_hub: could not remove credentials for a deleted provider",
