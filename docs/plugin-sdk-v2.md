@@ -161,6 +161,47 @@ bar 点击处理调用 `details.toggleFromBar()`。宿主负责逻辑坐标定�
 `openAnchored()` 可用于非 bar 点击入口，`closePopup()` 用于内容区关闭按钮。高级插件仍可
 自建 `Window`，但必须自行处理上述平台细节，也不会自动加入互斥策略。
 
+### 声明式动作
+
+插件可以在 `metadata.json` 声明由宿主菜单呈现的稳定动作 ID：
+
+```json
+"actions": [{
+  "id": "refresh",
+  "label": "立即刷新",
+  "placements": ["quickMenu", "tray", "pluginMenu"],
+  "icon": "refresh",
+  "defaultShortcut": "",
+  "checkable": false
+}]
+```
+
+`id` 在本插件内唯一；`placements` 至少包含一个合法位置。`label` 使用
+`plugin.<id>.actions` 翻译上下文。宿主在加载 DLL 前校验动作，并且只调用已声明的 ID，
+不会把 Manifest 内容当作任意 QML/C++ 函数名。
+
+原生插件的 ViewModel 按固定签名提供入口：
+
+```cpp
+Q_INVOKABLE QVariant invokeAction(const QString& actionId);
+```
+
+返回 `{"accepted": true}` 表示已接受；异步实现可同时返回 `"pending": true`。拒绝时返回
+`{"accepted": false, "errorMessage": "..."}`。宿主会补齐统一的
+`accepted/pending/errorCode/errorMessage` 结果；未声明、禁用、未实现入口和插件未加载分别使用
+稳定错误码。进程内 ViewModel 不应直接执行耗时工作，可像 `plugins/sysinfo/` 一样发信号并以
+`Qt::QueuedConnection` 投递给 worker。
+
+动态状态可由 ViewModel 暴露 `QVariantMap actionStates` 与 `actionStatesChanged()`：
+
+```json
+{"refresh": {"enabled": true}, "watch": {"enabled": true, "checked": false}}
+```
+
+未提供的动作默认启用、未勾选。插件自绘菜单可通过 QML 上下文中的
+`pluginActions.actions("pluginMenu")` 获取本地化快照，并调用
+`pluginActions.invoke(pluginId, actionId)`；读取 `pluginActions.revision` 可建立状态更新依赖。
+
 ## EventBus V2
 
 V1 `EventBus::publish/subscribe` 保持同步语义以兼容旧插件。V2 必须通过

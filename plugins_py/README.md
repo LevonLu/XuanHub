@@ -74,6 +74,41 @@ def validate_config(config):
 完整草稿；该请求不会调用 `set_config()`，拒绝或 5 秒超时时不写文件，也不改变运行态。
 尚未加载的新插件在首次 Worker `init()` 前执行同一验证；未提供此函数的旧插件继续兼容。
 
+### 声明式动作
+
+需要向玄枢快捷菜单、托盘或插件自绘菜单贡献命令时，在 `plugin.json` 声明动作：
+
+```json
+"actions": [{
+  "id": "clear_done",
+  "label": "清空已完成",
+  "placements": ["quickMenu", "tray", "pluginMenu"],
+  "icon": "clear",
+  "checkable": false
+}]
+```
+
+`id` 在插件内唯一，`placements` 只能使用 `quickMenu/tray/pluginMenu`。label 的语言包上下文
+固定为 `plugin.<id>.actions`。宿主只允许调用 Manifest 已声明的 ID；Python 仍在既有隔离
+worker 中通过 `invoke(name, args)` 接收命令，QML 不需要也不应暴露同名任意函数。
+
+`update()` 可返回动态动作状态；缺项默认启用且未勾选：
+
+```python
+def update():
+    return {
+        "actionStates": {
+            "clear_done": {"enabled": done_count > 0},
+            "watch": {"enabled": True, "checked": watching},
+        }
+    }
+```
+
+动作请求成功进入 IPC 队列时宿主统一返回 `accepted=true, pending=true`；未声明、禁用、插件未
+运行或队列拒绝会返回稳定 `errorCode`。插件自绘菜单可读取 QML 上下文
+`pluginActions.actions("pluginMenu")`，并使用 `pluginActions.invoke(pluginId, actionId)` 调用。
+完整动态示例见 `plugins_py/todo/`。
+
 ### HostServices 与权限
 
 `permissions` 使用稳定字符串声明需要的宿主能力；当前支持 `notifications`、

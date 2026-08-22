@@ -1051,10 +1051,10 @@ PluginItem {
 
 #### 阶段 B：Action 系统
 
-- [ ] 解析动作元数据并本地化 label。
-- [ ] 接入 XuanHub 快捷菜单和托盘菜单。
-- [ ] 动作可根据插件状态动态 enabled/checked。
-- [ ] Python/C++ 使用统一调用结果。
+- [x] 解析动作元数据并本地化 label。
+- [x] 接入 XuanHub 快捷菜单和托盘菜单。
+- [x] 动作可根据插件状态动态 enabled/checked。
+- [x] Python/C++ 使用统一调用结果。
 
 #### 阶段 C：响应式布局
 
@@ -1078,6 +1078,10 @@ PluginItem {
   顶部/底部展开、动态高度稳定显现、bar toggle 守卫、Esc/失焦关闭和跨插件互斥；定位测试
   覆盖负坐标副屏及 100%/150%/200% 缩放。clock、usage_hub、todo、heartrate 已迁移，
   QML 静态检查通过；taskbar 便携宿主启动验证无 QML 加载错误。
+- 2026-08-22：阶段 B 完成。V1/V2 原生插件与 Python 子插件统一从 Manifest 解析动作，
+  `PluginActionRegistry` 负责 label 本地化、placement 聚合和动态 enabled/checked；托盘与玄枢
+  快捷菜单共用受控调用入口，只接受已声明 ID。sysinfo 原生刷新和 todo Python 清理动作作为
+  双运行时示例，回归覆盖未声明、动态禁用、同步结果和异步排队结果；真实宿主启动无 QML 错误。
 
 ### 风险与回滚
 
@@ -1087,10 +1091,10 @@ PluginItem {
 
 ### 完成定义
 
-- [ ] 至少三个复杂内置弹窗迁移到 PopupHost。
-- [ ] 快捷菜单和托盘动作扩展可用。
+- [x] 至少三个复杂内置弹窗迁移到 PopupHost。
+- [x] 快捷菜单和托盘动作扩展可用。
 - [ ] 响应式布局通过多分辨率验收。
-- [ ] 插件开发示例不再需要复制弹窗定位代码。
+- [x] 插件开发示例不再需要复制弹窗定位代码。
 
 ---
 
