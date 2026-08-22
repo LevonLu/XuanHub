@@ -4,6 +4,7 @@
 #include "barplugin/ProcessReaper.h"
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QProcess>
@@ -14,6 +15,24 @@ class PyWorkerViewModelTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void normalizesUpdateInterval() {
+        PyWorkerViewModel defaults(QStringLiteral("defaults"), {}, {}, {}, {}, nullptr);
+        QCOMPARE(defaults.updateIntervalMs(), 1000);
+
+        PyWorkerViewModel minimum(QStringLiteral("minimum"), {},
+                                  {{QStringLiteral("intervalMs"), 1}}, {}, {}, nullptr);
+        QCOMPARE(minimum.updateIntervalMs(), 100);
+
+        PyWorkerViewModel maximum(QStringLiteral("maximum"), {},
+                                  {{QStringLiteral("intervalMs"), 120000}}, {}, {}, nullptr);
+        QCOMPARE(maximum.updateIntervalMs(), 60000);
+
+        PyWorkerViewModel invalid(QStringLiteral("invalid"), {},
+                                  {{QStringLiteral("intervalMs"), QStringLiteral("oops")}},
+                                  {}, {}, nullptr);
+        QCOMPARE(invalid.updateIntervalMs(), 1000);
+    }
+
     void reaperGraceTimerSurvivesEarlyWorkerExit() {
         // 两个 worker 在 750ms 宽限期内先后自行退出，覆盖曾导致热重载闪退的
         // finished/deleteLater 与 grace timer 竞态。旧实现会在这里访问悬空 QProcess。
@@ -82,6 +101,46 @@ def stop():
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("count")).toInt(), 3, 5000);
         }
         QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(stopFile), 3000);
+    }
+
+    void respectsConfiguredUpdateInterval() {
+        const QString python = qEnvironmentVariable("XUANHUB_TEST_PYTHON");
+        const QString worker = qEnvironmentVariable("XUANHUB_TEST_WORKER");
+        QVERIFY2(!python.isEmpty() && !worker.isEmpty(),
+                 "CTest must provide python executable and bridge_worker.py paths");
+
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString pluginDir = temporary.filePath(QStringLiteral("plugin"));
+        QVERIFY(QDir().mkpath(pluginDir));
+        QFile mainFile(pluginDir + QStringLiteral("/main.py"));
+        QVERIFY(mainFile.open(QIODevice::WriteOnly | QIODevice::Text));
+        QVERIFY(mainFile.write(R"PY(
+count = 0
+def update():
+    global count
+    count += 1
+    return {"count": count}
+)PY"));
+        mainFile.close();
+
+        PyWorkerViewModel viewModel(QStringLiteral("py_interval_test"), pluginDir,
+                                    {{QStringLiteral("intervalMs"), 400}},
+                                    python, worker, nullptr);
+        QVERIFY(viewModel.start());
+        QTRY_VERIFY_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("count")).toInt() >= 1,
+                                 5000);
+
+        const int firstCount = viewModel.values().value(QStringLiteral("count")).toInt();
+        QElapsedTimer elapsed;
+        elapsed.start();
+        QTest::qWait(150);
+        QCOMPARE(viewModel.values().value(QStringLiteral("count")).toInt(), firstCount);
+
+        QTRY_VERIFY_WITH_TIMEOUT(
+            viewModel.values().value(QStringLiteral("count")).toInt() > firstCount, 1200);
+        QVERIFY2(elapsed.elapsed() >= 300,
+                 "The next update ran before the configured interval elapsed");
     }
 };
 

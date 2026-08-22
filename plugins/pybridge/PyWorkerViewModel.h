@@ -28,6 +28,7 @@ public:
 
     QVariantMap values() const { return m_values; }
     bool running() const;
+    int updateIntervalMs() const { return m_updateIntervalMs; }
 
     // 启动监听端与 worker。真正的 import/init 在 worker 连接并通过令牌认证后异步进行。
     bool start();
@@ -54,7 +55,8 @@ private:
     bool sendMessage(const QJsonObject& message);
     void enqueue(Request request, bool front = false);
     void dispatchNext();
-    void scheduleUpdate(int delayMs = 0);
+    // delayMs < 0 使用插件配置的刷新周期；0 表示交互后立即刷新。
+    void scheduleUpdate(int delayMs = -1);
     void handleRequestTimeout();
     void handleProcessError();
     void handleProcessFinished(int exitCode, QProcess::ExitStatus status);
@@ -86,4 +88,5 @@ private:
     bool m_authenticated = false;
     bool m_stopping = false;
     int m_restartAttempt = 0;
+    int m_updateIntervalMs = 1000;
 };

@@ -21,6 +21,9 @@ namespace {
 constexpr quint32 kMaxMessageBytes = 4 * 1024 * 1024;
 constexpr int kStartTimeoutMs = 10000;
 constexpr int kRequestTimeoutMs = 15000;
+constexpr int kDefaultUpdateIntervalMs = 1000;
+constexpr int kMinUpdateIntervalMs = 100;
+constexpr int kMaxUpdateIntervalMs = 60000;
 
 QString processStatusText(QProcess::ExitStatus status) {
     return status == QProcess::CrashExit ? QStringLiteral("crash") : QStringLiteral("normal");
@@ -36,6 +39,12 @@ PyWorkerViewModel::PyWorkerViewModel(QString id, QString dirPath, QVariantMap cf
     , m_cfg(std::move(cfg))
     , m_pythonExe(std::move(pythonExe))
     , m_workerScript(std::move(workerScript)) {
+    bool intervalOk = false;
+    const int configuredInterval = m_cfg.value(
+        QStringLiteral("intervalMs"), kDefaultUpdateIntervalMs).toInt(&intervalOk);
+    m_updateIntervalMs = qBound(kMinUpdateIntervalMs,
+                                intervalOk ? configuredInterval : kDefaultUpdateIntervalMs,
+                                kMaxUpdateIntervalMs);
     if (bus) {
         bus->subscribe(QStringLiteral("app.locale.changed"), this,
                        "onLocaleChanged(QVariantMap)");
@@ -294,11 +303,16 @@ void PyWorkerViewModel::dispatchNext() {
 
 void PyWorkerViewModel::scheduleUpdate(int delayMs) {
     if (!m_authenticated || m_stopping) return;
-    if (delayMs <= 0) {
+    if (delayMs < 0) delayMs = m_updateIntervalMs;
+    if (delayMs == 0) {
+        // init/invoke/语言切换后需要立即刷新；取消旧周期，从这次更新完成后
+        // 重新计时，避免旧定时器随后再插入一次重复 update。
+        m_updateTimer.stop();
         enqueue({QStringLiteral("update"), {}});
         return;
     }
-    if (!m_updateTimer.isActive()) m_updateTimer.start(delayMs);
+    // 周期从上一次 update 完成后开始计算，因此慢请求不会积累追赶任务。
+    m_updateTimer.start(delayMs);
 }
 
 void PyWorkerViewModel::handleRequestTimeout() {
