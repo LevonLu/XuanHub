@@ -16,6 +16,8 @@
 
 namespace xuanhub {
 
+class PluginEventScope;
+
 class BARPLUGIN_EXPORT EventBus : public QObject {
     Q_OBJECT
 public:
@@ -31,8 +33,14 @@ Q_SIGNALS:
     void dispatched(const QString& topic, const QVariantMap& payload);
 
 private:
-    struct Sub { QPointer<QObject> receiver; QByteArray member; };
+    friend class PluginEventScope;
+    quint64 createOwnerToken();
+    void subscribeOwned(quint64 owner, const QString& topic, QObject* receiver, const char* slot);
+    void unsubscribeOwner(quint64 owner);
+
+    struct Sub { QPointer<QObject> receiver; QByteArray member; quint64 owner = 0; };
     QHash<QString, QVector<Sub>> m_subs;
+    quint64 m_nextOwnerToken = 1;
 };
 
 } // namespace xuanhub

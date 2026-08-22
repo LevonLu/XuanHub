@@ -9,6 +9,15 @@ namespace xuanhub {
 EventBus::EventBus(QObject* parent) : QObject(parent) {}
 
 void EventBus::subscribe(const QString& topic, QObject* receiver, const char* slot) {
+    subscribeOwned(0, topic, receiver, slot);
+}
+
+quint64 EventBus::createOwnerToken() {
+    return m_nextOwnerToken++;
+}
+
+void EventBus::subscribeOwned(quint64 owner, const QString& topic,
+                              QObject* receiver, const char* slot) {
     if (!receiver || !slot) return;
     m_subs[topic].removeIf([](const Sub& s) { return !s.receiver; });
     // 去重：同 receiver 同 slot 重复订阅会导致同一事件重复投递；
@@ -22,7 +31,7 @@ void EventBus::subscribe(const QString& topic, QObject* receiver, const char* sl
             return;
         }
     }
-    m_subs[topic].append({receiver, member});
+    m_subs[topic].append({receiver, member, owner});
 }
 
 void EventBus::unsubscribe(const QString& topic, QObject* receiver) {
@@ -30,6 +39,17 @@ void EventBus::unsubscribe(const QString& topic, QObject* receiver) {
     if (it == m_subs.end()) return;
     it->removeIf([receiver](const Sub& s) { return s.receiver == receiver || !s.receiver; });
     if (it->isEmpty()) m_subs.erase(it);
+}
+
+void EventBus::unsubscribeOwner(quint64 owner) {
+    if (owner == 0) return;
+    for (auto it = m_subs.begin(); it != m_subs.end();) {
+        it->removeIf([owner](const Sub& sub) {
+            return sub.owner == owner || !sub.receiver;
+        });
+        if (it->isEmpty()) it = m_subs.erase(it);
+        else ++it;
+    }
 }
 
 void EventBus::publish(const QString& topic, const QVariantMap& payload) {

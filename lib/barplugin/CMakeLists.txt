@@ -3,9 +3,11 @@
 # 避免 STATIC 链接下跨 DLL 的对象语义与 ABI 隐患（Python Bridge 阶段的前置条件）。
 add_library(barplugin SHARED
     src/EventBus.cpp
+    src/PluginEventScope.cpp
     src/ProcessReaper.cpp
     include/barplugin/EventBus.h
     include/barplugin/PluginHealth.h
+    include/barplugin/PluginEventScope.h
     include/barplugin/ProcessReaper.h
 )
 
