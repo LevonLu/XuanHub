@@ -3,6 +3,7 @@
 #include "ConfigSecretProcessor.h"
 #include "SecretStore.h"
 #include "barplugin/HostServices.h"
+#include "barplugin/ManagedPluginStore.h"
 
 #include <QColor>
 #include <QCoreApplication>
@@ -350,6 +351,18 @@ void SettingsPluginModel::reload(const QList<PluginConfigEntry>& entries,
     for (const QString& sub : pyDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot))
         mergeDiscovered(readJsonFile(pyDir.filePath(sub + QStringLiteral("/plugin.json"))),
                         QStringLiteral("python"), pyDir.absoluteFilePath(sub));
+
+    // 受管版本后合并，令当前安装版本的元数据覆盖同 id 的内置副本；运行时也按
+    // 同一优先级加载，因此设置页展示的版本、权限和 schema 与实际代码一致。
+    const QString configDirectory = QFileInfo(configPath).absolutePath();
+    for (const auto& managed : xuanhub::readManagedPluginCurrents(configDirectory)) {
+        const QString manifestName = managed.runtime == QLatin1String("native")
+            ? QStringLiteral("metadata.json") : QStringLiteral("plugin.json");
+        mergeDiscovered(readJsonFile(QDir(managed.payloadDirectory).filePath(manifestName)),
+                        managed.runtime == QLatin1String("native")
+                            ? QStringLiteral("dll") : QStringLiteral("python"),
+                        managed.payloadDirectory);
+    }
 
     endResetModel();
     m_dirty = false;

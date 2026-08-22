@@ -19,6 +19,7 @@ target_include_directories(xuanhub_config_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/lib/barplugin/include
 )
 target_link_libraries(xuanhub_config_tests PRIVATE
+    barplugin
     Qt6::Core
     Qt6::Gui
     Qt6::Test
@@ -28,6 +29,8 @@ target_link_libraries(xuanhub_config_tests PRIVATE
 # CTest 从 build/tests/Release 直接启动，不经过主程序的 windeployqt；把最小 Qt
 # 运行时放到测试 exe 同目录，避免开发机 PATH 偶然包含 Qt 才能跑的假绿测试。
 add_custom_command(TARGET xuanhub_config_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:barplugin>" "$<TARGET_FILE_DIR:xuanhub_config_tests>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:Qt6::Core>" "$<TARGET_FILE_DIR:xuanhub_config_tests>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different

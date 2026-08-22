@@ -35,6 +35,7 @@ public slots:
     // "click:x,y"（窗口本地坐标，先移真光标再投 Qt 鼠标事件，含 hover/焦点语义）
     // 或 "kp_<text>"（向当前焦点项投按键，如 kp_x / kp_enter）。
     Q_INVOKABLE void devUiEvent(const QString& spec);
+    Q_INVOKABLE QString choosePluginPackage();
 
 private:
     ConfigService* m_config;

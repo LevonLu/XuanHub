@@ -4,6 +4,8 @@
 #include "ConfigService.h"
 #include "PluginListModel.h"
 #include "PluginManager.h"
+#include "PluginPackageStore.h"
+#include "PluginPackageValidator.h"
 #include "SettingsPluginModel.h"
 #include "SettingsPluginProxy.h"
 #include "SettingsPluginSortModel.h"
@@ -15,11 +17,29 @@
 #include <QDebug>
 #include <QCoreApplication>
 #include <QDir>
+#include <QEvent>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSet>
+
+#include <utility>
+
+namespace {
+QVariantMap packageStoreResult(const PluginPackageStoreResult& result) {
+    return {
+        {QStringLiteral("ok"), result.ok},
+        {QStringLiteral("rolledBack"), result.rolledBack},
+        {QStringLiteral("cleanupPending"), result.cleanupPending},
+        {QStringLiteral("error"), result.error},
+        {QStringLiteral("id"), result.id},
+        {QStringLiteral("version"), result.version},
+        {QStringLiteral("previousVersion"), result.previousVersion},
+        {QStringLiteral("payloadDirectory"), result.payloadDirectory},
+    };
+}
+} // namespace
 
 SettingsViewModel::SettingsViewModel(ConfigService* config, ThemeRegistry* registry,
                                      ThemeManager* themeMgr, LocaleManager* locale,
@@ -119,6 +139,205 @@ bool SettingsViewModel::acceptPluginMigration(const QString& id) {
     return m_pluginModel->acceptMigration(id);
 }
 
+QVariantMap SettingsViewModel::inspectPluginPackage(const QString& packagePath) const {
+    const PluginPackageValidationResult package =
+        PluginPackageValidator::validateAndExtract(packagePath);
+    if (!package.ok) {
+        return {
+            {QStringLiteral("ok"), false},
+            {QStringLiteral("error"), package.error},
+            {QStringLiteral("path"), packagePath},
+        };
+    }
+    const QString configDirectory = QFileInfo(m_config->activePath()).absolutePath();
+    const ManagedPluginVersion current =
+        PluginPackageStore(configDirectory).current(package.descriptor.id);
+    return {
+        {QStringLiteral("ok"), true},
+        {QStringLiteral("path"), packagePath},
+        {QStringLiteral("id"), package.descriptor.id},
+        {QStringLiteral("name"), package.descriptor.displayName},
+        {QStringLiteral("version"), package.descriptor.version},
+        {QStringLiteral("runtime"), package.runtime},
+        {QStringLiteral("publisher"), package.publisher},
+        {QStringLiteral("packageHash"), package.packageHash},
+        {QStringLiteral("declaredPermissions"), package.declaredPermissions},
+        {QStringLiteral("grantedPermissions"), package.grantedPermissions},
+        {QStringLiteral("unsupportedPermissions"), package.unsupportedPermissions},
+        {QStringLiteral("fileCount"), package.files.size()},
+        {QStringLiteral("currentVersion"), current.version},
+        {QStringLiteral("isUpdate"), !current.version.isEmpty()},
+    };
+}
+
+QVariantMap SettingsViewModel::managedPluginInfo(const QString& id) const {
+    const QString configDirectory = QFileInfo(m_config->activePath()).absolutePath();
+    const ManagedPluginVersion current = PluginPackageStore(configDirectory).current(id);
+    if (current.id.isEmpty()) return {{QStringLiteral("managed"), false}};
+    QVariantMap result = current.installRecord.toVariantMap();
+    result.insert(QStringLiteral("managed"), true);
+    result.insert(QStringLiteral("id"), current.id);
+    result.insert(QStringLiteral("version"), current.version);
+    result.insert(QStringLiteral("previousVersion"), current.previousVersion);
+    result.insert(QStringLiteral("rollbackAvailable"),
+                  !current.previousVersion.isEmpty());
+    return result;
+}
+
+bool SettingsViewModel::stopManagedPlugin(const QString& id,
+                                          QStringList* affectedIds,
+                                          QString* error) {
+    if (!m_pluginManager || !affectedIds) return false;
+    *affectedIds = m_pluginManager->dependentPluginIds(id);
+    if (!affectedIds->contains(id)) affectedIds->prepend(id);
+    if (m_barPlugins) {
+        for (const QString& affected : std::as_const(*affectedIds))
+            m_barPlugins->removePlugin(affected);
+        // Loader delegate 的销毁可能走 DeferredDelete；DLL 卸载前必须让 QML
+        // 放开 viewModel/pluginContext，避免受管版本切换时留下模块引用。
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    }
+    if (m_pluginManager->stopOne(id)) return true;
+    if (m_barPlugins) {
+        m_barPlugins->setPlugins(m_pluginManager->loaded());
+        m_barPlugins->setLoadErrors(m_pluginManager->loadErrors());
+    }
+    if (error) {
+        *error = m_pluginManager->loadError(id);
+        if (error->isEmpty()) *error = QStringLiteral("cannot stop active plugin");
+    }
+    return false;
+}
+
+bool SettingsViewModel::startManagedPlugin(const QString& id,
+                                           const QStringList& affectedIds,
+                                           QString* error) {
+    if (!m_pluginManager) return false;
+    const QList<PluginConfigEntry> entries = m_config->pluginEntries();
+    auto findEntry = [&entries](const QString& target, PluginConfigEntry* out) {
+        for (const PluginConfigEntry& entry : entries) {
+            if (entry.id != target) continue;
+            if (out) *out = entry;
+            return true;
+        }
+        return false;
+    };
+    PluginConfigEntry rootEntry;
+    if (!findEntry(id, &rootEntry)) {
+        if (error) *error = QStringLiteral("active plugin has no config entry");
+        return false;
+    }
+    const QString pluginsDirectory =
+        QDir(m_exeDir).filePath(QStringLiteral("plugins"));
+    bool loaded = m_pluginManager->loadOne(pluginsDirectory, rootEntry);
+    if (loaded) {
+        for (const QString& affected : affectedIds) {
+            if (affected == id || m_pluginManager->isLoaded(affected)) continue;
+            PluginConfigEntry childEntry;
+            if (!findEntry(affected, &childEntry)
+                || !m_pluginManager->loadOne(pluginsDirectory, childEntry)) {
+                loaded = false;
+                if (error) *error = m_pluginManager->loadError(affected);
+                break;
+            }
+        }
+    }
+    if (!loaded) {
+        // 新版本可能只启动了一部分 host/子插件；回滚切指针前先恢复为彻底停止态。
+        if (m_pluginManager->isLoaded(id)) m_pluginManager->stopOne(id);
+        if (error && error->isEmpty()) {
+            *error = m_pluginManager->loadError(id);
+            if (error->isEmpty()) *error = QStringLiteral("cannot start switched plugin");
+        }
+        return false;
+    }
+    if (m_barPlugins) {
+        for (const QString& affected : affectedIds) {
+            const auto* plugin = m_pluginManager->loadedPlugin(affected);
+            if (plugin) m_barPlugins->replacePlugin(*plugin);
+        }
+        m_barPlugins->setLoadErrors(m_pluginManager->loadErrors());
+    }
+    return true;
+}
+
+QVariantMap SettingsViewModel::installPluginPackage(const QString& packagePath) {
+    if (m_pluginModel->isDirty()) {
+        const QString error = QCoreApplication::translate(
+            "xuanhub.settings.errors", "请先保存或放弃插件设置草稿，再管理插件包");
+        setErrorMessage(error);
+        return {{QStringLiteral("ok"), false}, {QStringLiteral("error"), error}};
+    }
+    QStringList affectedIds;
+    PluginPackageStore::ActivationHooks hooks;
+    hooks.isActive = [this](const QString& id) {
+        return m_pluginManager && m_pluginManager->isLoaded(id);
+    };
+    hooks.stop = [this, &affectedIds](const QString& id, QString* error) {
+        return stopManagedPlugin(id, &affectedIds, error);
+    };
+    hooks.start = [this, &affectedIds](const QString& id, QString* error) {
+        return startManagedPlugin(id, affectedIds, error);
+    };
+    PluginPackageStore store(QFileInfo(m_config->activePath()).absolutePath());
+    const PluginPackageStoreResult result = store.install(packagePath, hooks);
+    reloadPluginCatalog();
+    setErrorMessage(result.ok ? QString() : result.error);
+    return packageStoreResult(result);
+}
+
+QVariantMap SettingsViewModel::rollbackPluginPackage(const QString& id) {
+    if (m_pluginModel->isDirty()) {
+        const QString error = QCoreApplication::translate(
+            "xuanhub.settings.errors", "请先保存或放弃插件设置草稿，再管理插件包");
+        setErrorMessage(error);
+        return {{QStringLiteral("ok"), false}, {QStringLiteral("error"), error}};
+    }
+    QStringList affectedIds;
+    PluginPackageStore::ActivationHooks hooks;
+    hooks.isActive = [this](const QString& target) {
+        return m_pluginManager && m_pluginManager->isLoaded(target);
+    };
+    hooks.stop = [this, &affectedIds](const QString& target, QString* error) {
+        return stopManagedPlugin(target, &affectedIds, error);
+    };
+    hooks.start = [this, &affectedIds](const QString& target, QString* error) {
+        return startManagedPlugin(target, affectedIds, error);
+    };
+    PluginPackageStore store(QFileInfo(m_config->activePath()).absolutePath());
+    const PluginPackageStoreResult result = store.rollback(id, hooks);
+    reloadPluginCatalog();
+    setErrorMessage(result.ok ? QString() : result.error);
+    return packageStoreResult(result);
+}
+
+QVariantMap SettingsViewModel::uninstallPluginPackage(const QString& id,
+                                                       bool deleteUserData) {
+    if (m_pluginModel->isDirty()) {
+        const QString error = QCoreApplication::translate(
+            "xuanhub.settings.errors", "请先保存或放弃插件设置草稿，再管理插件包");
+        setErrorMessage(error);
+        return {{QStringLiteral("ok"), false}, {QStringLiteral("error"), error}};
+    }
+    QStringList affectedIds;
+    PluginPackageStore::ActivationHooks hooks;
+    hooks.isActive = [this](const QString& target) {
+        return m_pluginManager && m_pluginManager->isLoaded(target);
+    };
+    hooks.stop = [this, &affectedIds](const QString& target, QString* error) {
+        return stopManagedPlugin(target, &affectedIds, error);
+    };
+    hooks.start = [this, &affectedIds](const QString& target, QString* error) {
+        return startManagedPlugin(target, affectedIds, error);
+    };
+    PluginPackageStore store(QFileInfo(m_config->activePath()).absolutePath());
+    const PluginPackageStoreResult result =
+        store.uninstall(id, deleteUserData, hooks);
+    reloadPluginCatalog();
+    setErrorMessage(result.ok ? QString() : result.error);
+    return packageStoreResult(result);
+}
+
 QStringList SettingsViewModel::themePackNames() const {
     return m_registry ? m_registry->packNames() : QStringList{};
 }
@@ -189,6 +408,20 @@ void SettingsViewModel::reloadThemePacks() {
     emit themePacksReloaded();
 }
 
+void SettingsViewModel::reloadPluginCatalog() {
+    m_pluginModel->reload(m_config->pluginEntries(),
+                          m_config->rawConfig().value(QStringLiteral("plugins")).toArray(),
+                          m_exeDir, m_config->activePath());
+    if (!m_pluginManager) return;
+    for (const PluginConfigEntry& entry : m_config->pluginEntries()) {
+        const auto* suggestion = m_pluginManager->migrationSuggestion(entry.id);
+        if (!suggestion) continue;
+        m_pluginModel->setMigrationSuggestion(
+            entry.id, suggestion->targetVersion,
+            suggestion->config, suggestion->error);
+    }
+}
+
 void SettingsViewModel::reloadFromConfig() {
     setBarHeight(m_config->barHeight());
     // config 存 0.0-1.0 qreal，UI 用 0-100 int（四舍五入）
@@ -202,18 +435,7 @@ void SettingsViewModel::reloadFromConfig() {
     setThemeId(m_themeMgr ? m_themeMgr->themeId() : m_config->themeId());
     setAutoStart(autostart::isEnabled());
     setLanguage(m_config->language());
-    m_pluginModel->reload(m_config->pluginEntries(),
-                          m_config->rawConfig().value(QStringLiteral("plugins")).toArray(),
-                          m_exeDir, m_config->activePath());
-    if (m_pluginManager) {
-        for (const PluginConfigEntry& entry : m_config->pluginEntries()) {
-            const auto* suggestion = m_pluginManager->migrationSuggestion(entry.id);
-            if (!suggestion) continue;
-            m_pluginModel->setMigrationSuggestion(
-                entry.id, suggestion->targetVersion,
-                suggestion->config, suggestion->error);
-        }
-    }
+    reloadPluginCatalog();
     // 快照配置指纹：窗口打开期间的草稿以此为底，apply 前据此判定外部改动
     m_openFingerprint = currentFingerprint();
     setErrorMessage({});

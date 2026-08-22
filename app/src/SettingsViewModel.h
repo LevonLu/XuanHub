@@ -82,6 +82,12 @@ public:
     Q_INVOKABLE QVariantMap pluginDependencyPlan(const QString& id) const;
     Q_INVOKABLE bool installPluginDependencies(const QString& id);
     Q_INVOKABLE bool acceptPluginMigration(const QString& id);
+    Q_INVOKABLE QVariantMap inspectPluginPackage(const QString& packagePath) const;
+    Q_INVOKABLE QVariantMap installPluginPackage(const QString& packagePath);
+    Q_INVOKABLE QVariantMap managedPluginInfo(const QString& id) const;
+    Q_INVOKABLE QVariantMap rollbackPluginPackage(const QString& id);
+    Q_INVOKABLE QVariantMap uninstallPluginPackage(const QString& id,
+                                                   bool deleteUserData = false);
 
 signals:
     void barHeightChanged();
@@ -104,6 +110,11 @@ private:
     // 序列化为紧凑字符串。打开窗口时快照进 m_openFingerprint，apply 前重算比对，
     // 不一致说明窗口打开期间配置被外部改动（草稿是旧快照，保存会静默覆盖外部改动）
     QString currentFingerprint() const;
+    void reloadPluginCatalog();
+    bool stopManagedPlugin(const QString& id, QStringList* affectedIds,
+                           QString* error);
+    bool startManagedPlugin(const QString& id, const QStringList& affectedIds,
+                            QString* error);
 
     ConfigService* m_config;
     ThemeRegistry* m_registry;

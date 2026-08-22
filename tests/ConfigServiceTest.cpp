@@ -22,6 +22,13 @@ bool writeJson(const QString& directory, const QJsonDocument& doc) {
     return file.write(doc.toJson(QJsonDocument::Compact)) >= 0;
 }
 
+bool writeJsonObject(const QString& path, const QJsonObject& object) {
+    if (!QDir().mkpath(QFileInfo(path).absolutePath())) return false;
+    QFile file(path);
+    return file.open(QIODevice::WriteOnly | QIODevice::Truncate)
+        && file.write(QJsonDocument(object).toJson(QJsonDocument::Compact)) > 0;
+}
+
 QJsonObject configWithPlugins(const QJsonArray& plugins, int height = 48) {
     return {
         {QStringLiteral("bar"), QJsonObject{{QStringLiteral("height"), height}}},
@@ -42,6 +49,77 @@ class ConfigServiceTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void managedPluginCatalogOverridesBuiltInMetadata() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QVERIFY(writeJson(dir.path(), QJsonDocument(configWithPlugins({}))));
+
+        const QJsonObject builtIn{
+            {QStringLiteral("id"), QStringLiteral("demo")},
+            {QStringLiteral("name"), QStringLiteral("Built-in")},
+            {QStringLiteral("version"), QStringLiteral("1.0.0")},
+        };
+        QVERIFY(writeJsonObject(
+            dir.filePath(QStringLiteral("plugins/demo/metadata.json")), builtIn));
+
+        const QString nativeVersion = dir.filePath(
+            QStringLiteral("plugin-store/demo/versions/2.0.0"));
+        QVERIFY(writeJsonObject(
+            dir.filePath(QStringLiteral("plugin-store/demo/current.json")),
+            {{QStringLiteral("schemaVersion"), 1},
+             {QStringLiteral("version"), QStringLiteral("2.0.0")}}));
+        QVERIFY(writeJsonObject(QDir(nativeVersion).filePath(QStringLiteral("install.json")),
+            {{QStringLiteral("schemaVersion"), 1},
+             {QStringLiteral("id"), QStringLiteral("demo")},
+             {QStringLiteral("version"), QStringLiteral("2.0.0")},
+             {QStringLiteral("runtime"), QStringLiteral("native")}}));
+        QVERIFY(writeJsonObject(
+            QDir(nativeVersion).filePath(QStringLiteral("payload/metadata.json")),
+            {{QStringLiteral("id"), QStringLiteral("demo")},
+             {QStringLiteral("name"), QStringLiteral("Managed")},
+             {QStringLiteral("version"), QStringLiteral("2.0.0")},
+             {QStringLiteral("apiVersion"), 2}}));
+
+        const QString pythonVersion = dir.filePath(
+            QStringLiteral("plugin-store/py_managed/versions/3.0.0"));
+        QVERIFY(writeJsonObject(
+            dir.filePath(QStringLiteral("plugin-store/py_managed/current.json")),
+            {{QStringLiteral("schemaVersion"), 1},
+             {QStringLiteral("version"), QStringLiteral("3.0.0")}}));
+        QVERIFY(writeJsonObject(QDir(pythonVersion).filePath(QStringLiteral("install.json")),
+            {{QStringLiteral("schemaVersion"), 1},
+             {QStringLiteral("id"), QStringLiteral("py_managed")},
+             {QStringLiteral("version"), QStringLiteral("3.0.0")},
+             {QStringLiteral("runtime"), QStringLiteral("python")}}));
+        QVERIFY(writeJsonObject(
+            QDir(pythonVersion).filePath(QStringLiteral("payload/plugin.json")),
+            {{QStringLiteral("id"), QStringLiteral("py_managed")},
+             {QStringLiteral("name"), QStringLiteral("Managed Python")},
+             {QStringLiteral("version"), QStringLiteral("3.0.0")}}));
+
+        SettingsPluginModel model;
+        model.reload({}, {}, dir.path(), dir.filePath(QStringLiteral("config.json")));
+        auto rowFor = [&model](const QString& id) {
+            for (int row = 0; row < model.rowCount(); ++row) {
+                if (model.data(model.index(row), SettingsPluginModel::IdRole).toString() == id)
+                    return row;
+            }
+            return -1;
+        };
+        const int nativeRow = rowFor(QStringLiteral("demo"));
+        QVERIFY(nativeRow >= 0);
+        QCOMPARE(model.data(model.index(nativeRow), SettingsPluginModel::VersionRole).toString(),
+                 QStringLiteral("2.0.0"));
+        QCOMPARE(model.data(model.index(nativeRow), SettingsPluginModel::NameRole).toString(),
+                 QStringLiteral("Managed"));
+        const int pythonRow = rowFor(QStringLiteral("py_managed"));
+        QVERIFY(pythonRow >= 0);
+        QCOMPARE(model.data(model.index(pythonRow), SettingsPluginModel::KindRole).toString(),
+                 QStringLiteral("python"));
+        QCOMPARE(model.data(model.index(pythonRow), SettingsPluginModel::VersionRole).toString(),
+                 QStringLiteral("3.0.0"));
+    }
+
     void pluginConfigVersionDefaultsAndIsPreservedBySettingsDraft() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());

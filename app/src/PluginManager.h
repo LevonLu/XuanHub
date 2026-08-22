@@ -85,6 +85,7 @@ public:
     ConfigApplyResult applyConfig(const PluginConfigEntry& entry);
     QStringList dependentPluginIds(const QString& id) const;
     const LoadedPlugin* loadedPlugin(const QString& id) const;
+    bool isLoaded(const QString& id) const { return m_loadedIds.contains(id); }
     QString loadError(const QString& id) const { return m_loadErrors.value(id); }
     const QHash<QString, QString>& loadErrors() const { return m_loadErrors; }
     const ConfigMigrationSuggestion* migrationSuggestion(const QString& id) const;

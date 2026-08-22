@@ -9,6 +9,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QFileDialog>
 #include <QGuiApplication>
 #include <QKeySequence>
 #include <QQuickItem>
@@ -107,6 +108,15 @@ void SettingsController::openForPlugin(QVariantMap payload) {
                                    Q_ARG(QVariant, QVariant(pluginId)))) {
         qWarning() << "[Settings] selectPlugin entry missing for" << pluginId;
     }
+}
+
+QString SettingsController::choosePluginPackage() {
+    return QFileDialog::getOpenFileName(
+        nullptr,
+        QCoreApplication::translate("xuanhub.settings", "选择玄枢插件包"),
+        {},
+        QCoreApplication::translate(
+            "xuanhub.settings", "玄枢插件包 (*.xuanplugin)"));
 }
 
 namespace {
