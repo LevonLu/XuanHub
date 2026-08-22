@@ -339,6 +339,8 @@ if(Python_Interpreter_FOUND)
         ${CMAKE_SOURCE_DIR}/app/src/PluginHostServices.cpp
         ${CMAKE_SOURCE_DIR}/app/src/PluginContextObject.h
         ${CMAKE_SOURCE_DIR}/app/src/PluginContextObject.cpp
+        ${CMAKE_SOURCE_DIR}/app/src/PluginActionRegistry.h
+        ${CMAKE_SOURCE_DIR}/app/src/PluginActionRegistry.cpp
         ${CMAKE_SOURCE_DIR}/app/src/SecretStore.h
         ${CMAKE_SOURCE_DIR}/app/src/SecretStore.cpp
         ${CMAKE_SOURCE_DIR}/app/src/PluginDependencyGraph.h

@@ -50,6 +50,8 @@ qt_add_executable(XuanHub WIN32
     src/PluginContextObject.cpp
     src/PopupService.h
     src/PopupService.cpp
+    src/PluginActionRegistry.h
+    src/PluginActionRegistry.cpp
     src/PluginDependencyGraph.h
     src/PluginDependencyGraph.cpp
 

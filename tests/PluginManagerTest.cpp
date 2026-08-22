@@ -1,5 +1,6 @@
 // PluginManagerTest.cpp — 原生与 host 子插件单实例生命周期回归测试
 #include "ConfigService.h"
+#include "PluginActionRegistry.h"
 #include "PluginManager.h"
 #include "barplugin/EventBus.h"
 
@@ -263,6 +264,12 @@ private Q_SLOTS:
         QCOMPARE(manager.loadedPlugin(pluginId)->actions.size(), 1);
         QCOMPARE(manager.loadedPlugin(pluginId)->actions.first().id,
                  QStringLiteral("refresh"));
+        PluginActionRegistry actions(&manager, nullptr);
+        const QVariantList quickActions = actions.actions(QStringLiteral("quickMenu"));
+        QCOMPARE(quickActions.size(), 1);
+        QCOMPARE(quickActions.first().toMap().value(QStringLiteral("actionId")).toString(),
+                 QStringLiteral("refresh"));
+        QVERIFY(quickActions.first().toMap().value(QStringLiteral("enabled")).toBool());
         QTRY_VERIFY_WITH_TIMEOUT(manager.migrationSuggestion(pluginId), 5000);
         const auto* suggestion = manager.migrationSuggestion(pluginId);
         QVERIFY(suggestion->ready());
@@ -279,6 +286,9 @@ private Q_SLOTS:
         QVERIFY(rejected.supported);
         QVERIFY(!rejected.valid);
         QVERIFY(!rejected.error.isEmpty());
+        const QVariantMap invoked = actions.invoke(pluginId, QStringLiteral("refresh"));
+        QVERIFY(invoked.value(QStringLiteral("accepted")).toBool());
+        QVERIFY(invoked.value(QStringLiteral("pending")).toBool());
         manager.shutdownAll();
     }
 };
