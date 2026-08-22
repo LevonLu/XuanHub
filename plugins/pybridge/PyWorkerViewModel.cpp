@@ -199,6 +199,14 @@ bool PyWorkerViewModel::restart() {
     return start();
 }
 
+bool PyWorkerViewModel::applyConfig(const QVariantMap& config) {
+    if (!m_authenticated || !m_supportsHotConfig || m_stopping) return false;
+    enqueue({QStringLiteral("set_config"), {
+        {QStringLiteral("config"), QJsonObject::fromVariantMap(config)}
+    }});
+    return true;
+}
+
 void PyWorkerViewModel::acceptConnection() {
     if (!m_server) return;
     while (m_server->hasPendingConnections()) {
@@ -278,6 +286,7 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
         return;
     }
     const QString op = m_inFlight.op;
+    const QJsonObject requestData = m_inFlight.data;
     m_inFlight = {};
     m_inFlightId = 0;
     m_requestTimer.stop();
@@ -291,6 +300,20 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
             failWorker(QStringLiteral("worker failed during plugin initialization"), false);
             return;
         }
+    } else if (op == QLatin1String("init")) {
+        const QJsonArray capabilities = message.value(QStringLiteral("result"))
+                                            .toObject()
+                                            .value(QStringLiteral("capabilities"))
+                                            .toArray();
+        m_supportsHotConfig = capabilities.contains(QStringLiteral("set_config"));
+    } else if (op == QLatin1String("set_config")) {
+        m_cfg = requestData.value(QStringLiteral("config")).toObject().toVariantMap();
+        bool intervalOk = false;
+        const int configuredInterval = m_cfg.value(
+            QStringLiteral("intervalMs"), kDefaultUpdateIntervalMs).toInt(&intervalOk);
+        m_updateIntervalMs = qBound(kMinUpdateIntervalMs,
+                                    intervalOk ? configuredInterval : kDefaultUpdateIntervalMs,
+                                    kMaxUpdateIntervalMs);
     } else if (op == QLatin1String("update")) {
         const QJsonValue result = message.value(QStringLiteral("result"));
         if (!result.isObject()) {
@@ -308,7 +331,8 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
     }
 
     if (op == QLatin1String("init") || op == QLatin1String("invoke")
-        || op == QLatin1String("set_locale")) scheduleUpdate(0);
+        || op == QLatin1String("set_locale") || op == QLatin1String("set_config"))
+        scheduleUpdate(0);
     if (op == QLatin1String("update")) scheduleUpdate();
     dispatchNext();
 }
@@ -403,6 +427,7 @@ void PyWorkerViewModel::failWorker(const QString& reason, bool retry) {
     m_requestTimer.stop();
     m_updateTimer.stop();
     m_authenticated = false;
+    m_supportsHotConfig = false;
     m_queue.clear();
     m_inFlight = {};
     m_inFlightId = 0;
@@ -490,6 +515,7 @@ void PyWorkerViewModel::stopWorker() {
     m_startTimer.stop();
     m_requestTimer.stop();
     m_updateTimer.stop();
+    m_supportsHotConfig = false;
     m_queue.clear();
     if (m_socket) {
         QTcpSocket* socket = m_socket;

@@ -5,6 +5,7 @@
 #include "barplugin/IBarPluginHost.h"
 #include "barplugin/IBarPluginHostLifecycle.h"
 #include "barplugin/IBarPluginConfigurable.h"
+#include "barplugin/IBarPluginHostConfigurable.h"
 #include "barplugin/PluginEventScope.h"
 
 #include <QDir>
@@ -338,6 +339,22 @@ bool PluginManager::updateLayout(const PluginConfigEntry& entry) {
 
 PluginManager::ConfigApplyResult PluginManager::applyConfig(
     const PluginConfigEntry& entry) {
+    const QString hostId = m_subPluginHostId.value(entry.id);
+    if (!hostId.isEmpty()) {
+        auto* hostIface = m_ifaceById.value(hostId);
+        auto* hostObject = dynamic_cast<QObject*>(hostIface);
+        auto* configurable = hostObject
+            ? qobject_cast<xuanhub::IBarPluginHostConfigurable*>(hostObject) : nullptr;
+        if (!configurable || !configurable->canApplySubPluginConfig(entry.id))
+            return ConfigApplyResult::Unsupported;
+        if (!configurable->applySubPluginConfig(entry.id, entry.config)) {
+            qWarning() << "[Plugin] host applySubPluginConfig failed:"
+                       << hostId << entry.id;
+            return ConfigApplyResult::Rejected;
+        }
+        qDebug() << "[Plugin] hosted config applied in place:" << entry.id;
+        return ConfigApplyResult::Applied;
+    }
     auto* iface = m_ifaceById.value(entry.id);
     auto* object = dynamic_cast<QObject*>(iface);
     auto* configurable = object

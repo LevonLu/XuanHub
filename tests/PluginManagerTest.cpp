@@ -40,6 +40,9 @@ private Q_SLOTS:
         QCOMPARE(manager.loadedPlugin(clock.id)->viewModel, clockViewModel);
         QCOMPARE(manager.applyConfig(menu),
                  PluginManager::ConfigApplyResult::Unsupported);
+        const PluginConfigEntry missing = entry(QStringLiteral("missing_plugin"));
+        QVERIFY(!manager.loadOne(pluginsDir, missing));
+        QCOMPARE(manager.loadedPlugin(menu.id)->viewModel, menuViewModel);
         QVERIFY(manager.stopOne(clock.id));
         QVERIFY(!manager.loadedPlugin(clock.id));
         QCOMPARE(manager.loadedPlugin(menu.id)->viewModel, menuViewModel);
@@ -66,6 +69,17 @@ private Q_SLOTS:
 
         QVERIFY2(manager.loadedPlugin(child.id), "py_hello failed to start in test runtime");
         const QObject* clockViewModel = manager.loadedPlugin(clock.id)->viewModel;
+        const QObject* childViewModel = manager.loadedPlugin(child.id)->viewModel;
+        PluginConfigEntry updatedChild = child;
+        updatedChild.config.insert(QStringLiteral("prefix"), QStringLiteral("hot"));
+        QTRY_VERIFY_WITH_TIMEOUT(
+            manager.applyConfig(updatedChild) == PluginManager::ConfigApplyResult::Applied,
+            5000);
+        QTRY_VERIFY_WITH_TIMEOUT(
+            childViewModel->property("values").toMap().value(QStringLiteral("text"))
+                .toString().startsWith(QStringLiteral("hot")),
+            5000);
+        QCOMPARE(manager.loadedPlugin(child.id)->viewModel, childViewModel);
         QVERIFY(manager.stopOne(child.id));
         QVERIFY(!manager.loadedPlugin(child.id));
         QCOMPARE(manager.loadedPlugin(clock.id)->viewModel, clockViewModel);

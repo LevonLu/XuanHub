@@ -137,7 +137,10 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
                         if not isinstance(locale, str):
                             raise ValueError("init locale must be a string")
                         module = _load_plugin(plugin_dir, plugin_id, config, locale)
-                        result: Any = {"ready": True}
+                        capabilities = []
+                        if hasattr(module, "set_config"):
+                            capabilities.append("set_config")
+                        result: Any = {"ready": True, "capabilities": capabilities}
                     elif module is None:
                         raise RuntimeError("worker is not initialized")
                     elif op == "update":
@@ -156,6 +159,14 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
                             raise ValueError("locale must be a string")
                         if hasattr(module, "set_locale"):
                             module.set_locale(locale)
+                        result = None
+                    elif op == "set_config":
+                        config = data.get("config", {})
+                        if not isinstance(config, dict):
+                            raise ValueError("set_config config must be an object")
+                        if not hasattr(module, "set_config"):
+                            raise RuntimeError("plugin does not support set_config")
+                        module.set_config(config)
                         result = None
                     elif op == "stop":
                         _stop_plugin(module)

@@ -7,14 +7,17 @@
 #include "barplugin/IBarPlugin.h"
 #include "barplugin/IBarPluginHost.h"
 #include "barplugin/IBarPluginHostLifecycle.h"
+#include "barplugin/IBarPluginHostConfigurable.h"
 
 class PyBridgePlugin : public QObject, public xuanhub::IBarPlugin,
                        public xuanhub::IBarPluginHost,
-                       public xuanhub::IBarPluginHostLifecycle {
+                       public xuanhub::IBarPluginHostLifecycle,
+                       public xuanhub::IBarPluginHostConfigurable {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID "xuanhub.BarPlugin/1.0" FILE "metadata.json")
     Q_INTERFACES(xuanhub::IBarPlugin xuanhub::IBarPluginHost
-                 xuanhub::IBarPluginHostLifecycle)
+                 xuanhub::IBarPluginHostLifecycle
+                 xuanhub::IBarPluginHostConfigurable)
 public:
     // IBarPlugin
     xuanhub::PluginMetadata metadata() const override;
@@ -27,6 +30,8 @@ public:
     QStringList subPluginIds() override;
     xuanhub::SubPluginInfo createSubPlugin(const QString& id, const QVariantMap& cfg) override;
     bool destroySubPlugin(const QString& id) override;
+    bool canApplySubPluginConfig(const QString& id) const override;
+    bool applySubPluginConfig(const QString& id, const QVariantMap& config) override;
 
 private:
     xuanhub::BarPluginContext m_ctx;   // 拷贝保存（init 传入的 ctx 是核心栈上对象）

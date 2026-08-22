@@ -104,7 +104,7 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 ### Python 子插件（pybridge）
 
 - 目录契约：`<exeDir>/plugins_py/<name>/plugin.json + main.py + X.qml`；开发契约全文见 `plugins_py/README.md`。
-- `main.py` 约定不变：`update() -> dict`（必需）、`init(config)`、`invoke(name, args)`、`stop()`（可选）。每个子插件拥有独立解释器进程；`update/invoke` 都经异步 IPC 串行执行，QML 的 `plugin.call()` 只能表示请求是否入队，不能依赖 Python 返回值。
+- `main.py` 约定：`update() -> dict`（必需）、`init(config)`、`set_config(config)`、`invoke(name, args)`、`stop()`（后四项可选）。每个子插件拥有独立解释器进程；`update/invoke/set_config` 都经异步 IPC 串行执行，QML 的 `plugin.call()` 只能表示请求是否入队，不能依赖 Python 返回值。worker 在 `init` 响应中声明 `set_config` 能力；实现者原地热更新并保留模块状态，旧插件只重启自身。
 - worker 只连随机端口的 `127.0.0.1`，先以一次性 256-bit token 认证，再收取 `init` 配置；API Key 等敏感 config 不放进 worker 命令行。协议用 4 字节长度前缀 JSON，单包上限 4 MiB、请求超时 15 秒。`config.intervalMs` 缺省 1000ms 并钳制到 100–60000ms，下一次刷新从上次完成后计时，不积压 `update`。崩溃/超时仅重启本插件 worker，UI 保留旧值；10 分钟内连续 5 次 Worker/IPC 故障后熔断，设置页可观察健康指标并手动清除熔断、只重启目标插件。
 - 卸载时代理先断开 IPC，worker 在 EOF 的 `finally` 中尽力调用 `stop()`；宽限后由常驻 `barplugin` 的 `ProcessReaper` 终止并兜底 kill。**不可**在 pybridge DLL 留下异步 lambda 回调给已卸载对象，必须交给 `ProcessReaper`。
 - 标准库定位顺序：exe 旁 Bundle（`python.exe` + `Lib/`）→ 用户 `PYTHONHOME` → cache 变量 `XUANHUB_PYTHON_HOME_FALLBACK` → 注册表 `PythonCore` → `py -3` → PATH。全部未命中时 `subPluginIds()` 返回空并经 EventBus `app.notify` 托盘提示。调试钩子 `XUANHUB_DISABLE_PYTHON=1` 强制停用；检测结果仍存 qApp 动态属性以跨 pybridge 热重载保持。
@@ -147,7 +147,7 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 
 **工作模式**：`bar.mode` = `appbar`（默认）/ `taskbar`。taskbar 选型：`SetParent` 嵌入 `Shell_TrayWnd` 是业界验证方案（TrafficMonitor 等；Deskband 已被 Win11 移除、顶层透明叠加有 z-order 缺陷，均未采用）。`TaskbarEmbed` 把 BarWindow `SetParent` 到 `Shell_TrayWnd`（强制 `WS_CHILD`、保留 `WS_EX_NOACTIVATE`），贴合任务栏左侧（`bar.taskbarOffsetX` 微调），高度跟随任务栏、背景全透明、宽度收缩为内容宽；500ms 轮询矫正位置与 z-order。explorer 重启时经 `TaskbarCreated` 与 `taskbarVanished` 双路触发 `recreateForTaskbar()` 重新嵌入（`TaskbarCreated` 是广播、进程内每个顶层窗口都收到，`TaskbarMonitor` 去重后顺延到事件循环只重建一次，不在消息分发栈内同步 destroy/create）。切换方式：改 config 热重载 / 托盘勾选项 / 设置窗口。
 
-**热重载**：保存 config.json 自动生效（`QFileSystemWatcher` + 300ms 防抖，重命名式保存后自动重挂；文件缺失期退而监视父目录，永不失挂）。`reload()` 顺序：`load()`（解析失败保留旧配置；**运行中文件丢失同样保留当前设置**——qrc 播种仅限首运行从未成功加载过时）→ theme 按文件覆盖 → `setupBar()` 重协商 → plugins 段指纹比对：**未变则跳过插件重载**（改主题/高度不再摧毁插件状态），变了才 `shutdownAll() → loadFrom() → setPlugins()` 全量重载（同一槽函数内完成，QML 不会碰到悬空 viewModel）。托盘 "重新加载配置" 走 `forceReload()` 无条件全量（插件 DLL 更新后用它）。
+**热重载**：保存 config.json 自动生效（`QFileSystemWatcher` + 300ms 防抖，重命名式保存后自动重挂；文件缺失期退而监视父目录，永不失挂）。`reload()` 顺序：`load()`（解析失败保留旧配置；**运行中文件丢失同样保留当前设置**——qrc 播种仅限首运行从未成功加载过时）→ theme 按文件覆盖 → 按插件 ID 计算差异。`position/order/width` 只增量更新模型，C++ `IBarPluginConfigurable` 与 Python `set_config` 支持原地应用配置，V1 插件只停止并重建目标实例；新增/删除也只处理目标 ID，失败不回滚或重启其他插件。旧第三方 host 无法独立销毁子插件时回退全量重载。操作 QML/DLL 的顺序始终是先从模型解除目标引用并处理 DeferredDelete，再 shutdown/unload。托盘 "重新加载配置" 走 `forceReload()` 无条件全量，作为 DLL 更新和灾难恢复入口。
 
 **写回与设置窗口**：`ConfigService::save()` 用 QSaveFile 原子写，只改已知键、未知键不丢。设置窗口（托盘 "设置..." → `SettingsController` 懒建 + `SettingsWindow.qml`）只做一件事：校验后写 config.json，**生效全靠 watcher，不直接调 reload**。插件列表来自 config ∪ sidecar 元数据并集；`pybridge` 总开关保存时自动托管。**草稿过期保护**：打开窗口时快照配置指纹（bar 已知键 + plugins 数组原文，紧凑 JSON），apply 前重算比对，不一致（窗口打开期间被热重载/手动编辑改动）拒绝保存并提示重开窗口，防旧草稿静默覆盖外部改动；保存成功后更新指纹。插件条目草稿行内存原始 QJsonObject，导出以其为底只覆盖已知键（条目级手写未知键不丢）。开机自启逻辑在 `AutoStart.h`。设置窗口把 `themeManager.colors` 灌进根 `palette.*` 驱动全部自绘控件（`Ui*.qml` 只引用 palette）；**Popup/ComboBox 下拉是独立顶层窗口，palette 继承在窗口边界断裂**——弹出层内必须用主窗口控件的 `control.palette`（用 delegate 自身 `item.palette` 会回落系统 palette，深色模式下深文字配深背景，实测踩过）。
 

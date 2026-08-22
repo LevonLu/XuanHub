@@ -289,3 +289,14 @@ bool PyBridgePlugin::destroySubPlugin(const QString& id) {
     qDebug() << "[PyBridge] destroyed sub-plugin:" << id;
     return true;
 }
+
+bool PyBridgePlugin::canApplySubPluginConfig(const QString& id) const {
+    const auto* viewModel = qobject_cast<PyWorkerViewModel*>(m_vms.value(id));
+    return viewModel && viewModel->supportsHotConfig();
+}
+
+bool PyBridgePlugin::applySubPluginConfig(const QString& id,
+                                          const QVariantMap& config) {
+    auto* viewModel = qobject_cast<PyWorkerViewModel*>(m_vms.value(id));
+    return viewModel && viewModel->applyConfig(config);
+}

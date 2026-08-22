@@ -46,6 +46,10 @@ class BridgeWorkerTests(unittest.TestCase):
             "def set_locale(locale):\n"
             "    state['locale'] = locale\n"
         )
+        config_callback = "" if self._testMethodName == "test_missing_set_locale_is_compatible" else (
+            "def set_config(config):\n"
+            "    state['prefix'] = config.get('prefix', '')\n"
+        )
         (self.plugin_dir / "main.py").write_text(
             "import os\n"
             "state = {'count': 0, 'prefix': '', 'locale': 'unset'}\n"
@@ -56,7 +60,7 @@ class BridgeWorkerTests(unittest.TestCase):
             "def invoke(name, args):\n"
             "    if name == 'bump': state['count'] += int(args[0])\n"
             "    return state['count']\n"
-            + locale_callback +
+            + locale_callback + config_callback +
             "def stop():\n"
             "    open(os.environ['XUANHUB_TEST_STOP_FILE'], 'w', encoding='utf-8').write('stopped')\n",
             encoding="utf-8",
@@ -108,12 +112,15 @@ class BridgeWorkerTests(unittest.TestCase):
 
     def test_init_update_invoke_and_stop(self) -> None:
         self.assertEqual(self.request("init", {"config": {"prefix": "worker"}, "locale": "en-US"}),
-                         {"type": "response", "id": "1", "ok": True, "result": {"ready": True}})
+                         {"type": "response", "id": "1", "ok": True,
+                          "result": {"ready": True, "capabilities": ["set_config"]}})
         self.assertEqual(self.request("update", {}),
                          {"type": "response", "id": "2", "ok": True,
                           "result": {"count": 0, "prefix": "worker", "locale": "en-US"}})
         self.assertTrue(self.request("set_locale", {"locale": "zh-CN"})["ok"])
         self.assertEqual(self.request("update", {})["result"]["locale"], "zh-CN")
+        self.assertTrue(self.request("set_config", {"config": {"prefix": "hot"}})["ok"])
+        self.assertEqual(self.request("update", {})["result"]["prefix"], "hot")
         self.assertEqual(self.request("invoke", {"name": "bump", "args": [3]})["result"], 3)
         self.assertEqual(self.request("update", {})["result"]["count"], 3)
         self.assertTrue(self.request("stop", {})["ok"])
@@ -122,7 +129,9 @@ class BridgeWorkerTests(unittest.TestCase):
         self.assertEqual(self.stop_file.read_text(encoding="utf-8"), "stopped")
 
     def test_missing_set_locale_is_compatible(self) -> None:
-        self.assertTrue(self.request("init", {"config": {}, "locale": "en-US"})["ok"])
+        initialized = self.request("init", {"config": {}, "locale": "en-US"})
+        self.assertTrue(initialized["ok"])
+        self.assertEqual(initialized["result"]["capabilities"], [])
         self.assertTrue(self.request("set_locale", {"locale": "zh-CN"})["ok"])
         self.assertEqual(self.request("update", {})["result"]["locale"], "unset")
         self.assertTrue(self.request("stop", {})["ok"])

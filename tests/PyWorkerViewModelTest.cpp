@@ -121,6 +121,8 @@ def init(config):
     state["stopFile"] = config.get("stopFile", "")
 def set_locale(locale):
     state["locale"] = locale
+def set_config(config):
+    state["prefix"] = config.get("prefix", "")
 def update():
     return {"count": state["count"], "prefix": state["prefix"], "locale": state["locale"]}
 def invoke(name, args):
@@ -143,6 +145,15 @@ def stop():
                                       QStringLiteral("isolated"), 5000);
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("locale")).toString(),
                                       QStringLiteral("en-US"), 5000);
+            QTRY_VERIFY_WITH_TIMEOUT(viewModel.supportsHotConfig(), 5000);
+            QVERIFY(viewModel.applyConfig({
+                {QStringLiteral("prefix"), QStringLiteral("hot")},
+                {QStringLiteral("stopFile"), stopFile},
+                {QStringLiteral("intervalMs"), 250},
+            }));
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("prefix")).toString(),
+                                      QStringLiteral("hot"), 5000);
+            QCOMPARE(viewModel.updateIntervalMs(), 250);
             bus.publish(QStringLiteral("app.locale.changed"),
                         {{QStringLiteral("locale"), QStringLiteral("zh-CN")}});
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("locale")).toString(),

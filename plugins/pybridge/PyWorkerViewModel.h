@@ -39,6 +39,7 @@ public:
     bool circuitOpen() const { return m_circuitOpen; }
     int consecutiveFailures() const { return m_failureTimesMs.size(); }
     int updateIntervalMs() const { return m_updateIntervalMs; }
+    bool supportsHotConfig() const { return m_supportsHotConfig; }
     QVariantMap health() const;
 
     // 启动监听端与 worker。真正的 import/init 在 worker 连接并通过令牌认证后异步进行。
@@ -48,6 +49,7 @@ public:
     Q_INVOKABLE QVariant call(const QString& name, const QVariantList& args);
     // 只重建当前插件的 worker；同时解除熔断，供设置页和插件错误界面手动恢复。
     Q_INVOKABLE bool restart();
+    bool applyConfig(const QVariantMap& config);
 
 public slots:
     void onLocaleChanged(QVariantMap payload);
@@ -110,6 +112,7 @@ private:
     bool m_authenticated = false;
     bool m_stopping = false;
     bool m_circuitOpen = false;
+    bool m_supportsHotConfig = false;
     QQueue<qint64> m_failureTimesMs;
     xuanhub::PluginHealth m_health;
     int m_restartAttempt = 0;

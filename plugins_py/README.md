@@ -89,6 +89,7 @@ plugins_py/
 
 ```python
 def init(config):    # 可选。注入 config.json 里本子插件的 config 段（dict）
+def set_config(config): # 可选。运行中应用新 config；未实现时框架只重启本插件
 def set_locale(locale): # 可选。init 后及运行中切换语言时收到 zh-CN / en-US
 def update():        # 必需。每个 tick 调用，返回 dict → 原样填入 QML 的 plugin.values
 def invoke(name, args):  # 可选。QML 里 plugin.call(name, args) 的入口
@@ -104,6 +105,8 @@ def stop():          # 可选。卸载/热重载前调用，用来停后台线�
 - 抛异常不会拖垮宿主：traceback 记入日志，UI 保留上一次的值。
 - Worker/IPC 在 10 分钟内连续失败 5 次会进入熔断状态并停止自动重启；用户可在设置页查看
   最近错误、重启次数和队列深度，并只重启本插件。手动重启会清除熔断计数，其他插件不受影响。
+- 实现 `set_config(config)` 后，设置保存会在同一 worker 内串行调用它并立即刷新数据，进程、
+  模块级缓存和连接保持不变；未实现的旧插件继续采用“只重启本插件”的兼容路径。
 - 固定界面文字应由 QML 通过 `qsTranslate("plugin.<id>.<page>", "中文源码")` 翻译；
   Python 后端返回状态码和动态明细。完整语言包、上下文隔离与回退规则见
   `docs/i18n.md`。

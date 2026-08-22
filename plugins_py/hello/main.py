@@ -9,6 +9,11 @@ _count = 0
 
 def init(config):
     """注入 config.json 中本子插件的 config 段（dict）。"""
+    set_config(config)
+
+
+def set_config(config):
+    """运行中原地应用新配置；未实现此函数的旧插件会由宿主单独重启。"""
     global _config
     _config = dict(config or {})
 
