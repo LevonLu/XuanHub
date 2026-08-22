@@ -22,6 +22,8 @@ from typing import Any
 MAX_MESSAGE_BYTES = 4 * 1024 * 1024
 MAX_DEPTH = 32
 MAX_SAFE_INTEGER = (1 << 53) - 1  # Qt JSON 数字落到 double；超过此范围转字符串保真。
+PROTOCOL_VERSION = 2
+PROTOCOL_CAPABILITIES = ["requestResponseV1", "hostServicesV1", "eventBusV2"]
 
 
 class HostServices:
@@ -300,7 +302,13 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
             sock.settimeout(None)
             host_services = HostServices(sock)
             event_bus = EventBusServices(sock)
-            _send(sock, {"type": "hello", "token": token})
+            _send(sock, {
+                "type": "hello",
+                "token": token,
+                "protocol": PROTOCOL_VERSION,
+                "pluginId": plugin_id,
+                "capabilities": PROTOCOL_CAPABILITIES,
+            })
             while True:
                 request = _recv(sock)
                 if request.get("type") == "event_bus_event":

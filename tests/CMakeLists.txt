@@ -336,6 +336,8 @@ if(Python_Interpreter_FOUND)
         PyWorkerViewModelTest.cpp
         ${CMAKE_SOURCE_DIR}/plugins/pybridge/PyWorkerViewModel.h
         ${CMAKE_SOURCE_DIR}/plugins/pybridge/PyWorkerViewModel.cpp
+        ${CMAKE_SOURCE_DIR}/plugins/pybridge/PyBridgeProtocol.h
+        ${CMAKE_SOURCE_DIR}/plugins/pybridge/PyBridgeProtocol.cpp
         ${CMAKE_SOURCE_DIR}/app/src/PluginHostServices.h
         ${CMAKE_SOURCE_DIR}/app/src/PluginHostServices.cpp
         ${CMAKE_SOURCE_DIR}/app/src/SecretStore.h

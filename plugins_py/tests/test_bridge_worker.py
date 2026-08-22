@@ -125,7 +125,13 @@ class BridgeWorkerTests(unittest.TestCase):
         )
         self.socket, _ = self.server.accept()
         self.socket.settimeout(5)
-        self.assertEqual(recv_frame(self.socket), {"type": "hello", "token": self.token})
+        self.assertEqual(recv_frame(self.socket), {
+            "type": "hello",
+            "token": self.token,
+            "protocol": 2,
+            "pluginId": "py_demo",
+            "capabilities": ["requestResponseV1", "hostServicesV1", "eventBusV2"],
+        })
         self.request_id = 0
         self.host_requests: list[dict] = []
         self.event_requests: list[dict] = []

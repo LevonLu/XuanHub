@@ -6,13 +6,10 @@
 #include <QDebug>
 #include <QEventLoop>
 #include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonParseError>
 #include <QProcessEnvironment>
 #include <QRandomGenerator>
 #include <QTcpServer>
 #include <QTcpSocket>
-#include <QtEndian>
 
 #include <algorithm>
 #include <utility>
@@ -24,7 +21,6 @@
 #include "barplugin/PluginEventScope.h"
 
 namespace {
-constexpr quint32 kMaxMessageBytes = 4 * 1024 * 1024;
 constexpr int kStartTimeoutMs = 10000;
 constexpr int kRequestTimeoutMs = 15000;
 constexpr int kDefaultUpdateIntervalMs = 1000;
@@ -114,6 +110,8 @@ QVariantMap PyWorkerViewModel::health() const {
         {QStringLiteral("consecutiveFailures"), consecutiveFailures()},
         {QStringLiteral("loadDurationMs"), m_health.loadDurationMs},
         {QStringLiteral("queueDepth"), m_queue.size() + (m_inFlightId != 0 ? 1 : 0)},
+        {QStringLiteral("protocolVersion"), m_protocolVersion},
+        {QStringLiteral("protocolCapabilities"), m_protocolCapabilities},
     };
 }
 
@@ -134,7 +132,9 @@ bool PyWorkerViewModel::start() {
     m_server = server;
     m_token = nextToken();
     m_authenticated = false;
-    m_readBuffer.clear();
+    m_frameCodec.clear();
+    m_protocolVersion = 0;
+    m_protocolCapabilities.clear();
     m_queue.clear();
     m_eventQueue.clear();
     m_eventRequestIds.clear();
@@ -280,34 +280,30 @@ void PyWorkerViewModel::acceptConnection() {
 
 void PyWorkerViewModel::readMessages() {
     if (!m_socket) return;
-    m_readBuffer += m_socket->readAll();
-    while (m_readBuffer.size() >= static_cast<int>(sizeof(quint32))) {
-        const auto* bytes = reinterpret_cast<const uchar*>(m_readBuffer.constData());
-        const quint32 size = qFromBigEndian<quint32>(bytes);
-        if (size > kMaxMessageBytes) {
-            failWorker(QStringLiteral("worker IPC message exceeds limit"), false);
+    m_frameCodec.append(m_socket->readAll());
+    while (true) {
+        QJsonObject message;
+        QString error;
+        const auto result = m_frameCodec.takeNext(&message, &error);
+        if (result == xuanhub::pybridge::DecodeResult::NeedMore) return;
+        if (result == xuanhub::pybridge::DecodeResult::Error) {
+            failWorker(QStringLiteral("worker IPC frame rejected: %1").arg(error), false);
             return;
         }
-        const int frameSize = static_cast<int>(sizeof(quint32) + size);
-        if (m_readBuffer.size() < frameSize) return;
-        const QByteArray payload = m_readBuffer.mid(sizeof(quint32), size);
-        m_readBuffer.remove(0, frameSize);
-        QJsonParseError error{};
-        const QJsonDocument document = QJsonDocument::fromJson(payload, &error);
-        if (error.error != QJsonParseError::NoError || !document.isObject()) {
-            failWorker(QStringLiteral("worker IPC returned invalid JSON"), false);
-            return;
-        }
-        handleMessage(document.object());
+        handleMessage(message);
+        if (!m_socket) return;
     }
 }
 
 void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
     if (!m_authenticated) {
-        if (message.value(QStringLiteral("type")).toString() != QLatin1String("hello")
-            || message.value(QStringLiteral("token")).toString() != m_token) {
+        xuanhub::pybridge::WorkerHello hello;
+        QString helloError;
+        if (!xuanhub::pybridge::parseWorkerHello(
+                message, m_token, m_id, &hello, &helloError)) {
             // 端口只绑定 loopback，但仍拒绝意外本机连接；真正 worker 仍可在超时前接入。
-            qWarning() << "[PyBridge]" << m_id << ": rejected unauthenticated worker connection";
+            qWarning() << "[PyBridge]" << m_id
+                       << ": rejected worker hello:" << helloError;
             if (m_socket) {
                 QTcpSocket* socket = m_socket;
                 m_socket = nullptr;
@@ -316,6 +312,8 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
             }
             return;
         }
+        m_protocolVersion = hello.protocolVersion;
+        m_protocolCapabilities = hello.capabilities;
         m_authenticated = true;
         m_startTimer.stop();
         if (m_server) m_server->close();
@@ -324,8 +322,15 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
             {QStringLiteral("config"), QJsonObject::fromVariantMap(m_cfg)},
             {QStringLiteral("configVersion"), m_configVersion},
             {QStringLiteral("targetConfigVersion"), m_targetConfigVersion},
-            {QStringLiteral("locale"), m_locale}
+            {QStringLiteral("locale"), m_locale},
+            {QStringLiteral("protocol"), m_protocolVersion},
+            {QStringLiteral("hostCapabilities"), QJsonArray{
+                QStringLiteral("requestResponseV1"),
+                QStringLiteral("hostServicesV1"),
+                QStringLiteral("eventBusV2")}}
         }});
+        qDebug() << "[PyBridge]" << m_id << ": protocol" << m_protocolVersion
+                 << "capabilities=" << m_protocolCapabilities;
         return;
     }
 
@@ -648,12 +653,12 @@ void PyWorkerViewModel::handleHostServiceRequest(const QJsonObject& message) {
 
 bool PyWorkerViewModel::sendMessage(const QJsonObject& message) {
     if (!m_socket || m_socket->state() != QAbstractSocket::ConnectedState) return false;
-    const QByteArray payload = QJsonDocument(message).toJson(QJsonDocument::Compact);
-    if (payload.size() > static_cast<int>(kMaxMessageBytes)) return false;
-    QByteArray frame(sizeof(quint32), Qt::Uninitialized);
-    qToBigEndian<quint32>(static_cast<quint32>(payload.size()),
-                          reinterpret_cast<uchar*>(frame.data()));
-    frame += payload;
+    QString error;
+    const QByteArray frame = xuanhub::pybridge::FrameCodec::encode(message, &error);
+    if (frame.isEmpty()) {
+        qWarning() << "[PyBridge]" << m_id << ": cannot encode IPC frame:" << error;
+        return false;
+    }
     return m_socket->write(frame) == frame.size();
 }
 

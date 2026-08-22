@@ -163,6 +163,10 @@ def stop():
                                         python, worker, &bus);
             QVERIFY(viewModel.start());
             QTRY_VERIFY_WITH_TIMEOUT(viewModel.running(), 5000);
+            QCOMPARE(viewModel.protocolVersion(), 2);
+            QVERIFY(viewModel.protocolCapabilities().contains(
+                QStringLiteral("requestResponseV1")));
+            QCOMPARE(viewModel.health().value(QStringLiteral("protocolVersion")).toInt(), 2);
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("prefix")).toString(),
                                       QStringLiteral("isolated"), 5000);
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("locale")).toString(),

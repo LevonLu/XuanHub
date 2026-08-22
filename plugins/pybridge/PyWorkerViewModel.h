@@ -14,6 +14,7 @@
 #include <QTimer>
 #include <QVariantMap>
 
+#include "PyBridgeProtocol.h"
 #include "barplugin/IBarPluginHostConfigValidation.h"
 #include "barplugin/PluginHealth.h"
 
@@ -47,6 +48,8 @@ public:
     int updateIntervalMs() const { return m_updateIntervalMs; }
     bool supportsHotConfig() const { return m_supportsHotConfig; }
     bool supportsConfigValidation() const { return m_supportsConfigValidation; }
+    int protocolVersion() const { return m_protocolVersion; }
+    QStringList protocolCapabilities() const { return m_protocolCapabilities; }
     QVariantMap health() const;
 
     // 启动监听端与 worker。真正的 import/init 在 worker 连接并通过令牌认证后异步进行。
@@ -129,7 +132,7 @@ private:
     QTimer m_requestTimer;
     QTimer m_updateTimer;
     QElapsedTimer m_failureClock;
-    QByteArray m_readBuffer;
+    xuanhub::pybridge::FrameCodec m_frameCodec;
     QQueue<Request> m_queue;
     QQueue<QJsonObject> m_eventQueue;
     QHash<QString, QString> m_eventRequestIds; // EventBus request id -> Worker request id
@@ -144,6 +147,8 @@ private:
     bool m_circuitOpen = false;
     bool m_supportsHotConfig = false;
     bool m_supportsConfigValidation = false;
+    int m_protocolVersion = 0;
+    QStringList m_protocolCapabilities;
     bool m_validationWaiting = false;
     QQueue<qint64> m_failureTimesMs;
     xuanhub::PluginHealth m_health;
