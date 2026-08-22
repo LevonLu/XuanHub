@@ -1,6 +1,7 @@
 // BarPluginContext.h — 框架在 init 时注入给插件的能力包
 #pragma once
 #include <QString>
+#include <QHash>
 #include <QVariantMap>
 
 namespace xuanhub {
@@ -12,6 +13,7 @@ struct BarPluginContext {
     QString     configDir;            // %APPDATA%/XuanHub
     QVariantMap pluginConfig;         // config.json 里本插件那一段
     PluginEventScope* eventScope = nullptr; // 宿主拥有；shutdown 前关闭并清除订阅
+    QHash<QString, QString> dependencyVersions; // 已满足且已加载的依赖 ID → 版本
 };
 
 } // namespace xuanhub

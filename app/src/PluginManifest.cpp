@@ -279,11 +279,20 @@ PluginManifestResult PluginManifest::load(
         const QJsonObject entry = entryValue.toObject();
         if (!requiredString(entry, QStringLiteral("backend"),
                             &descriptor.entry.backend, &error)
-            || !requiredString(entry, QStringLiteral("qml"),
+            || !optionalString(entry, QStringLiteral("qml"),
                                &descriptor.entry.qml, &error)
             || !optionalString(entry, QStringLiteral("settingsQml"),
                                &descriptor.entry.settingsQml, &error)) {
             return failed(error);
+        }
+        const bool hasBarItem = descriptor.capabilities.contains(QStringLiteral("barItem"));
+        if (hasBarItem && descriptor.entry.qml.isEmpty())
+            return failed(QStringLiteral("barItem capability requires entry.qml"));
+        if (!hasBarItem && !descriptor.entry.qml.isEmpty())
+            return failed(QStringLiteral("entry.qml requires barItem capability"));
+        if (!descriptor.entry.settingsQml.isEmpty()
+            && !descriptor.capabilities.contains(QStringLiteral("settings"))) {
+            return failed(QStringLiteral("entry.settingsQml requires settings capability"));
         }
         if (QFileInfo(descriptor.entry.backend).fileName()
             .compare(discoveredBackend, Qt::CaseInsensitive) != 0) {

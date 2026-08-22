@@ -34,8 +34,9 @@ public:
         value.apiVersion = 2;
         return value;
     }
-    xuanhub::PluginInitResult initialize(const xuanhub::PluginContext2&) override {
+    xuanhub::PluginInitResult initialize(const xuanhub::PluginContext2& context) override {
         initialized = true;
+        dependencyAvailable = context.hasDependency(QStringLiteral("base"));
         return xuanhub::PluginInitResult::succeeded();
     }
     xuanhub::PluginConfigValidationResult validateConfig(
@@ -52,6 +53,7 @@ public:
     void shutdown() override { stopped = true; }
     bool initialized = false;
     bool stopped = false;
+    bool dependencyAvailable = false;
 };
 
 class PluginRuntimeTest final : public QObject {
@@ -80,7 +82,10 @@ private Q_SLOTS:
         QVERIFY2(runtime, qPrintable(error));
         QVERIFY(runtime->isV2());
         QVERIFY(runtime->descriptorMatches(plugin.descriptor(), &error));
-        QVERIFY(runtime->initialize(nullptr, &error));
+        xuanhub::BarPluginContext context;
+        context.dependencyVersions.insert(QStringLiteral("base"), QStringLiteral("1.0.0"));
+        QVERIFY(runtime->initialize(&context, &error));
+        QVERIFY(plugin.dependencyAvailable);
         QCOMPARE(runtime->applyConfig({}).status,
                  PluginRuntime::ApplyStatus::Applied);
         QCOMPARE(runtime->applyConfig({{QStringLiteral("reject"), true}}).status,

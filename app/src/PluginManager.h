@@ -17,6 +17,7 @@
 
 #include "barplugin/IBarPlugin.h"
 #include "barplugin/PluginHealth.h"
+#include "barplugin/PluginDescriptor.h"
 
 struct PluginConfigEntry;
 namespace xuanhub { class EventBus; }
@@ -31,6 +32,7 @@ public:
     struct LoadedPlugin {
         QString id;
         int apiVersion = 1;          // SDK 接口版本，host 子插件暂按 V1 契约
+        QStringList capabilities;
         QString position;            // left/center/right
         int order = 0;
         int width = 0;               // 插件宽度（像素，0=跟随内容自适应）
@@ -68,10 +70,12 @@ private:
     // host 插件（IBarPluginHost，如 pybridge）：shutdownAll 时最后 shutdown，
     // 其子插件 VM 依赖 host 持有的运行时（如 CPython 解释器）
     QVector<PluginRuntime*> m_hosts;
+    QVector<PluginRuntime*> m_services; // 无 barItem 能力的 V2 后台插件
     std::vector<std::unique_ptr<PluginRuntime>> m_runtimes;
     std::vector<std::unique_ptr<xuanhub::PluginEventScope>> m_eventScopes;
     QHash<QString, QPluginLoader*> m_loaderById;             // 原生插件/host id → loader
     QHash<QString, PluginRuntime*> m_runtimeById;            // 原生插件/host id → V1/V2 适配
+    QHash<QString, xuanhub::PluginDescriptor> m_descriptorById; // 已加载依赖与能力快照
     QHash<QString, xuanhub::IBarPluginHost*> m_hostById;     // host id → host 接口
     QHash<QString, QString> m_subPluginHostId;               // 子插件 id → host id
     QHash<QString, xuanhub::PluginEventScope*> m_scopeById;  // 原生插件/host id → 作用域

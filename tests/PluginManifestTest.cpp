@@ -30,6 +30,7 @@ QJsonObject validV2Manifest() {
         {QStringLiteral("apiVersion"), 2},
         {QStringLiteral("minHostVersion"), QStringLiteral("0.3.0")},
         {QStringLiteral("maxHostVersion"), QStringLiteral("0.x")},
+        {QStringLiteral("capabilities"), QJsonArray{QStringLiteral("barItem")}},
         {QStringLiteral("entry"), QJsonObject{
             {QStringLiteral("backend"), QStringLiteral("demo.dll")},
             {QStringLiteral("qml"), QStringLiteral("Demo.qml")}}},

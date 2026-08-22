@@ -26,6 +26,7 @@ public:
         QmlUrlRole,
         ViewModelRole,
         WidthRole,
+        CapabilitiesRole,
         HealthStateRole,
         LastErrorRole,
         LastErrorAtRole,
@@ -72,6 +73,7 @@ private:
         QUrl qmlUrl;
         QObject* vm = nullptr;
         int width = 0;
+        QStringList capabilities;
         xuanhub::PluginHealth health;
     };
 

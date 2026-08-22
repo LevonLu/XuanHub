@@ -36,6 +36,7 @@ QVariant PluginListModel::data(const QModelIndex& index, int role) const {
         case QmlUrlRole:   return it.qmlUrl;
         case ViewModelRole:return QVariant::fromValue(it.vm);
         case WidthRole:    return it.width;
+        case CapabilitiesRole: return it.capabilities;
         case HealthStateRole:        return xuanhub::pluginStateKey(it.health.state);
         case LastErrorRole:          return it.health.lastError;
         case LastErrorAtRole:        return it.health.lastErrorAt;
@@ -56,6 +57,7 @@ QHash<int, QByteArray> PluginListModel::roleNames() const {
         { QmlUrlRole,    "qmlUrl" },
         { ViewModelRole, "viewModel" },
         { WidthRole,     "width" },
+        { CapabilitiesRole, "capabilities" },
         { HealthStateRole,         "healthState" },
         { LastErrorRole,           "lastError" },
         { LastErrorAtRole,         "lastErrorAt" },
@@ -155,6 +157,7 @@ PluginListModel::Item PluginListModel::fromLoaded(
     item.qmlUrl = loaded.qmlUrl;
     item.vm = loaded.viewModel;
     item.width = loaded.width;
+    item.capabilities = loaded.capabilities;
     item.health = loaded.health;
     return item;
 }

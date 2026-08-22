@@ -1,8 +1,10 @@
 // PluginManager.cpp
 #include "PluginManager.h"
 #include "ConfigService.h"
+#include "PluginDependencyGraph.h"
 #include "PluginManifest.h"
 #include "PluginRuntime.h"
+#include "SemanticVersion.h"
 #include "barplugin/EventBus.h"
 #include "barplugin/IBarPluginHost.h"
 #include "barplugin/IBarPluginHostLifecycle.h"
@@ -62,9 +64,18 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
         qDebug() << "[Plugin] plugins dir not found:" << pluginsDir;
         return;
     }
-    const auto subdirs = base.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    struct Candidate {
+        QString dirPath;
+        QString dllName;
+        QString path;
+        QString iid;
+        PluginManifestResult manifest;
+    };
+    QVector<Candidate> candidates;
+    QVector<xuanhub::PluginDescriptor> descriptors = m_descriptorById.values().toVector();
     const PluginValidationEnvironment validationEnvironment =
         PluginValidationEnvironment::current();
+    const auto subdirs = base.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
     for (const QString& sub : subdirs) {
         QDir d(base.filePath(sub));
         const auto dlls = d.entryList({QStringLiteral("*.dll")}, QDir::Files);
@@ -72,7 +83,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             const QString path = d.absoluteFilePath(dllName);
             // sidecar 是发现阶段的信任边界：必须在构造 QPluginLoader 前完成
             // 解析和路径/ABI 校验，失败插件的 DLL 代码完全不进入宿主进程。
-            const PluginManifestResult manifest = PluginManifest::load(
+            PluginManifestResult manifest = PluginManifest::load(
                 d.absolutePath(), dllName, validationEnvironment);
             if (!manifest.ok) {
                 qWarning() << "[Plugin] manifest rejected:" << path << "->"
@@ -90,16 +101,73 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                 qDebug() << "[Plugin] not enabled in config, skip:" << manifestId;
                 continue;
             }
+            // metaData() 读取 Qt 插件节，不调用 instance()，可安全参与预加载依赖规划。
+            QPluginLoader probe(path);
+            const QString iid = probe.metaData().value(QStringLiteral("IID")).toString();
+            if (iid != QStringLiteral("xuanhub.BarPlugin/1.0")
+                && iid != QStringLiteral("xuanhub.BarPlugin/2.0")) {
+                qWarning() << "[Plugin] skip (IID mismatch):" << path << "->" << iid;
+                continue;
+            }
+            const int iidApiVersion = iid.endsWith(QStringLiteral("/2.0")) ? 2 : 1;
+            if (manifest.descriptor.apiVersion != iidApiVersion) {
+                qWarning() << "[Plugin] manifest apiVersion/IID mismatch:" << path
+                           << manifest.descriptor.apiVersion << iid;
+                continue;
+            }
+            descriptors.append(manifest.descriptor);
+            candidates.append({d.absolutePath(), dllName, path, iid, std::move(manifest)});
+        }
+    }
+
+    const PluginDependencyPlan dependencyPlan = PluginDependencyGraph::build(descriptors);
+    for (auto it = dependencyPlan.errors.cbegin(); it != dependencyPlan.errors.cend(); ++it) {
+        if (enabledMap.contains(it.key()) && !m_loadedIds.contains(it.key()))
+            qWarning() << "[Plugin] dependency precheck rejected:" << it.key() << "->"
+                       << it.value();
+    }
+    QHash<QString, int> candidateIndex;
+    for (int i = 0; i < candidates.size(); ++i) {
+        if (!candidateIndex.contains(candidates.at(i).manifest.descriptor.id))
+            candidateIndex.insert(candidates.at(i).manifest.descriptor.id, i);
+    }
+
+    for (const QString& plannedId : dependencyPlan.loadOrder) {
+        const auto candidateIt = candidateIndex.constFind(plannedId);
+        if (candidateIt == candidateIndex.cend()) continue; // 已加载依赖无需重复执行。
+        const Candidate& candidate = candidates.at(candidateIt.value());
+        const QString path = candidate.path;
+        const QString iid = candidate.iid;
+        const PluginManifestResult& manifest = candidate.manifest;
+        const QString manifestId = manifest.descriptor.id;
+        const PluginConfigEntry* entry = enabledMap.value(manifestId, nullptr);
+        QDir d(candidate.dirPath);
+
+        bool dependencyUnavailable = false;
+        for (const auto& dependency : manifest.descriptor.dependencies) {
+            const auto loadedDependency = m_descriptorById.constFind(dependency.id);
+            const bool available = loadedDependency != m_descriptorById.cend()
+                && SemanticVersion::matches(loadedDependency->version,
+                                            dependency.versionConstraint);
+            if (!available && !dependency.optional) {
+                qWarning() << "[Plugin] required dependency failed to load:"
+                           << manifestId << "->" << dependency.id;
+                dependencyUnavailable = true;
+                break;
+            }
+        }
+        if (dependencyUnavailable) continue;
+
             auto* loader = new QPluginLoader(path);
             // 清掉 Qt 默认的 PreventUnloadHint，使 unload() 真正卸载 DLL
             //（热重载/插件升级的前提；代价是必须严格先 shutdown 再 unload）
             loader->setLoadHints(QLibrary::ResolveAllSymbolsHint);
 
             // IID 校验
-            const QString iid = loader->metaData().value(QStringLiteral("IID")).toString();
-            if (iid != QStringLiteral("xuanhub.BarPlugin/1.0")
-                && iid != QStringLiteral("xuanhub.BarPlugin/2.0")) {
-                qWarning() << "[Plugin] skip (IID mismatch):" << path << "->" << iid;
+            const QString runtimeIid = loader->metaData().value(QStringLiteral("IID")).toString();
+            if (runtimeIid != iid) {
+                qWarning() << "[Plugin] IID changed after discovery:" << path
+                           << iid << "->" << runtimeIid;
                 delete loader;
                 continue;
             }
@@ -141,6 +209,15 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             ctx.eventBus = m_bus;
             ctx.configDir = m_configDir;
             ctx.pluginConfig = entry->config;
+            for (const auto& dependency : descriptor.dependencies) {
+                const auto loadedDependency = m_descriptorById.constFind(dependency.id);
+                if (loadedDependency != m_descriptorById.cend()
+                    && SemanticVersion::matches(loadedDependency->version,
+                                                dependency.versionConstraint)) {
+                    ctx.dependencyVersions.insert(dependency.id,
+                                                  loadedDependency->version);
+                }
+            }
             auto eventScope = std::make_unique<xuanhub::PluginEventScope>(m_bus);
             ctx.eventScope = eventScope.get();
             QElapsedTimer initTimer;
@@ -170,6 +247,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                 m_eventScopes.push_back(std::move(eventScope));
                 m_loaders.append(loader);
                 m_loadedIds.insert(descriptor.id);
+                m_descriptorById.insert(descriptor.id, descriptor);
                 m_hosts.append(runtimePtr);
                 qDebug() << "[Plugin] loaded host:" << descriptor.id;
                 const QStringList subIds = host->subPluginIds();
@@ -187,6 +265,23 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                     }
                     createHostedPlugin(descriptor.id, host, *se);
                 }
+                continue;
+            }
+
+            // V2 capability 决定是否创建 bar UI；无 barItem 的插件只保留后台
+            // Runtime，不把 QML/ViewModel 暴露给布局模型。
+            if (runtime->isV2()
+                && !descriptor.capabilities.contains(QStringLiteral("barItem"))) {
+                m_loaderById.insert(descriptor.id, loader);
+                m_runtimeById.insert(descriptor.id, runtimePtr);
+                m_scopeById.insert(descriptor.id, eventScope.get());
+                m_runtimes.push_back(std::move(runtime));
+                m_eventScopes.push_back(std::move(eventScope));
+                m_loaders.append(loader);
+                m_loadedIds.insert(descriptor.id);
+                m_descriptorById.insert(descriptor.id, descriptor);
+                m_services.append(runtimePtr);
+                qDebug() << "[Plugin] loaded background service:" << descriptor.id;
                 continue;
             }
 
@@ -213,6 +308,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             LoadedPlugin lp;
             lp.id = descriptor.id;
             lp.apiVersion = descriptor.apiVersion;
+            lp.capabilities = descriptor.capabilities;
             lp.position = pos;
             lp.order = entry->order;
             lp.width = entry->width;
@@ -231,9 +327,9 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             m_scopeById.insert(descriptor.id, m_eventScopes.back().get());
             m_loaded.append(lp);
             m_loadedIds.insert(descriptor.id);
+            m_descriptorById.insert(descriptor.id, descriptor);
             qDebug() << "[Plugin] loaded:" << descriptor.id
                      << "pos=" << lp.position << "qml=" << qmlUrl.toString();
-        }
     }
 }
 
@@ -263,6 +359,12 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
     lp.health.loadDurationMs = createDurationMs;
     m_loaded.append(lp);
     m_loadedIds.insert(entry.id);
+    xuanhub::PluginDescriptor descriptor;
+    descriptor.id = sp.meta.id.isEmpty() ? entry.id : sp.meta.id;
+    descriptor.displayName = sp.meta.displayName;
+    descriptor.version = sp.meta.version;
+    descriptor.author = sp.meta.author;
+    m_descriptorById.insert(entry.id, descriptor);
     m_subPluginHostId.insert(entry.id, hostId);
     qDebug() << "[Plugin] loaded:" << entry.id << "pos=" << lp.position
              << "qml=" << lp.qmlUrl.toLocalFile() << "(via host" << hostId << ")";
@@ -319,6 +421,7 @@ bool PluginManager::stopOne(const QString& id) {
         }
         m_subPluginHostId.remove(id);
         m_loadedIds.remove(id);
+        m_descriptorById.remove(id);
         return true;
     }
 
@@ -343,6 +446,7 @@ bool PluginManager::stopOne(const QString& id) {
     qDebug() << "[Plugin] shutdown one:" << id << "durationMs=" << timer.elapsed();
 
     m_hosts.removeAll(runtime);
+    m_services.removeAll(runtime);
     m_hostById.remove(id);
     m_runtimeById.remove(id);
     m_loaderById.remove(id);
@@ -354,6 +458,7 @@ bool PluginManager::stopOne(const QString& id) {
         }
     }
     m_loadedIds.remove(id);
+    m_descriptorById.remove(id);
     removeRuntime(runtime);
     if (!loader->unload()) {
         qWarning() << "[Plugin] unload one failed:" << loader->fileName()
@@ -430,6 +535,15 @@ void PluginManager::shutdownAll() {
         qDebug() << "[Plugin] shutdown:" << lp.id
                  << "durationMs=" << timer.elapsed();
     }
+    for (auto* runtime : m_services) {
+        const QString id = runtime->descriptor().id;
+        QElapsedTimer timer;
+        timer.start();
+        runtime->shutdown();
+        qDebug() << "[Plugin] shutdown background service:" << id
+                 << "durationMs=" << timer.elapsed();
+    }
+    m_services.clear();
     // host 最后 shutdown：其子插件 VM 依赖 host 持有的运行时（如 CPython 解释器）
     for (auto* runtime : m_hosts) {
         const QString id = runtime->descriptor().id;
@@ -460,6 +574,7 @@ void PluginManager::shutdownAll() {
     m_scopeById.clear();
     m_loaded.clear();
     m_loadedIds.clear();
+    m_descriptorById.clear();
 }
 
 void PluginManager::removeRuntime(PluginRuntime* runtime) {

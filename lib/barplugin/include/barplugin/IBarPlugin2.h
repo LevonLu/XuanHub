@@ -4,6 +4,7 @@
 #include "barplugin/PluginDescriptor.h"
 
 #include <QObject>
+#include <QHash>
 #include <QString>
 #include <QUrl>
 #include <QVariantMap>
@@ -17,6 +18,11 @@ struct PluginContext2 {
     QString configDir;
     QVariantMap pluginConfig;
     PluginEventScope* eventScope = nullptr;
+    QHash<QString, QString> dependencyVersions;
+
+    bool hasDependency(const QString& id) const {
+        return dependencyVersions.contains(id);
+    }
 };
 
 struct PluginInitResult {
