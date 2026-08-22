@@ -2,6 +2,7 @@
 #include "PluginManifest.h"
 
 #include "SemanticVersion.h"
+#include "barplugin/PluginPathValidator.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -13,16 +14,6 @@
 #include <QRegularExpression>
 #include <QSet>
 #include <QSysInfo>
-
-#ifdef Q_OS_WIN
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#endif
 
 namespace {
 const QRegularExpression kPluginIdPattern(
@@ -102,81 +93,6 @@ QString normalizedArchitecture(QString architecture) {
 bool sameCompatibilityValue(const QString& expected, const QString& actual) {
     return expected == QLatin1String("*")
         || expected.compare(actual, Qt::CaseInsensitive) == 0;
-}
-
-QString finalCanonicalPath(const QString& path) {
-#ifdef Q_OS_WIN
-    const QString nativePath = QDir::toNativeSeparators(QFileInfo(path).absoluteFilePath());
-    HANDLE handle = CreateFileW(
-        reinterpret_cast<LPCWSTR>(nativePath.utf16()), 0,
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
-        OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
-    if (handle == INVALID_HANDLE_VALUE) return {};
-    const DWORD required = GetFinalPathNameByHandleW(
-        handle, nullptr, 0, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
-    QString resolved;
-    if (required > 0) {
-        resolved.resize(static_cast<qsizetype>(required));
-        const DWORD written = GetFinalPathNameByHandleW(
-            handle, reinterpret_cast<LPWSTR>(resolved.data()), required,
-            FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
-        if (written > 0 && written < required)
-            resolved.resize(static_cast<qsizetype>(written));
-        else
-            resolved.clear();
-    }
-    CloseHandle(handle);
-    if (resolved.startsWith(QStringLiteral("\\\\?\\UNC\\")))
-        resolved = QStringLiteral("\\\\") + resolved.mid(8);
-    else if (resolved.startsWith(QStringLiteral("\\\\?\\")))
-        resolved.remove(0, 4);
-    return QDir::cleanPath(QDir::fromNativeSeparators(resolved));
-#else
-    return QDir::cleanPath(QFileInfo(path).canonicalFilePath());
-#endif
-}
-
-bool validateRelativeFile(const QString& pluginDir, const QString& field,
-                          const QString& relativePath, QString* error) {
-    if (relativePath.trimmed().isEmpty()) {
-        *error = QStringLiteral("manifest path '%1' must not be empty").arg(field);
-        return false;
-    }
-    if (QDir::isAbsolutePath(relativePath)
-        || QRegularExpression(QStringLiteral(R"(^[A-Za-z]:[\\/])"))
-               .match(relativePath).hasMatch()) {
-        *error = QStringLiteral("manifest path '%1' must be relative: %2")
-                     .arg(field, relativePath);
-        return false;
-    }
-
-    const QString cleanRelative = QDir::cleanPath(QDir::fromNativeSeparators(relativePath));
-    if (cleanRelative == QLatin1String("..")
-        || cleanRelative.startsWith(QStringLiteral("../"))) {
-        *error = QStringLiteral("manifest path '%1' escapes plugin directory: %2")
-                     .arg(field, relativePath);
-        return false;
-    }
-
-    const QString rootCanonical = finalCanonicalPath(pluginDir);
-    if (rootCanonical.isEmpty()) {
-        *error = QStringLiteral("plugin directory does not exist: %1").arg(pluginDir);
-        return false;
-    }
-    const QFileInfo targetInfo(QDir(pluginDir).absoluteFilePath(cleanRelative));
-    if (!targetInfo.exists() || !targetInfo.isFile()) {
-        *error = QStringLiteral("manifest path '%1' does not name an existing file: %2")
-                     .arg(field, relativePath);
-        return false;
-    }
-    const QString targetCanonical = finalCanonicalPath(targetInfo.absoluteFilePath());
-    const QString rootPrefix = rootCanonical + QLatin1Char('/');
-    if (!targetCanonical.startsWith(rootPrefix, Qt::CaseInsensitive)) {
-        *error = QStringLiteral("manifest path '%1' resolves outside plugin directory: %2")
-                     .arg(field, relativePath);
-        return false;
-    }
-    return true;
 }
 
 bool validateHostRange(const xuanhub::PluginDescriptor& descriptor,
@@ -414,18 +330,18 @@ PluginManifestResult PluginManifest::load(
         }
     }
 
-    if (!validateRelativeFile(pluginDir, QStringLiteral("backend"),
-                              descriptor.entry.backend, &error)) {
+    if (!xuanhub::validatePluginFilePath(pluginDir, QStringLiteral("backend"),
+                                         descriptor.entry.backend, &error)) {
         return failed(error);
     }
     if (!descriptor.entry.qml.isEmpty()
-        && !validateRelativeFile(pluginDir, QStringLiteral("qml"),
-                                 descriptor.entry.qml, &error)) {
+        && !xuanhub::validatePluginFilePath(pluginDir, QStringLiteral("qml"),
+                                            descriptor.entry.qml, &error)) {
         return failed(error);
     }
     if (!descriptor.entry.settingsQml.isEmpty()
-        && !validateRelativeFile(pluginDir, QStringLiteral("settingsQml"),
-                                 descriptor.entry.settingsQml, &error)) {
+        && !xuanhub::validatePluginFilePath(pluginDir, QStringLiteral("settingsQml"),
+                                            descriptor.entry.settingsQml, &error)) {
         return failed(error);
     }
 
