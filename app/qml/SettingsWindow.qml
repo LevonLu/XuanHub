@@ -232,6 +232,7 @@ Pane {
                             String(packageInstallConfirm.info.path || ""))
                         packageInstallConfirm.close()
                         if (result.ok === true) {
+                            settingsVM.clearPluginUpdates()
                             pluginList.currentId = id
                             pluginList.ensureSelection()
                             detailPanel.refresh()
@@ -351,6 +352,244 @@ Pane {
             info = packageInfo || ({})
             deleteUserData = false
             open()
+        }
+    }
+
+    Popup {
+        id: updateSourcesPopup
+        property string originalSources: ""
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape
+        width: Math.min(640, root.width - UiMetrics.space6 * 2)
+        x: Math.max(0, (root.width - width) / 2)
+        y: Math.max(0, (root.height - height) / 2)
+        padding: UiMetrics.space5
+        palette.window: root.c.bg
+        palette.windowText: root.c.fg
+        palette.base: root.c.bg
+        palette.text: root.c.fg
+        palette.button: root.c.panel
+        palette.buttonText: root.c.fg
+        palette.highlight: root.c.accent
+        palette.highlightedText: root.c.onAccent
+        palette.mid: root.c.muted
+        background: Rectangle {
+            color: root.c.panel
+            radius: UiMetrics.radiusL
+            border.width: 1
+            border.color: root.c.border
+        }
+        contentItem: ColumnLayout {
+            spacing: UiMetrics.space3
+            Text {
+                Layout.fillWidth: true
+                color: root.c.fg
+                font.pixelSize: UiMetrics.fontL
+                font.weight: Font.DemiBold
+                text: root.trText("插件更新源")
+            }
+            Text {
+                Layout.fillWidth: true
+                color: root.c.muted
+                font.pixelSize: UiMetrics.fontS
+                wrapMode: Text.Wrap
+                text: root.trText("每行一个 HTTPS 或本机 file URL。检查更新只读取索引，不会自动下载或安装插件。")
+            }
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 150
+                radius: UiMetrics.radiusS
+                color: root.c.bg
+                border.width: 1
+                border.color: updateSourcesEditor.activeFocus
+                    ? root.c.accent : root.c.border
+                TextArea {
+                    id: updateSourcesEditor
+                    anchors.fill: parent
+                    anchors.margins: UiMetrics.space2
+                    color: root.c.fg
+                    placeholderTextColor: root.c.muted
+                    selectionColor: root.c.accent
+                    selectedTextColor: root.c.onAccent
+                    font.pixelSize: UiMetrics.fontS
+                    wrapMode: TextEdit.WrapAnywhere
+                    placeholderText: "https://example.com/xuanhub/index.json"
+                    background: null
+                    onTextChanged: if (activeFocus) settingsVM.updateSources = text
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                color: root.c.warning
+                font.pixelSize: UiMetrics.fontTiny
+                wrapMode: Text.Wrap
+                text: root.trText("更新源不是信任根；下载后仍会校验大小、SHA-256、Manifest、兼容性、权限和发布者签名。")
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                spacing: UiMetrics.space2
+                UiButton {
+                    variant: "ghost"
+                    text: root.trText("取消")
+                    onClicked: {
+                        settingsVM.updateSources = updateSourcesPopup.originalSources
+                        updateSourcesPopup.close()
+                    }
+                }
+                UiButton {
+                    variant: "primary"
+                    text: root.trText("使用这些更新源")
+                    onClicked: updateSourcesPopup.close()
+                }
+            }
+        }
+
+        function ask() {
+            originalSources = settingsVM.updateSources
+            updateSourcesEditor.text = settingsVM.updateSources
+            open()
+            updateSourcesEditor.forceActiveFocus()
+        }
+    }
+
+    Popup {
+        id: updateResultsPopup
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: Math.min(680, root.width - UiMetrics.space6 * 2)
+        height: Math.min(560, root.height - UiMetrics.space6 * 2)
+        x: Math.max(0, (root.width - width) / 2)
+        y: Math.max(0, (root.height - height) / 2)
+        padding: UiMetrics.space5
+        palette.window: root.c.bg
+        palette.windowText: root.c.fg
+        palette.base: root.c.bg
+        palette.text: root.c.fg
+        palette.button: root.c.panel
+        palette.buttonText: root.c.fg
+        palette.highlight: root.c.accent
+        palette.highlightedText: root.c.onAccent
+        palette.mid: root.c.muted
+        background: Rectangle {
+            color: root.c.panel
+            radius: UiMetrics.radiusL
+            border.width: 1
+            border.color: root.c.border
+        }
+        contentItem: ColumnLayout {
+            spacing: UiMetrics.space3
+            Text {
+                Layout.fillWidth: true
+                color: root.c.fg
+                font.pixelSize: UiMetrics.fontL
+                font.weight: Font.DemiBold
+                text: root.trText("可用插件更新")
+            }
+            Text {
+                Layout.fillWidth: true
+                color: root.c.muted
+                font.pixelSize: UiMetrics.fontS
+                wrapMode: Text.Wrap
+                text: root.trText("选择后才会下载并验证插件包；验证通过后仍需再次确认安装。")
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: settingsVM.availablePluginUpdates.length === 0
+                color: root.c.muted
+                font.pixelSize: UiMetrics.fontM
+                text: root.trText("当前没有可用更新")
+            }
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                ColumnLayout {
+                    width: updateResultsPopup.availableWidth
+                    spacing: UiMetrics.space2
+                    Repeater {
+                        model: settingsVM.availablePluginUpdates
+                        delegate: Rectangle {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 76
+                            radius: UiMetrics.radiusS
+                            color: root.c.bg
+                            border.width: 1
+                            border.color: root.c.border
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: UiMetrics.space3
+                                spacing: UiMetrics.space3
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        Layout.fillWidth: true
+                                        color: root.c.fg
+                                        font.pixelSize: UiMetrics.fontM
+                                        font.weight: Font.DemiBold
+                                        text: modelData.id
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        color: root.c.muted
+                                        font.pixelSize: UiMetrics.fontTiny
+                                        text: root.trText("版本 %1 → %2 · 来源 %3")
+                                            .arg(modelData.currentVersion)
+                                            .arg(modelData.version)
+                                            .arg(modelData.sourceId)
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                                UiButton {
+                                    enabled: !settingsVM.pluginUpdateDownloading
+                                    variant: "primary"
+                                    text: settingsVM.pluginUpdateDownloading
+                                        ? root.trText("正在下载…")
+                                        : root.trText("下载并验证")
+                                    onClicked: settingsVM.downloadPluginUpdate(
+                                        modelData.id, modelData.version)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: settingsVM.pluginUpdateErrors.length > 0
+                spacing: UiMetrics.space1
+                Text {
+                    color: root.c.warning
+                    font.pixelSize: UiMetrics.fontS
+                    font.weight: Font.DemiBold
+                    text: root.trText("部分更新源未通过检查")
+                }
+                Text {
+                    Layout.fillWidth: true
+                    color: root.c.muted
+                    font.pixelSize: UiMetrics.fontTiny
+                    wrapMode: Text.WrapAnywhere
+                    text: settingsVM.pluginUpdateErrors.join("\n")
+                }
+            }
+            UiButton {
+                Layout.alignment: Qt.AlignRight
+                variant: "ghost"
+                text: root.trText("关闭")
+                onClicked: updateResultsPopup.close()
+            }
+        }
+    }
+
+    Connections {
+        target: settingsVM
+        function onPluginUpdateCheckFinished() { updateResultsPopup.open() }
+        function onPluginUpdatePackageReady(packageInfo) {
+            updateResultsPopup.close()
+            packageInstallConfirm.ask(packageInfo)
         }
     }
 
@@ -918,6 +1157,22 @@ Pane {
                                         const info = settingsVM.inspectPluginPackage(path)
                                         if (info.ok === true) packageInstallConfirm.ask(info)
                                     }
+                                }
+                                UiButton {
+                                    Layout.fillWidth: true
+                                    variant: "outline"
+                                    text: root.trText("更新源…")
+                                    onClicked: updateSourcesPopup.ask()
+                                }
+                                UiButton {
+                                    Layout.fillWidth: true
+                                    enabled: !settingsVM.pluginUpdateChecking
+                                             && !settingsVM.pluginUpdateDownloading
+                                    variant: "outline"
+                                    text: settingsVM.pluginUpdateChecking
+                                        ? root.trText("正在检查…")
+                                        : root.trText("检查更新")
+                                    onClicked: settingsVM.checkPluginUpdates()
                                 }
 
                                 ListView {

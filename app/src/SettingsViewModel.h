@@ -8,6 +8,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QVariantList>
 #include <QVariantMap>
 
 class QAbstractItemModel;
@@ -20,6 +21,7 @@ class SettingsPluginProxy;
 class PluginListModel;
 class LocaleManager;
 class PluginManager;
+class PluginUpdateService;
 
 class SettingsViewModel : public QObject {
     Q_OBJECT
@@ -36,6 +38,16 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(QAbstractItemModel* pluginModel READ pluginModel CONSTANT)
     Q_PROPERTY(QObject* pluginProxy READ pluginProxy CONSTANT)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
+    Q_PROPERTY(QString updateSources READ updateSources WRITE setUpdateSources
+               NOTIFY updateSourcesChanged)
+    Q_PROPERTY(bool pluginUpdateChecking READ pluginUpdateChecking
+               NOTIFY pluginUpdateCheckingChanged)
+    Q_PROPERTY(bool pluginUpdateDownloading READ pluginUpdateDownloading
+               NOTIFY pluginUpdateDownloadingChanged)
+    Q_PROPERTY(QVariantList availablePluginUpdates READ availablePluginUpdates
+               NOTIFY availablePluginUpdatesChanged)
+    Q_PROPERTY(QStringList pluginUpdateErrors READ pluginUpdateErrors
+               NOTIFY pluginUpdateErrorsChanged)
 
 public:
     SettingsViewModel(ConfigService* config, ThemeRegistry* registry,
@@ -56,6 +68,11 @@ public:
     QAbstractItemModel* pluginModel() const;   // 实现在 .cpp（头里模型是不完整类型）
     QObject* pluginProxy() const;              // 同上，实现在 .cpp
     QString errorMessage() const { return m_errorMessage; }
+    QString updateSources() const { return m_updateSources; }
+    bool pluginUpdateChecking() const;
+    bool pluginUpdateDownloading() const;
+    QVariantList availablePluginUpdates() const { return m_availablePluginUpdates; }
+    QStringList pluginUpdateErrors() const { return m_pluginUpdateErrors; }
 
     void setBarHeight(int v);
     void setBarOpacity(int v);   // 0-100 百分比
@@ -65,6 +82,7 @@ public:
     void setThemeId(const QString& v);          // 设置主题包 id
     void setAutoStart(bool v);
     void setLanguage(const QString& v);
+    void setUpdateSources(const QString& v);
 
     // 重新扫描 themes/ 刷新主题包列表（打开窗口 / 用户可能装了新包时调）
     Q_INVOKABLE void reloadThemePacks();
@@ -88,6 +106,10 @@ public:
     Q_INVOKABLE QVariantMap rollbackPluginPackage(const QString& id);
     Q_INVOKABLE QVariantMap uninstallPluginPackage(const QString& id,
                                                    bool deleteUserData = false);
+    Q_INVOKABLE void checkPluginUpdates();
+    Q_INVOKABLE void downloadPluginUpdate(const QString& id,
+                                          const QString& version);
+    Q_INVOKABLE void clearPluginUpdates();
 
 signals:
     void barHeightChanged();
@@ -103,6 +125,13 @@ signals:
     void pluginHealthChanged(const QString& id);
     void pluginDependencyInstallFinished(const QString& id, bool success,
                                          const QString& error);
+    void updateSourcesChanged();
+    void pluginUpdateCheckingChanged();
+    void pluginUpdateDownloadingChanged();
+    void availablePluginUpdatesChanged();
+    void pluginUpdateErrorsChanged();
+    void pluginUpdateCheckFinished();
+    void pluginUpdatePackageReady(const QVariantMap& packageInfo);
 
 private:
     void setErrorMessage(const QString& m);
@@ -123,6 +152,7 @@ private:
     QString m_exeDir;
     PluginListModel* m_barPlugins;   // bar 的插件模型（部件实时内容宽度来源）
     PluginManager* m_pluginManager;  // 只读取加载阶段生成的临时迁移建议
+    PluginUpdateService* m_updateService;
     SettingsPluginModel* m_pluginModel;
     SettingsPluginSortModel* m_sortModel;      // 启用状态、左/中/右分组排序 proxy（QML 拿到的是它）
     SettingsPluginProxy* m_pluginProxy;        // 自绘设置页的 config 草稿桥
@@ -135,5 +165,8 @@ private:
     bool m_autoStart = false;
     QString m_language = QStringLiteral("system");
     QString m_errorMessage;
+    QString m_updateSources;
+    QVariantList m_availablePluginUpdates;
+    QStringList m_pluginUpdateErrors;
     QString m_openFingerprint;   // 打开窗口/上次成功保存时的配置指纹（草稿过期判定）
 };

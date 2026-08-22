@@ -142,7 +142,9 @@ void PluginUpdateService::finalizeCheck() {
         PluginUpdateIndex::newerCandidates(candidates, versions);
     QVariantList maps;
     for (const PluginUpdateCandidate& update : updates) {
-        maps.append(update.toVariantMap());
+        QVariantMap map = update.toVariantMap();
+        map.insert(QStringLiteral("currentVersion"), versions.value(update.id));
+        maps.append(map);
         m_available.insert(candidateKey(update.id, update.version), update);
     }
     m_checking = false;

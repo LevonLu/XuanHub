@@ -6,6 +6,8 @@
 #include "PluginManager.h"
 #include "PluginPackageStore.h"
 #include "PluginPackageValidator.h"
+#include "PluginUpdateIndex.h"
+#include "PluginUpdateService.h"
 #include "SettingsPluginModel.h"
 #include "SettingsPluginProxy.h"
 #include "SettingsPluginSortModel.h"
@@ -18,6 +20,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QEvent>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -49,6 +52,8 @@ SettingsViewModel::SettingsViewModel(ConfigService* config, ThemeRegistry* regis
     : QObject(parent), m_config(config), m_registry(registry), m_themeMgr(themeMgr),
       m_locale(locale), m_exeDir(std::move(exeDir)), m_barPlugins(barPlugins),
       m_pluginManager(pluginManager),
+      m_updateService(new PluginUpdateService(
+          QFileInfo(config->activePath()).absolutePath(), this)),
       m_pluginModel(new SettingsPluginModel(this)),
       m_sortModel(new SettingsPluginSortModel(this)),
       m_pluginProxy(new SettingsPluginProxy(m_pluginModel, this)) {
@@ -103,11 +108,59 @@ SettingsViewModel::SettingsViewModel(ConfigService* config, ThemeRegistry* regis
             emit pluginDependencyInstallFinished(id, loaded, finalError);
         });
     }
+    connect(m_updateService, &PluginUpdateService::checkingChanged,
+            this, &SettingsViewModel::pluginUpdateCheckingChanged);
+    connect(m_updateService, &PluginUpdateService::downloadingChanged,
+            this, &SettingsViewModel::pluginUpdateDownloadingChanged);
+    connect(m_updateService, &PluginUpdateService::checkFinished, this,
+            [this](const QVariantList& updates, const QStringList& errors) {
+        m_availablePluginUpdates = updates;
+        m_pluginUpdateErrors = errors;
+        emit availablePluginUpdatesChanged();
+        emit pluginUpdateErrorsChanged();
+        setErrorMessage({});
+        emit pluginUpdateCheckFinished();
+    });
+    connect(m_updateService, &PluginUpdateService::downloadFinished, this,
+            [this](const QString& path, const QVariantMap& update,
+                   const QString& error) {
+        if (!error.isEmpty()) {
+            setErrorMessage(error);
+            return;
+        }
+        QVariantMap package = inspectPluginPackage(path);
+        if (!package.value(QStringLiteral("ok")).toBool()
+            || package.value(QStringLiteral("id")) != update.value(QStringLiteral("id"))
+            || package.value(QStringLiteral("version")) != update.value(QStringLiteral("version"))
+            || package.value(QStringLiteral("runtime")) != update.value(QStringLiteral("runtime"))
+            || package.value(QStringLiteral("packageHash"))
+                != update.value(QStringLiteral("packageSha256"))
+            || (!update.value(QStringLiteral("signerKeyId")).toString().isEmpty()
+                && package.value(QStringLiteral("signerKeyId"))
+                    != update.value(QStringLiteral("signerKeyId")))) {
+            setErrorMessage(QCoreApplication::translate(
+                "xuanhub.settings.errors",
+                "下载的插件包与更新索引不一致"));
+            QFile::remove(path);
+            return;
+        }
+        package.insert(QStringLiteral("updateSourceId"),
+                       update.value(QStringLiteral("sourceId")));
+        emit pluginUpdatePackageReady(package);
+    });
 }
 
 QAbstractItemModel* SettingsViewModel::pluginModel() const { return m_sortModel; }
 
 QObject* SettingsViewModel::pluginProxy() const { return m_pluginProxy; }
+
+bool SettingsViewModel::pluginUpdateChecking() const {
+    return m_updateService && m_updateService->checking();
+}
+
+bool SettingsViewModel::pluginUpdateDownloading() const {
+    return m_updateService && m_updateService->downloading();
+}
 
 int SettingsViewModel::pluginContentWidth(const QString& id) const {
     return m_barPlugins ? m_barPlugins->contentWidth(id) : 0;
@@ -343,6 +396,54 @@ QVariantMap SettingsViewModel::uninstallPluginPackage(const QString& id,
     return packageStoreResult(result);
 }
 
+void SettingsViewModel::checkPluginUpdates() {
+    QStringList sources;
+    for (const QString& line : m_updateSources.split(QLatin1Char('\n'))) {
+        const QString source = line.trimmed();
+        if (!source.isEmpty() && !sources.contains(source)) sources.append(source);
+    }
+    if (sources.isEmpty()) {
+        setErrorMessage(QCoreApplication::translate(
+            "xuanhub.settings.errors", "请先添加至少一个插件更新源"));
+        return;
+    }
+    QVariantMap installed;
+    for (int row = 0; row < m_pluginModel->rowCount(); ++row) {
+        const QModelIndex index = m_pluginModel->index(row);
+        if (!m_pluginModel->data(index, SettingsPluginModel::DiscoveredRole).toBool())
+            continue;
+        const QString id = m_pluginModel->data(index, SettingsPluginModel::IdRole).toString();
+        const QString version = m_pluginModel->data(
+            index, SettingsPluginModel::VersionRole).toString();
+        if (id.isEmpty() || version.isEmpty()) continue;
+        const QString kind = m_pluginModel->data(
+            index, SettingsPluginModel::KindRole).toString();
+        const QVariantMap managed = managedPluginInfo(id);
+        installed.insert(id, QVariantMap{
+            {QStringLiteral("version"), version},
+            {QStringLiteral("runtime"), kind == QLatin1String("python")
+                ? QStringLiteral("python") : QStringLiteral("native")},
+            {QStringLiteral("signerKeyId"),
+             managed.value(QStringLiteral("signerKeyId"))},
+        });
+    }
+    setErrorMessage({});
+    m_updateService->check(sources, installed);
+}
+
+void SettingsViewModel::downloadPluginUpdate(const QString& id,
+                                             const QString& version) {
+    if (m_updateService) m_updateService->download(id, version);
+}
+
+void SettingsViewModel::clearPluginUpdates() {
+    if (m_availablePluginUpdates.isEmpty() && m_pluginUpdateErrors.isEmpty()) return;
+    m_availablePluginUpdates.clear();
+    m_pluginUpdateErrors.clear();
+    emit availablePluginUpdatesChanged();
+    emit pluginUpdateErrorsChanged();
+}
+
 QStringList SettingsViewModel::themePackNames() const {
     return m_registry ? m_registry->packNames() : QStringList{};
 }
@@ -406,6 +507,12 @@ void SettingsViewModel::setLanguage(const QString& v) {
     emit languageChanged();
 }
 
+void SettingsViewModel::setUpdateSources(const QString& v) {
+    if (m_updateSources == v) return;
+    m_updateSources = v;
+    emit updateSourcesChanged();
+}
+
 void SettingsViewModel::reloadThemePacks() {
     // 真正扫盘（用户可能新装/卸载了主题包），再发 NOTIFY 让 QML 重新读取 names/ids
     if (m_registry)
@@ -440,6 +547,16 @@ void SettingsViewModel::reloadFromConfig() {
     setThemeId(m_themeMgr ? m_themeMgr->themeId() : m_config->themeId());
     setAutoStart(autostart::isEnabled());
     setLanguage(m_config->language());
+    QStringList updateSources;
+    const QJsonArray sourceArray = m_config->rawConfig()
+        .value(QStringLiteral("pluginUpdates")).toObject()
+        .value(QStringLiteral("sources")).toArray();
+    for (const QJsonValue& value : sourceArray) {
+        if (value.isString() && !value.toString().trimmed().isEmpty())
+            updateSources.append(value.toString().trimmed());
+    }
+    setUpdateSources(updateSources.join(QLatin1Char('\n')));
+    clearPluginUpdates();
     reloadPluginCatalog();
     // 快照配置指纹：窗口打开期间的草稿以此为底，apply 前据此判定外部改动
     m_openFingerprint = currentFingerprint();
@@ -461,6 +578,7 @@ QString SettingsViewModel::currentFingerprint() const {
     fp[QStringLiteral("ui")] = uiKeys;
     fp[QStringLiteral("bar")] = barKeys;
     fp[QStringLiteral("plugins")] = root.value(QStringLiteral("plugins")).toArray();
+    fp[QStringLiteral("pluginUpdates")] = root.value(QStringLiteral("pluginUpdates"));
     return QString::fromUtf8(QJsonDocument(fp).toJson(QJsonDocument::Compact));
 }
 
@@ -499,6 +617,20 @@ bool SettingsViewModel::apply() {
         setErrorMessage(QCoreApplication::translate(
             "xuanhub.settings.errors", "界面语言配置无效"));
         return false;
+    }
+    QJsonArray updateSources;
+    QSet<QString> seenUpdateSources;
+    for (const QString& line : m_updateSources.split(QLatin1Char('\n'))) {
+        const QString source = line.trimmed();
+        if (source.isEmpty() || seenUpdateSources.contains(source)) continue;
+        QString sourceError;
+        if (!PluginUpdateIndex::validateSourceUrl(QUrl(source), &sourceError)) {
+            setErrorMessage(QCoreApplication::translate(
+                "xuanhub.settings.errors", "插件更新源无效：") + sourceError);
+            return false;
+        }
+        seenUpdateSources.insert(source);
+        updateSources.append(source);
     }
     // 校验主题包存在（防 config 手写错 id）
     if (m_registry && m_registry->find(m_themeId) == nullptr) {
@@ -550,6 +682,9 @@ bool SettingsViewModel::apply() {
     ui[QStringLiteral("language")] = m_language;
     root[QStringLiteral("ui")] = ui;
     root[QStringLiteral("plugins")] = plugins;
+    QJsonObject pluginUpdates = root.value(QStringLiteral("pluginUpdates")).toObject();
+    pluginUpdates[QStringLiteral("sources")] = updateSources;
+    root[QStringLiteral("pluginUpdates")] = pluginUpdates;
     // 密钥库先原子提交；若随后 config 提交失败，事务恢复旧密钥文件。只有两个文件
     // 都成功后才 finalize，避免出现新引用配旧密钥或旧引用配新密钥的半提交状态。
     if (!secretTransaction.commit()) {
