@@ -109,6 +109,33 @@ def update():
 `pluginActions.actions("pluginMenu")`，并使用 `pluginActions.invoke(pluginId, actionId)` 调用。
 完整动态示例见 `plugins_py/todo/`。
 
+### 响应式布局
+
+Python 与原生插件使用同一份 Manifest 布局契约：
+
+```json
+"layout": {
+  "region": "right",
+  "minWidth": 48,
+  "preferredWidth": 160,
+  "maxWidth": 320,
+  "flex": 1,
+  "priority": 50,
+  "overflow": "menu"
+}
+```
+
+- `region` 是未配置 `position` 时的默认区域；设置窗口或 `config.json` 中的显式位置优先。
+- 宽度范围 0–800 逻辑像素；`preferredWidth >= minWidth`，非零
+  `maxWidth >= max(minWidth, preferredWidth)`。
+- `priority` 为 0–100，越小越先收缩；`flex` 为 0–100，只在有非零 `maxWidth` 时参与
+  剩余空间分配。
+- `overflow` 可为 `clip`、`hide` 或 `menu`。`menu` 会把放不下的插件视图移入状态栏末尾的
+  更多插件弹窗，后端 worker 和 ViewModel 不会重启。
+
+省略 `layout` 时保持旧插件自然宽度行为；配置条目的 `width > 0` 仍是最高优先级的固定宽。
+当前 appbar 模式启用响应式分配，taskbar 紧凑模式保留自然宽排列。
+
 ### HostServices 与权限
 
 `permissions` 使用稳定字符串声明需要的宿主能力；当前支持 `notifications`、

@@ -202,6 +202,36 @@ Q_INVOKABLE QVariant invokeAction(const QString& actionId);
 `pluginActions.actions("pluginMenu")` 获取本地化快照，并调用
 `pluginActions.invoke(pluginId, actionId)`；读取 `pluginActions.revision` 可建立状态更新依赖。
 
+### 响应式布局
+
+插件可在 `metadata.json` 声明单行状态栏中的尺寸偏好：
+
+```json
+"layout": {
+  "region": "right",
+  "minWidth": 48,
+  "preferredWidth": 160,
+  "maxWidth": 320,
+  "flex": 1,
+  "priority": 70,
+  "overflow": "menu"
+}
+```
+
+- `region` 为 `left/center/right`，仅在 `config.json.position` 缺失时作为默认区域；用户设置
+  始终优先。
+- 三个宽度都使用逻辑像素，范围为 0–800。`preferredWidth` 不得小于 `minWidth`，非零
+  `maxWidth` 不得小于二者；0 表示未指定。
+- `priority` 范围 0–100，数值越小越先收缩和溢出，默认 50。同优先级下靠后的插件先处理。
+- `flex` 范围 0–100。空间有余量时按权重增长，但只有声明了更大 `maxWidth` 的插件会增长。
+- `overflow` 为 `clip/hide/menu`。收缩至 `minWidth` 后仍放不下时，`hide` 隐藏，`menu`
+  移入状态栏末尾的“更多插件”弹窗，`clip` 保持槽位并沿用裁剪行为。
+
+未声明 `layout` 的旧插件继续使用自然宽度，不参与自动收缩或溢出。用户配置的 `width > 0`
+是显式固定宽，会覆盖 Manifest 尺寸偏好。当前响应式分配用于 appbar；taskbar 紧凑模式继续按
+自然宽度或固定宽排列，避免嵌入任务栏后发生不可预期的自动隐藏。设置页会显示插件策略及
+覆盖关系，不要求普通用户编辑上述数值。
+
 ## EventBus V2
 
 V1 `EventBus::publish/subscribe` 保持同步语义以兼容旧插件。V2 必须通过
