@@ -1211,7 +1211,7 @@ Connections {
 
 - [x] Manifest 支持 Python 版本和包声明。
 - [x] doctor 检测缺失包、版本、架构和原生扩展兼容。
-- [ ] 支持离线 wheel 或插件私有环境，但安装必须用户确认。
+- [x] 支持离线 wheel 或插件私有环境，但安装必须用户确认。
 
 ### 测试与验收
 
@@ -1245,7 +1245,13 @@ Connections {
 - 2026-08-22：阶段 E 前两项完成。`python.version` 和 `python.packages` 使用无需 pip 的确定
   约束子集；只读 doctor 由实际 Worker 解释器执行，检查版本、x64 位数、distribution/导入根及
   `.pyd` ABI 标签，不加载插件 `main.py`。失败通过 host diagnostics 进入设置页“最近错误”，
-  包含稳定错误码对应的包名和修复建议；缺包回归验证 Worker 未启动。私有环境与确认安装仍待实现。
+  包含稳定错误码对应的包名和修复建议；缺包回归验证 Worker 未启动。
+- 2026-08-22：阶段 E 完成。`python.environment` 支持 `private` 模式与插件根内的相对
+  wheel 目录；宿主解析 canonical path 拒绝目录穿越/junction 越界，环境固定写入配置目录的
+  `python-envs/<id>` 命名空间。设置页仅在存在完整离线计划时显示安装按钮，并在模态确认中列出
+  包和 wheel 数量；确认后异步创建 venv，以 `--no-index --only-binary=:all:` 安装，成功后使用
+  私有解释器加载目标插件。真实纯 Python wheel 安装、空目录拒绝、未确认不创建环境、全量测试和
+  设置窗口 QML 冒烟均通过。
 
 ### 风险与回滚
 

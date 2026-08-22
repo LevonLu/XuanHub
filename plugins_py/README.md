@@ -69,8 +69,27 @@ plugins_py/
 - doctor 只对已启用插件运行，使用该插件即将采用的真实解释器；它读取包元数据并探测导入根，
   不导入插件 `main.py`，也不自动联网或安装任何内容。
 - 依赖失败时插件不启动，设置页“最近错误”显示缺失包、版本/架构/ABI 问题和修复建议；
-  其他插件继续运行。离线 wheel 与插件私有环境的确认安装仍在 PF-08 后续阶段，当前请由用户
-  明确操作对应解释器安装依赖。
+  其他插件继续运行。
+
+需要随插件分发依赖时使用私有环境，并把 wheel 放在插件目录内：
+
+```json
+{
+  "python": {
+    "version": ">=3.12,<4.0",
+    "packages": [
+      { "name": "example", "import": "example", "version": "==1.2.0" }
+    ],
+    "environment": { "mode": "private", "wheels": "wheels" }
+  }
+}
+```
+
+`wheels` 必须是插件根内的安全相对目录；宿主解析 canonical path，拒绝 `..`、绝对路径和
+junction 越界。插件首次启用但环境未准备时不会自动执行安装，设置页会显示“安装离线依赖”；
+用户在模态窗口确认包名和 wheel 数量后才开始。安装器固定使用 `--no-index` 和
+`--only-binary=:all:`，不访问网络，不从源码构建，并写入配置目录下的
+`python-envs/<plugin-id>`。安装成功后仅目标插件改用该私有解释器并自动加载。
 
 ### Bridge Protocol V2
 
