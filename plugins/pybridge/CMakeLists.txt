@@ -7,6 +7,8 @@ add_library(pybridge MODULE
     PyBridgeProtocol.cpp
     PythonDependencySpec.h
     PythonDependencySpec.cpp
+    PythonDependencyDoctor.h
+    PythonDependencyDoctor.cpp
     PyWorkerViewModel.h
     PyWorkerViewModel.cpp
 )

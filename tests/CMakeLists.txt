@@ -352,6 +352,31 @@ if(Python_Interpreter_FOUND)
     set_tests_properties(xuanhub_pyworker_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 
+    add_executable(xuanhub_python_dependency_doctor_tests
+        PythonDependencyDoctorTest.cpp
+        ${CMAKE_SOURCE_DIR}/plugins/pybridge/PythonDependencySpec.h
+        ${CMAKE_SOURCE_DIR}/plugins/pybridge/PythonDependencySpec.cpp
+        ${CMAKE_SOURCE_DIR}/plugins/pybridge/PythonDependencyDoctor.h
+        ${CMAKE_SOURCE_DIR}/plugins/pybridge/PythonDependencyDoctor.cpp
+    )
+    set_target_properties(xuanhub_python_dependency_doctor_tests PROPERTIES AUTOMOC ON)
+    target_include_directories(xuanhub_python_dependency_doctor_tests PRIVATE
+        ${CMAKE_SOURCE_DIR}/plugins/pybridge
+    )
+    target_link_libraries(xuanhub_python_dependency_doctor_tests PRIVATE
+        Qt6::Core Qt6::Test)
+    add_custom_command(TARGET xuanhub_python_dependency_doctor_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:Qt6::Core>" "$<TARGET_FILE_DIR:xuanhub_python_dependency_doctor_tests>"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:Qt6::Test>" "$<TARGET_FILE_DIR:xuanhub_python_dependency_doctor_tests>"
+        VERBATIM
+    )
+    add_test(NAME xuanhub_python_dependency_doctor_tests
+        COMMAND xuanhub_python_dependency_doctor_tests)
+    set_tests_properties(xuanhub_python_dependency_doctor_tests PROPERTIES
+        ENVIRONMENT "XUANHUB_TEST_PYTHON=${Python_EXECUTABLE};XUANHUB_TEST_PYTHON_DOCTOR=${CMAKE_SOURCE_DIR}/plugins_py/dependency_doctor.py")
+
     add_executable(xuanhub_pyworker_viewmodel_tests
         PyWorkerViewModelTest.cpp
         ${CMAKE_SOURCE_DIR}/plugins/pybridge/PyWorkerViewModel.h
