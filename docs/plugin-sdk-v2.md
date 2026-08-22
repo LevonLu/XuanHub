@@ -88,6 +88,24 @@ Schema 校验，未知键继续保留。已加载的 V2 插件还会在写文件
 验证不调用 `applyConfig()`，拒绝时 config.json 与运行态均保持不变。未实现验证接口的 V1
 插件保持兼容，新启用但尚未加载的插件仍会在首次初始化时执行 V2 验证。
 
+嵌套密钥使用 object/array schema 递归声明。数组只要包含 `secret: true` 后代，就必须在数组
+字段声明 `itemKey`，且每项的该键在插件生命周期内保持稳定；缺失或重复时设置模型生成 UUID。
+密钥 ID 由插件 ID、RFC 6901 JSON Pointer 和稳定 itemKey 组成，数组重排不会交换凭据：
+
+```json
+{
+  "key": "accounts", "type": "array", "itemKey": "uid",
+  "items": {"type": "object", "fields": [
+    {"key": "name", "type": "string"},
+    {"key": "token", "type": "string", "secret": true}
+  ]}
+}
+```
+
+设置保存会先暂存所有 DPAPI 改动，再原子提交密钥库和 config；config 写入失败时恢复原密钥
+文件。删除数组项会在同一事务清理孤儿密钥。运行时只注入解密后的明文；路径不匹配、跨项
+交换、缺失 schema 或解密失败的引用对象不会传给插件。
+
 ## HostServices 与权限
 
 `PluginContext2::hostServices` 是按插件 ID 绑定的版本化服务入口。插件不得缓存到

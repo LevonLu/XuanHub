@@ -160,6 +160,10 @@ API 为 `publish/subscribe/request/respond/state`。插件自己的 `plugin.<id>
   `{ "key": "mode", "equals": "advanced" }`。还支持 `notEquals`、`in` 数组和 `truthy`
   布尔判断；多个运算符并存时按 `equals`、`notEquals`、`in`、`truthy` 的顺序取第一个。
   条件只控制显示或编辑状态，不删除草稿中的字段，也不绕过保存时的最终校验。
+- object/array 可递归声明 `fields/items`。数组包含 `secret: true` 字段时，数组字段必须声明
+  `itemKey`，每项对应键应是稳定且唯一的字符串；缺失或重复时宿主生成 UUID 并写回草稿。
+  密钥按插件 ID + JSON Pointer + itemKey 隔离，重排不会串位，删除项会清理孤儿密钥。
+  DPAPI 密钥库与 config 保存使用可回滚事务，任一写入失败都不会留下半提交状态。
 - 编辑结果写入 config.json 的本插件 config 段（即 `init(config)` 收到的 dict），
   保存后热重载生效；schema 未声明的 config 键保存时原样保留。
 - `settingsQml`：声明自绘设置页（如 `"settingsQml": "Settings.qml"`，相对本目录），
