@@ -1417,7 +1417,7 @@ README.md
 
 **优先级：** P1
 **目标版本：** 持续交付
-**状态：** 待评审
+**状态：** 进行中（阶段 B、C、D 已完成；阶段 A 共享解析器与阶段 E 待完成）
 
 ### 目标
 
@@ -1504,26 +1504,26 @@ CPU/内存（可选采样）
 #### 阶段 A：Validator
 
 - [ ] 先实现只读 `validate`，复用宿主 Manifest/Schema/i18n 解析器。
-- [ ] 输出机器可读 JSON 和用户可读文本。
-- [ ] CI 对所有内置插件执行。
+- [x] 输出机器可读 JSON 和用户可读文本。
+- [x] CI 对所有内置插件执行。
 
 #### 阶段 B：Python Test Harness
 
-- [ ] 模拟宿主 IPC，运行 init/update/invoke/set_locale/stop。
-- [ ] 支持超时、崩溃、异常、消息大小和重启测试。
-- [ ] 插件作者无需 Qt/MSVC 即可运行。
+- [x] 模拟宿主 IPC，运行 init/update/invoke/set_locale/stop。
+- [x] 支持超时、崩溃、异常、消息大小和重启测试。
+- [x] 插件作者无需 Qt/MSVC 即可运行。
 
 #### 阶段 C：QML Smoke Test
 
-- [ ] 注入最小 theme/locale/pluginContext 假对象。
-- [ ] 检查加载错误、根属性和尺寸。
-- [ ] 生成可选截图供人工对比，不把截图测试作为唯一判据。
+- [x] 注入最小 theme/locale/pluginContext 假对象。
+- [x] 检查加载错误、根属性和尺寸。
+- [x] 生成可选截图供人工对比，不把截图测试作为唯一判据。
 
 #### 阶段 D：诊断和指标
 
-- [ ] PF-01 健康数据进入设置页。
-- [ ] 导出插件级脱敏诊断包。
-- [ ] 日志支持插件 ID 过滤和稳定错误码。
+- [x] PF-01 健康数据进入设置页。
+- [x] 导出插件级脱敏诊断包。
+- [x] 日志支持插件 ID 过滤和稳定错误码。
 
 #### 阶段 E：创建和打包
 
@@ -1538,6 +1538,17 @@ CPU/内存（可选采样）
 - CLI JSON 输出稳定，可用于 CI。
 - 诊断包通过独立敏感信息扫描。
 - 内置插件全部接入 CI Validator。
+
+### 实施记录
+
+- 2026-08-22：新增 `scripts/xuanhub_plugin.py validate/test/run`，提供稳定 JSON 诊断、
+  Protocol V2 Worker 生命周期测试和带可选截图的离屏 QML Smoke Test；10 个内置插件均
+  注册独立 CTest Validator。
+- 2026-08-22：设置页展示启动耗时、最近成功时间、Python PID 与最近错误码；诊断导出
+  采用原子 JSON 文件，只收集目标插件身份、健康数据、非路径包信息和最多 300 条过滤日志，
+  独立测试覆盖 API Key、Bearer、密码、用户路径及跨插件日志隔离。
+- 2026-08-22：`PluginLog` 统一输出 `[Plugin:<id>] [code=<稳定码>]`，HostServices logger
+  与 Python Worker 故障路径接入；旧 `[Plugin]/[PyBridge]/[PyWorker]` 日志继续可过滤。
 
 ### 风险与回滚
 
