@@ -10,12 +10,22 @@
 # 数据格式：首字节 flags（bit0=0 心率 8 位，bit0=1 为 16 位小端），随后是心率值。
 
 import asyncio
+import copy
 import json
 import os
 import sqlite3
 import threading
 import time
 from collections import deque
+
+try:
+    from xuanhub_host import emit_values as _bridge_emit_values
+except ImportError:
+    # 允许纯 Python 单测直接导入插件；真实 Worker 总会在 import 前安装该模块。
+    def _bridge_emit_values(_patch):
+        return 0
+
+PUSH_VALUES = True
 
 try:
     from bleak import BleakScanner, BleakClient
@@ -69,9 +79,23 @@ _known = []                         # [{"address", "name", "lastSeen"}, ...]
 
 # ================= 缓存读写（跨线程，统一持 _lock） =================
 
+def _push_values(patch):
+    """只写 bridge 内存队列；异常不能打断 BLE 回调或 asyncio 状态机。"""
+    try:
+        _bridge_emit_values(patch)
+    except Exception:
+        pass
+
+
+def _snapshot_locked(keys):
+    """调用方持 _lock；深拷贝避免解锁后容器继续变化。"""
+    return {key: copy.deepcopy(_cache[key]) for key in keys}
+
 def _set(**kw):
     with _lock:
         _cache.update(kw)
+        patch = _snapshot_locked(kw.keys())
+    _push_values(patch)
 
 
 def _merge_device(entry):
@@ -83,10 +107,14 @@ def _merge_device(entry):
                 if entry["name"]:
                     d["name"] = entry["name"]
                 d["rssi"] = entry["rssi"]
+                patch = _snapshot_locked(("devices",))
+                break
+        else:
+            if len(devs) >= 200:  # 防环境里 BLE 杂音设备过多，列表失控
                 return
-        if len(devs) >= 200:  # 防环境里 BLE 杂音设备过多，列表失控
-            return
-        devs.append(entry)
+            devs.append(entry)
+            patch = _snapshot_locked(("devices",))
+    _push_values(patch)
 
 
 def _parse_hr(data):
@@ -166,6 +194,8 @@ def _remember_device(address, name):
             {"id": d["address"], "name": d["name"], "lastSeen": d["lastSeen"]}
             for d in _known
         ]
+        patch = _snapshot_locked(("knownDevices",))
+    _push_values(patch)
 
 
 # ================= 历史记录：SQLite 持久化 =================
@@ -294,6 +324,9 @@ async def _hydrate_history():
         while len(_history) > _HISTORY_MAX:
             _history.popleft()
         _cache["history"] = _build_series_locked()
+        patch = _snapshot_locked(
+            ("history", "historyMax", "historyMin", "historyAvg"))
+    _push_values(patch)
 
 
 async def _set_chart_active(active):
@@ -302,6 +335,9 @@ async def _set_chart_active(active):
     with _lock:
         _chart_active = bool(active)
         _cache["history"] = _build_series_locked() if _chart_active else []
+        patch = _snapshot_locked(
+            ("history", "historyMax", "historyMin", "historyAvg"))
+    _push_values(patch)
     if _chart_active:
         await _hydrate_history()
 
@@ -319,6 +355,9 @@ async def _set_window(minutes):
         _history_win = m
         _cache["historyWindow"] = m
         _cache["history"] = _build_series_locked()
+        patch = _snapshot_locked(
+            ("historyWindow", "history", "historyMax", "historyMin", "historyAvg"))
+    _push_values(patch)
 
 
 # ================= 后台线程：BLE 事件循环 =================
@@ -426,6 +465,11 @@ async def _scan_loop():
             # 只有「仍在扫描」才回落 idle：连接中途停止扫描不能覆盖 connecting
             if _cache["state"] == "scanning":
                 _cache["state"] = "idle"
+                patch = _snapshot_locked(("state",))
+            else:
+                patch = None
+        if patch:
+            _push_values(patch)
 
 
 def _on_detect(device, adv):
@@ -456,6 +500,11 @@ async def _do_stop_scan():
     with _lock:
         if _cache["state"] == "scanning":
             _cache["state"] = "idle"
+            patch = _snapshot_locked(("state",))
+        else:
+            patch = None
+    if patch:
+        _push_values(patch)
 
 
 # ================= 连接 / 断开 =================
@@ -539,6 +588,12 @@ def _hr_callback(_sender, data):
             _history.popleft()
         if _chart_active:
             _cache["history"] = _build_series_locked()
+            keys = ("hr", "lastSeen", "state", "history",
+                    "historyMax", "historyMin", "historyAvg")
+        else:
+            keys = ("hr", "lastSeen", "state")
+        patch = _snapshot_locked(keys)
+    _push_values(patch)
     _db_insert(now, hr, device)  # 持久化（DB 失败静默，实时显示不受影响）
 
 
