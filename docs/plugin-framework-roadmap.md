@@ -91,7 +91,7 @@
 | PF-01 | 运行时健康、熔断与卸载安全 | P0 | 0.2.2 | 已完成 | 无 |
 | PF-02 | 插件级增量生命周期与热重载 | P0 | 0.2.2 | 已完成 | PF-01 |
 | PF-03 | SDK V2、Manifest 与兼容性协商 | P1 | 0.3.0 | 已完成 | PF-01 |
-| PF-04 | HostServices、权限与安全边界 | P1 | 0.3.0 | 待评审 | PF-03 |
+| PF-04 | HostServices、权限与安全边界 | P1 | 0.3.0 | 已完成 | PF-03 |
 | PF-05 | EventBus 2.0 与跨运行时通信 | P1 | 0.3.0 | 待评审 | PF-03、PF-04 |
 | PF-06 | 配置 Schema、迁移、校验与通用密钥 | P1 | 0.3.0 | 待评审 | PF-03、PF-04 |
 | PF-07 | 标准弹窗、动作扩展与响应式布局 | P1 | 0.4.0 | 待评审 | PF-04 |
@@ -549,14 +549,14 @@ public:
 
 **优先级：** P1
 **目标版本：** 0.3.0
-**状态：** 待评审
+**状态：** 已完成
 
 ### 目标
 
-把日志、通知、存储、密钥、设置跳转、弹窗和系统操作收敛为版本化宿主服务，减少插件直接
+把日志、通知、存储、密钥、设置跳转和系统操作收敛为版本化宿主服务，减少插件直接
 依赖全局 QML Context 或自行访问宿主内部对象，并为未来隔离插件建立权限边界。
 
-### 当前问题
+### 实施前问题
 
 - `BarPluginContext` 只有 EventBus、configDir 和 pluginConfig。
 - QML 插件隐式读取 `themeManager/barWindow/barScreenGeometry` 等全局对象。
@@ -585,13 +585,13 @@ logger.debug/info/warning/error
 notifications.show
 storage.read/write/remove/list
 secrets.read/write/remove
-settings.open(pluginId)
+settings.open
 shell.openUrl/openFile
 locale.activeLocale
 theme.currentPalette
-popup.open/close
-events.publish/subscribe/request
 ```
+
+标准弹窗归 PF-07，跨运行时事件与请求响应归 PF-05，避免首版宿主服务接口过度膨胀。
 
 存储目录建议：
 
@@ -617,30 +617,30 @@ events.publish/subscribe/request
 
 #### 阶段 A：服务接口和作用域
 
-- [ ] 定义 `IHostServices` 及各最小子接口。
-- [ ] Context 只提供本插件绑定后的服务代理。
-- [ ] 日志自动带插件 ID，不允许伪造其他插件来源。
-- [ ] 存储和密钥服务自动限定插件命名空间。
+- [x] 定义 `IHostServices` 及各最小子接口。
+- [x] Context 只提供本插件绑定后的服务代理。
+- [x] 日志自动带插件 ID，不允许伪造其他插件来源。
+- [x] 存储和密钥服务自动限定插件命名空间。
 
 #### 阶段 B：QML pluginContext
 
-- [ ] `PluginSlot` 注入 `pluginContext`。
-- [ ] 提供主题、语言、屏幕、弹窗和服务属性。
-- [ ] 迁移内置插件，保留旧全局属性一整个兼容周期。
-- [ ] 增加缺失权限时的确定错误。
+- [x] `PluginSlot` 注入 `pluginContext`。
+- [x] 提供主题、语言、屏幕、bar 交互和服务属性；标准弹窗留给 PF-07。
+- [x] 迁移内置插件，保留旧全局属性一整个兼容周期。
+- [x] 增加缺失权限时的确定错误。
 
 #### 阶段 C：Python RPC 服务
 
-- [ ] Worker 协议支持调用允许的 HostServices。
-- [ ] 请求带插件身份，不接受 Worker 自报其他 ID。
-- [ ] 限制消息大小、并发、超时和结果类型。
-- [ ] 日志和通知先作为试点能力。
+- [x] Worker 协议支持调用允许的 HostServices。
+- [x] 插件身份由宿主绑定，请求不接受 Worker 自报其他 ID。
+- [x] 限制消息大小、串行并发、超时和结果类型。
+- [x] 日志和通知先作为试点能力。
 
 #### 阶段 D：权限展示
 
-- [ ] 设置页显示插件声明和实际授予权限。
-- [ ] 安装阶段预览权限。
-- [ ] 对进程内插件明确显示“受信任、权限仅供说明”。
+- [x] 设置页显示插件声明和实际授予权限。
+- [x] 提供发现阶段即可使用的权限预览模型；PF-09 安装流程直接复用。
+- [x] 对进程内插件明确显示“受信任、权限仅供说明”。
 
 ### 测试与验收
 
@@ -658,11 +658,20 @@ events.publish/subscribe/request
 
 ### 完成定义
 
-- [ ] HostServices 有稳定版本和能力查询。
-- [ ] 存储、密钥、日志、通知完成跨插件隔离测试。
-- [ ] 内置 QML 插件迁移到 pluginContext。
-- [ ] Python 至少接入日志和通知服务。
-- [ ] 权限说明与实际安全边界一致。
+- [x] HostServices 有稳定版本和能力查询。
+- [x] 存储、密钥、日志、通知完成跨插件隔离测试。
+- [x] 内置 QML 插件迁移到 pluginContext。
+- [x] Python 至少接入日志和通知服务。
+- [x] 权限说明与实际安全边界一致。
+
+### 验收记录
+
+- 2026-08-22：全量 Release 构建与 CTest 14/14 通过；私有存储、DPAPI 密钥、路径清理、
+  junction 越界、权限拒绝、Python 服务代理和插件身份绑定均有回归测试。
+- 2026-08-22：设置页同时展示 API、能力、声明权限、实际授权与隔离级别；原生插件明确
+  标为进程内受信任，Python 插件仅授予宿主支持的隔离权限。
+- 2026-08-22：内置 QML 已迁移到 `pluginContext` 并保留旧全局回退；安装后的 SDK 可独立
+  编译使用 HostServices 的第三方 V2 示例，Python 8/8 测试通过。
 
 ---
 
