@@ -37,6 +37,8 @@ qt_add_executable(XuanHub WIN32
 
     src/SemanticVersion.h
     src/SemanticVersion.cpp
+    src/PluginManifest.h
+    src/PluginManifest.cpp
 
     src/AutoStart.h
 
