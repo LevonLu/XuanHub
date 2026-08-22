@@ -43,6 +43,26 @@ V2 必填字段为 `id/name/version/apiVersion/entry/compatibility`。`apiVersio
 `dependencies` 的必需项会参与拓扑排序，缺失、版本不匹配或循环都会阻止插件执行。可选依赖
 不会阻止加载；插件通过 `PluginContext2::hasDependency(id)` 查询，不能获取其他 DLL 对象。
 
+`configVersion` 是可选正整数，缺失视为 1。需要升级旧配置时，插件对象另外实现
+`IPluginConfigMigration`；既有 `IBarPlugin2` 虚函数表不变：
+
+```cpp
+#include "barplugin/IPluginConfigMigration.h"
+
+PluginConfigMigrationResult DemoPlugin::migrateConfig(
+    int fromVersion, const QVariantMap& config) const {
+    QVariantMap migrated = config;
+    if (fromVersion == 1) migrated.insert(QStringLiteral("newKey"), true);
+    else return PluginConfigMigrationResult::failed(QStringLiteral("unsupported version"));
+    return PluginConfigMigrationResult::migrated(migrated);
+}
+```
+
+宿主只把临时副本交给迁移器，并用 `validateConfig()` 再校验结果。启动时可使用迁移后的
+内存配置，但不会自动覆盖 `config.json`；设置页显示建议，用户采用并保存后才以
+`QSaveFile` 原子写入新 `configVersion`。未来版本、缺失迁移器、迁移或校验失败会阻止目标
+插件初始化，原配置和其他插件不受影响。插件不得在迁移函数中自行写配置文件或密钥库。
+
 ## HostServices 与权限
 
 `PluginContext2::hostServices` 是按插件 ID 绑定的版本化服务入口。插件不得缓存到

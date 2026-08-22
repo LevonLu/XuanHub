@@ -26,6 +26,7 @@ plugins_py/
     "version": "0.1.0",
     "author": "you",
     "apiVersion": 2,
+    "configVersion": 1,
     "capabilities": ["barItem"],
     "permissions": [],
     "qml": "Hello.qml"
@@ -39,10 +40,35 @@ plugins_py/
 - 启用/布局在 `config.json` 里配置，与 C++ 插件同规则：
 
 ```json
-{ "id": "py_hello", "position": "right", "order": 2, "config": { "intervalMs": 1000, "prefix": "Py" } }
+{ "id": "py_hello", "configVersion": 1, "position": "right", "order": 2, "config": { "intervalMs": 1000, "prefix": "Py" } }
 ```
 
 - 另需保留 `{ "id": "pybridge", ... }` 条目作为总开关；删掉它则所有 Python 子插件都不加载。
+
+### 配置版本与迁移
+
+`plugin.json.configVersion` 是当前目标版本，必须为正整数，缺失视为 1。升级格式时在
+`main.py` 同时声明相同的 `CONFIG_VERSION`，并按需实现：
+
+```python
+CONFIG_VERSION = 3
+
+def migrate_config(old_version, config):
+    migrated = dict(config)
+    if old_version == 1:
+        migrated["mode"] = "daily"
+    return migrated
+
+def validate_config(config):
+    ok = config.get("mode") in {"daily", "once"}
+    return {"ok": ok, "errors": [] if ok else ["invalid mode"]}
+```
+
+迁移和最终校验在隔离 Worker 中、`init(config)` 之前执行；迁移必须返回 `dict`，校验可返回
+布尔值或 `{ok, errors}`。宿主只保留迁移建议，不在启动时改文件；设置页采用建议并保存后，
+才原子写入新版本。`CONFIG_VERSION` 与 Manifest 不一致、未来配置版本、缺失迁移器、异常或
+非法返回值都会停止本插件 Worker，旧配置保持不变。迁移函数不得自行写 `config.json` 或
+调用密钥存储。
 
 ### HostServices 与权限
 
