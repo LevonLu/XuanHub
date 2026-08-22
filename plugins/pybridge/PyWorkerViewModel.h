@@ -18,7 +18,7 @@
 class QTcpServer;
 class QTcpSocket;
 class PyWorkerViewModelTest;
-namespace xuanhub { class EventBus; class PluginEventScope; }
+namespace xuanhub { class EventBus; class PluginEventScope; class IHostServices; }
 
 class PyWorkerViewModel : public QObject {
     Q_OBJECT
@@ -50,6 +50,7 @@ public:
     // 只重建当前插件的 worker；同时解除熔断，供设置页和插件错误界面手动恢复。
     Q_INVOKABLE bool restart();
     bool applyConfig(const QVariantMap& config);
+    void setHostServices(xuanhub::IHostServices* services) { m_hostServices = services; }
 
 public slots:
     void onLocaleChanged(QVariantMap payload);
@@ -72,6 +73,7 @@ private:
     void acceptConnection();
     void readMessages();
     void handleMessage(const QJsonObject& message);
+    void handleHostServiceRequest(const QJsonObject& message);
     bool sendMessage(const QJsonObject& message);
     void enqueue(Request request, bool front = false);
     void dispatchNext();
@@ -117,4 +119,5 @@ private:
     xuanhub::PluginHealth m_health;
     int m_restartAttempt = 0;
     int m_updateIntervalMs = 1000;
+    xuanhub::IHostServices* m_hostServices = nullptr; // 核心按子插件 ID 绑定，Worker 不参与选择
 };

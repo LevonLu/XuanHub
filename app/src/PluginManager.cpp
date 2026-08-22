@@ -11,6 +11,7 @@
 #include "barplugin/IBarPluginHost.h"
 #include "barplugin/IBarPluginHostLifecycle.h"
 #include "barplugin/IBarPluginHostConfigurable.h"
+#include "barplugin/IBarPluginHostServices.h"
 #include "barplugin/PluginEventScope.h"
 
 #include <QDir>
@@ -407,10 +408,23 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
     auto hostServices = createHostServices(
         entry.id, xuanhub::HostPluginTrustLevel::Isolated,
         sp.permissions, sp.permissions);
+    auto* hostRuntime = m_runtimeById.value(hostId);
+    auto* hostObject = hostRuntime ? hostRuntime->instance() : nullptr;
+    if (auto* binder = hostObject
+            ? qobject_cast<xuanhub::IBarPluginHostServices*>(hostObject) : nullptr) {
+        if (!binder->bindSubPluginHostServices(entry.id, hostServices.get())) {
+            if (auto* lifecycle = qobject_cast<xuanhub::IBarPluginHostLifecycle*>(hostObject))
+                lifecycle->destroySubPlugin(entry.id);
+            recordLoadError(entry.id,
+                            QStringLiteral("host failed to bind sub-plugin services"));
+            return false;
+        }
+    }
     auto qmlContext = std::make_unique<PluginContextObject>(
         hostServices.get(), m_hostEnvironment.localeNotifier,
         m_hostEnvironment.themeNotifier);
     lp.pluginContext = qmlContext.get();
+    lp.capabilities = sp.capabilities;
     lp.qmlUrl = QUrl::fromLocalFile(QDir(sp.dirPath).absoluteFilePath(sp.qmlFilePath));
     lp.health.state = xuanhub::PluginState::Running;
     lp.health.startedAt = QDateTime::currentDateTimeUtc();

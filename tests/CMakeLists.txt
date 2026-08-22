@@ -270,22 +270,31 @@ if(Python_Interpreter_FOUND)
         PyWorkerViewModelTest.cpp
         ${CMAKE_SOURCE_DIR}/plugins/pybridge/PyWorkerViewModel.h
         ${CMAKE_SOURCE_DIR}/plugins/pybridge/PyWorkerViewModel.cpp
+        ${CMAKE_SOURCE_DIR}/app/src/PluginHostServices.h
+        ${CMAKE_SOURCE_DIR}/app/src/PluginHostServices.cpp
+        ${CMAKE_SOURCE_DIR}/app/src/SecretStore.h
+        ${CMAKE_SOURCE_DIR}/app/src/SecretStore.cpp
     )
     set_target_properties(xuanhub_pyworker_viewmodel_tests PROPERTIES AUTOMOC ON)
     target_include_directories(xuanhub_pyworker_viewmodel_tests PRIVATE
         ${CMAKE_SOURCE_DIR}/plugins/pybridge
+        ${CMAKE_SOURCE_DIR}/app/src
     )
     target_link_libraries(xuanhub_pyworker_viewmodel_tests PRIVATE
         barplugin
         Qt6::Core
+        Qt6::Gui
         Qt6::Network
         Qt6::Test
+        crypt32
     )
     add_custom_command(TARGET xuanhub_pyworker_viewmodel_tests POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:barplugin>" "$<TARGET_FILE_DIR:xuanhub_pyworker_viewmodel_tests>"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:Qt6::Core>" "$<TARGET_FILE_DIR:xuanhub_pyworker_viewmodel_tests>"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:Qt6::Gui>" "$<TARGET_FILE_DIR:xuanhub_pyworker_viewmodel_tests>"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:Qt6::Network>" "$<TARGET_FILE_DIR:xuanhub_pyworker_viewmodel_tests>"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different

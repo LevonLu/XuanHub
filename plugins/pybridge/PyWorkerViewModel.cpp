@@ -17,6 +17,7 @@
 
 #include "barplugin/ProcessReaper.h"
 #include "barplugin/EventBus.h"
+#include "barplugin/HostServices.h"
 #include "barplugin/PluginEventScope.h"
 
 namespace {
@@ -275,6 +276,12 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
         return;
     }
 
+    if (message.value(QStringLiteral("type")).toString()
+        == QLatin1String("host_service")) {
+        handleHostServiceRequest(message);
+        return;
+    }
+
     if (message.value(QStringLiteral("type")).toString() != QLatin1String("response")) {
         failWorker(QStringLiteral("worker IPC returned an unexpected message"), false);
         return;
@@ -335,6 +342,86 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
         scheduleUpdate(0);
     if (op == QLatin1String("update")) scheduleUpdate();
     dispatchNext();
+}
+
+void PyWorkerViewModel::handleHostServiceRequest(const QJsonObject& message) {
+    const QString requestId = message.value(QStringLiteral("id")).toString();
+    auto respond = [this, &requestId](const xuanhub::HostServiceResult& result) {
+        QJsonObject response{
+            {QStringLiteral("type"), QStringLiteral("host_service_response")},
+            {QStringLiteral("id"), requestId},
+            {QStringLiteral("ok"), result.success},
+        };
+        if (result.success) {
+            response.insert(QStringLiteral("result"),
+                            QJsonValue::fromVariant(result.value));
+        } else {
+            response.insert(QStringLiteral("errorCode"), result.errorCode);
+            response.insert(QStringLiteral("error"), result.errorMessage);
+        }
+        if (!sendMessage(response))
+            failWorker(QStringLiteral("cannot write host service response"), true);
+    };
+
+    if (requestId.isEmpty() || requestId.size() > 64 || m_inFlightId == 0) {
+        respond(xuanhub::HostServiceResult::failed(
+            QStringLiteral("invalid_request"),
+            QStringLiteral("host service request is outside an active plugin call")));
+        return;
+    }
+    // 身份只来自本 ViewModel 的 m_id 和核心绑定的服务对象，Worker 不得自报 ID。
+    if (message.contains(QStringLiteral("pluginId"))) {
+        respond(xuanhub::HostServiceResult::failed(
+            QStringLiteral("identity_not_allowed"),
+            QStringLiteral("worker must not provide a plugin identity")));
+        return;
+    }
+    if (!m_hostServices) {
+        respond(xuanhub::HostServiceResult::failed(
+            QStringLiteral("service_unavailable"),
+            QStringLiteral("host services are not bound")));
+        return;
+    }
+
+    const QString service = message.value(QStringLiteral("service")).toString();
+    const QString method = message.value(QStringLiteral("method")).toString();
+    const QJsonObject args = message.value(QStringLiteral("args")).toObject();
+    if (service == QLatin1String("logger") && method == QLatin1String("log")) {
+        const QString level = args.value(QStringLiteral("level")).toString();
+        const QString text = args.value(QStringLiteral("message")).toString();
+        if (text.size() > 8192) {
+            respond(xuanhub::HostServiceResult::failed(
+                QStringLiteral("invalid_argument"),
+                QStringLiteral("log message exceeds 8192 characters")));
+            return;
+        }
+        xuanhub::PluginLogLevel parsed = xuanhub::PluginLogLevel::Info;
+        if (level == QLatin1String("debug")) parsed = xuanhub::PluginLogLevel::Debug;
+        else if (level == QLatin1String("warning")) parsed = xuanhub::PluginLogLevel::Warning;
+        else if (level == QLatin1String("error")) parsed = xuanhub::PluginLogLevel::Error;
+        m_hostServices->logger()->log(
+            parsed, text,
+            args.value(QStringLiteral("fields")).toObject().toVariantMap());
+        respond(xuanhub::HostServiceResult::succeeded());
+        return;
+    }
+    if (service == QLatin1String("notifications")
+        && method == QLatin1String("show")) {
+        const QString title = args.value(QStringLiteral("title")).toString();
+        const QString text = args.value(QStringLiteral("message")).toString();
+        if (title.size() > 256 || text.size() > 4096) {
+            respond(xuanhub::HostServiceResult::failed(
+                QStringLiteral("invalid_argument"),
+                QStringLiteral("notification text exceeds the protocol limit")));
+            return;
+        }
+        respond(m_hostServices->notifications()->show(title, text));
+        return;
+    }
+    respond(xuanhub::HostServiceResult::failed(
+        QStringLiteral("unsupported_service"),
+        QStringLiteral("unsupported host service operation: %1.%2")
+            .arg(service, method)));
 }
 
 bool PyWorkerViewModel::sendMessage(const QJsonObject& message) {

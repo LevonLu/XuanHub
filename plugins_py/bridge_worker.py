@@ -14,6 +14,7 @@ import socket
 import struct
 import sys
 import traceback
+import types
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,52 @@ from typing import Any
 MAX_MESSAGE_BYTES = 4 * 1024 * 1024
 MAX_DEPTH = 32
 MAX_SAFE_INTEGER = (1 << 53) - 1  # Qt JSON 数字落到 double；超过此范围转字符串保真。
+
+
+class HostServices:
+    """由宿主绑定插件身份的同步服务代理；插件不能指定或覆盖 plugin id。"""
+
+    def __init__(self, sock: socket.socket) -> None:
+        self._sock = sock
+        self._next_id = 1
+
+    def _call(self, service: str, method: str, args: dict[str, Any]) -> dict[str, Any]:
+        request_id = "host-" + str(self._next_id)
+        self._next_id += 1
+        _send(self._sock, {
+            "type": "host_service",
+            "id": request_id,
+            "service": service,
+            "method": method,
+            "args": _json_value(args),
+        })
+        response = _recv(self._sock)
+        if response.get("type") != "host_service_response" or response.get("id") != request_id:
+            raise RuntimeError("host service response mismatch")
+        return {
+            "success": bool(response.get("ok", False)),
+            "value": response.get("result"),
+            "errorCode": str(response.get("errorCode", "")),
+            "errorMessage": str(response.get("error", "")),
+        }
+
+    def log(self, level: str, message: str, fields: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self._call("logger", "log", {
+            "level": str(level), "message": str(message), "fields": fields or {},
+        })
+
+    def notify(self, title: str, message: str) -> dict[str, Any]:
+        return self._call("notifications", "show", {
+            "title": str(title), "message": str(message),
+        })
+
+
+def _install_host_module(services: HostServices) -> None:
+    module = types.ModuleType("xuanhub_host")
+    module.services = services
+    module.log = services.log
+    module.notify = services.notify
+    sys.modules["xuanhub_host"] = module
 
 
 def _log(message: str) -> None:
@@ -73,7 +120,8 @@ def _recv(sock: socket.socket) -> dict[str, Any]:
     return message
 
 
-def _load_plugin(plugin_dir: Path, plugin_id: str, config: dict[str, Any], locale: str) -> Any:
+def _load_plugin(plugin_dir: Path, plugin_id: str, config: dict[str, Any], locale: str,
+                 host_services: HostServices) -> Any:
     main_file = plugin_dir / "main.py"
     if not main_file.is_file():
         raise RuntimeError("main.py is missing")
@@ -88,7 +136,10 @@ def _load_plugin(plugin_dir: Path, plugin_id: str, config: dict[str, Any], local
         raise RuntimeError("cannot create import specification")
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
+    _install_host_module(host_services)
     spec.loader.exec_module(module)
+    if hasattr(module, "set_host_services"):
+        module.set_host_services(host_services)
     if hasattr(module, "init"):
         module.init(config)
     if hasattr(module, "set_locale"):
@@ -116,6 +167,7 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
     try:
         with socket.create_connection(("127.0.0.1", port), timeout=10) as sock:
             sock.settimeout(None)
+            host_services = HostServices(sock)
             _send(sock, {"type": "hello", "token": token})
             while True:
                 request = _recv(sock)
@@ -136,10 +188,11 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
                         locale = data.get("locale", "en-US")
                         if not isinstance(locale, str):
                             raise ValueError("init locale must be a string")
-                        module = _load_plugin(plugin_dir, plugin_id, config, locale)
+                        module = _load_plugin(plugin_dir, plugin_id, config, locale, host_services)
                         capabilities = []
                         if hasattr(module, "set_config"):
                             capabilities.append("set_config")
+                        capabilities.append("host_services.v1")
                         result: Any = {"ready": True, "capabilities": capabilities}
                     elif module is None:
                         raise RuntimeError("worker is not initialized")

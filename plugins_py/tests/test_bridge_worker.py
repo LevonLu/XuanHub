@@ -50,11 +50,21 @@ class BridgeWorkerTests(unittest.TestCase):
             "def set_config(config):\n"
             "    state['prefix'] = config.get('prefix', '')\n"
         )
+        host_import = ""
+        host_init = ""
+        if self._testMethodName == "test_host_services_are_available_during_init":
+            host_import = "from xuanhub_host import log, notify\n"
+            host_init = (
+                "    state['log_ok'] = log('info', 'worker ready', {'kind': 'test'})['success']\n"
+                "    state['notify_ok'] = notify('Demo', 'Ready')['success']\n"
+            )
         (self.plugin_dir / "main.py").write_text(
             "import os\n"
+            + host_import +
             "state = {'count': 0, 'prefix': '', 'locale': 'unset'}\n"
             "def init(config):\n"
             "    state['prefix'] = config.get('prefix', '')\n"
+            + host_init +
             "def update():\n"
             "    return {'count': state['count'], 'prefix': state['prefix'], 'locale': state['locale']}\n"
             "def invoke(name, args):\n"
@@ -84,6 +94,7 @@ class BridgeWorkerTests(unittest.TestCase):
         self.socket.settimeout(5)
         self.assertEqual(recv_frame(self.socket), {"type": "hello", "token": self.token})
         self.request_id = 0
+        self.host_requests: list[dict] = []
 
     def tearDown(self) -> None:
         if hasattr(self, "socket"):
@@ -105,7 +116,17 @@ class BridgeWorkerTests(unittest.TestCase):
         self.request_id += 1
         request_id = str(self.request_id)
         send_frame(self.socket, {"type": "request", "id": request_id, "op": op, "data": data})
-        response = recv_frame(self.socket)
+        while True:
+            response = recv_frame(self.socket)
+            if response.get("type") != "host_service":
+                break
+            self.host_requests.append(response)
+            send_frame(self.socket, {
+                "type": "host_service_response",
+                "id": response["id"],
+                "ok": True,
+                "result": None,
+            })
         self.assertEqual(response["type"], "response")
         self.assertEqual(response["id"], request_id)
         return response
@@ -113,7 +134,8 @@ class BridgeWorkerTests(unittest.TestCase):
     def test_init_update_invoke_and_stop(self) -> None:
         self.assertEqual(self.request("init", {"config": {"prefix": "worker"}, "locale": "en-US"}),
                          {"type": "response", "id": "1", "ok": True,
-                          "result": {"ready": True, "capabilities": ["set_config"]}})
+                          "result": {"ready": True,
+                                     "capabilities": ["set_config", "host_services.v1"]}})
         self.assertEqual(self.request("update", {}),
                          {"type": "response", "id": "2", "ok": True,
                           "result": {"count": 0, "prefix": "worker", "locale": "en-US"}})
@@ -131,9 +153,20 @@ class BridgeWorkerTests(unittest.TestCase):
     def test_missing_set_locale_is_compatible(self) -> None:
         initialized = self.request("init", {"config": {}, "locale": "en-US"})
         self.assertTrue(initialized["ok"])
-        self.assertEqual(initialized["result"]["capabilities"], [])
+        self.assertEqual(initialized["result"]["capabilities"], ["host_services.v1"])
         self.assertTrue(self.request("set_locale", {"locale": "zh-CN"})["ok"])
         self.assertEqual(self.request("update", {})["result"]["locale"], "unset")
+        self.assertTrue(self.request("stop", {})["ok"])
+        self.process.wait(timeout=5)
+
+    def test_host_services_are_available_during_init(self) -> None:
+        initialized = self.request("init", {"config": {}, "locale": "en-US"})
+        self.assertTrue(initialized["ok"])
+        self.assertEqual(
+            [(request["service"], request["method"]) for request in self.host_requests],
+            [("logger", "log"), ("notifications", "show")],
+        )
+        self.assertTrue(all("pluginId" not in request for request in self.host_requests))
         self.assertTrue(self.request("stop", {})["ok"])
         self.process.wait(timeout=5)
 

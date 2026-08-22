@@ -18,6 +18,7 @@
 #include <QJsonParseError>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QSet>
 #include <QStandardPaths>
 
 #include "barplugin/EventBus.h"
@@ -193,6 +194,28 @@ PythonManifestResult readPluginJson(const QDir& directory) {
         result.error = QStringLiteral("unsupported apiVersion");
         return result;
     }
+    const QRegularExpression declarationPattern(
+        QStringLiteral(R"(^[A-Za-z0-9._:-]{1,128}$)"));
+    for (const QString& key : {QStringLiteral("capabilities"),
+                               QStringLiteral("permissions")}) {
+        const QJsonValue declaration = result.object.value(key);
+        if (declaration.isUndefined()) continue;
+        if (!declaration.isArray()) {
+            result.error = QStringLiteral("%1 must be an array of strings").arg(key);
+            return result;
+        }
+        QSet<QString> seen;
+        for (const QJsonValue& value : declaration.toArray()) {
+            const QString item = value.toString();
+            if (!value.isString() || !declarationPattern.match(item).hasMatch()
+                || seen.contains(item)) {
+                result.error = QStringLiteral("%1 contains an invalid or duplicate value")
+                                   .arg(key);
+                return result;
+            }
+            seen.insert(item);
+        }
+    }
 
     QString pathError;
     if (!xuanhub::validatePluginFilePath(directory.absolutePath(),
@@ -352,11 +375,8 @@ xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const 
     auto* viewModel = new PyWorkerViewModel(id, dirPath, cfg, m_pythonExe,
                                             m_workerScript, m_ctx.eventBus,
                                             m_ctx.eventScope, this);
-    if (!viewModel->start()) {
-        qWarning() << "[PyBridge]" << id << ": cannot start isolated worker";
-        delete viewModel;
-        return info;
-    }
+    // Worker 要到核心按子插件身份绑定 HostServices 后再启动，避免插件 init()
+    // 抢先发服务请求时仍只有 pybridge 的宿主身份。
     m_vms.insert(id, viewModel);
     info.meta = {id,
                  object.value(QStringLiteral("name")).toString(id),
@@ -389,4 +409,14 @@ bool PyBridgePlugin::applySubPluginConfig(const QString& id,
                                           const QVariantMap& config) {
     auto* viewModel = qobject_cast<PyWorkerViewModel*>(m_vms.value(id));
     return viewModel && viewModel->applyConfig(config);
+}
+
+bool PyBridgePlugin::bindSubPluginHostServices(
+    const QString& id, xuanhub::IHostServices* services) {
+    auto* viewModel = qobject_cast<PyWorkerViewModel*>(m_vms.value(id));
+    if (!viewModel || !services) return false;
+    viewModel->setHostServices(services);
+    if (viewModel->start()) return true;
+    qWarning() << "[PyBridge]" << id << ": cannot start isolated worker";
+    return false;
 }

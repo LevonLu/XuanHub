@@ -1,5 +1,6 @@
 // PyWorkerViewModelTest.cpp — 宿主 Qt 代理到真实隔离 Python worker 的集成回归测试
 #include "PyWorkerViewModel.h"
+#include "PluginHostServices.h"
 #include "barplugin/EventBus.h"
 #include "barplugin/ProcessReaper.h"
 
@@ -163,6 +164,101 @@ def stop():
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("count")).toInt(), 3, 5000);
         }
         QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(stopFile), 3000);
+    }
+
+    void routesHostServicesWithBoundPluginIdentity() {
+        const QString python = qEnvironmentVariable("XUANHUB_TEST_PYTHON");
+        const QString worker = qEnvironmentVariable("XUANHUB_TEST_WORKER");
+        QVERIFY2(!python.isEmpty() && !worker.isEmpty(),
+                 "CTest must provide python executable and bridge_worker.py paths");
+
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString pluginDir = temporary.filePath(QStringLiteral("plugin"));
+        QVERIFY(QDir().mkpath(pluginDir));
+        QFile mainFile(pluginDir + QStringLiteral("/main.py"));
+        QVERIFY(mainFile.open(QIODevice::WriteOnly | QIODevice::Text));
+        QVERIFY(mainFile.write(R"PY(
+from xuanhub_host import log, notify
+state = {"notified": False, "error": ""}
+def init(config):
+    log("info", "python service ready", {"phase": "init"})
+    result = notify("Python", "Ready")
+    state["notified"] = result["success"]
+    state["error"] = result["errorCode"]
+def update():
+    return state
+)PY"));
+        mainFile.close();
+
+        xuanhub::EventBus bus;
+        QSignalSpy dispatched(&bus, &xuanhub::EventBus::dispatched);
+        PluginHostServices::Environment environment;
+        environment.eventBus = &bus;
+        environment.configDir = temporary.path();
+        PluginHostServices services(
+            QStringLiteral("py_bound_identity"),
+            xuanhub::HostPluginTrustLevel::Isolated,
+            {QStringLiteral("notifications")}, {QStringLiteral("notifications")},
+            std::move(environment));
+
+        PyWorkerViewModel viewModel(QStringLiteral("py_bound_identity"), pluginDir,
+                                    {}, python, worker, &bus);
+        viewModel.setHostServices(&services);
+        QVERIFY(viewModel.start());
+        QTRY_COMPARE_WITH_TIMEOUT(
+            viewModel.values().value(QStringLiteral("notified")).toBool(), true, 5000);
+        QCOMPARE(viewModel.values().value(QStringLiteral("error")).toString(), QString{});
+
+        bool foundNotification = false;
+        for (const auto& arguments : dispatched) {
+            if (arguments.at(0).toString() != QLatin1String("app.notify")) continue;
+            foundNotification = true;
+            QCOMPARE(arguments.at(1).toMap().value(QStringLiteral("source")).toString(),
+                     QStringLiteral("py_bound_identity"));
+        }
+        QVERIFY(foundNotification);
+    }
+
+    void deniesUndeclaredPythonNotificationPermission() {
+        const QString python = qEnvironmentVariable("XUANHUB_TEST_PYTHON");
+        const QString worker = qEnvironmentVariable("XUANHUB_TEST_WORKER");
+        QVERIFY2(!python.isEmpty() && !worker.isEmpty(),
+                 "CTest must provide python executable and bridge_worker.py paths");
+
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString pluginDir = temporary.filePath(QStringLiteral("plugin"));
+        QVERIFY(QDir().mkpath(pluginDir));
+        QFile mainFile(pluginDir + QStringLiteral("/main.py"));
+        QVERIFY(mainFile.open(QIODevice::WriteOnly | QIODevice::Text));
+        QVERIFY(mainFile.write(R"PY(
+from xuanhub_host import notify
+state = {"success": True, "error": ""}
+def init(config):
+    result = notify("Denied", "Must not show")
+    state["success"] = result["success"]
+    state["error"] = result["errorCode"]
+def update():
+    return state
+)PY"));
+        mainFile.close();
+
+        xuanhub::EventBus bus;
+        PluginHostServices::Environment environment;
+        environment.eventBus = &bus;
+        environment.configDir = temporary.path();
+        PluginHostServices services(
+            QStringLiteral("py_denied"), xuanhub::HostPluginTrustLevel::Isolated,
+            {}, {}, std::move(environment));
+        PyWorkerViewModel viewModel(QStringLiteral("py_denied"), pluginDir,
+                                    {}, python, worker, &bus);
+        viewModel.setHostServices(&services);
+        QVERIFY(viewModel.start());
+        QTRY_COMPARE_WITH_TIMEOUT(
+            viewModel.values().value(QStringLiteral("error")).toString(),
+            QStringLiteral("permission_denied"), 5000);
+        QCOMPARE(viewModel.values().value(QStringLiteral("success")).toBool(), false);
     }
 
     void respectsConfiguredUpdateInterval() {

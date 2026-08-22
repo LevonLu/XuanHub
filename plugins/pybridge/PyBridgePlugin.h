@@ -9,16 +9,19 @@
 #include "barplugin/IBarPluginHost.h"
 #include "barplugin/IBarPluginHostLifecycle.h"
 #include "barplugin/IBarPluginHostConfigurable.h"
+#include "barplugin/IBarPluginHostServices.h"
 
 class PyBridgePlugin : public QObject, public xuanhub::IBarPlugin,
                        public xuanhub::IBarPluginHost,
                        public xuanhub::IBarPluginHostLifecycle,
-                       public xuanhub::IBarPluginHostConfigurable {
+                       public xuanhub::IBarPluginHostConfigurable,
+                       public xuanhub::IBarPluginHostServices {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID "xuanhub.BarPlugin/1.0" FILE "metadata.json")
     Q_INTERFACES(xuanhub::IBarPlugin xuanhub::IBarPluginHost
                  xuanhub::IBarPluginHostLifecycle
-                 xuanhub::IBarPluginHostConfigurable)
+                 xuanhub::IBarPluginHostConfigurable
+                 xuanhub::IBarPluginHostServices)
 public:
     // IBarPlugin
     xuanhub::PluginMetadata metadata() const override;
@@ -33,6 +36,8 @@ public:
     bool destroySubPlugin(const QString& id) override;
     bool canApplySubPluginConfig(const QString& id) const override;
     bool applySubPluginConfig(const QString& id, const QVariantMap& config) override;
+    bool bindSubPluginHostServices(const QString& id,
+                                   xuanhub::IHostServices* services) override;
 
 private:
     xuanhub::BarPluginContext m_ctx;   // 拷贝保存（init 传入的 ctx 是核心栈上对象）
