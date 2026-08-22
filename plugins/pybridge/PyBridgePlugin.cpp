@@ -14,11 +14,13 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonParseError>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
 
 #include "barplugin/EventBus.h"
+#include "barplugin/PluginPathValidator.h"
 
 namespace {
 // 运行时探测结果放 qApp 动态属性：pybridge.dll 热重载会被 unload，文件静态变量会复位。
@@ -125,10 +127,100 @@ QString pathPythonHome() {
     return {};
 }
 
-QJsonObject readPluginJson(const QDir& directory) {
+struct PythonManifestResult {
+    bool ok = false;
+    QJsonObject object;
+    QString id;
+    QString error;
+};
+
+PythonManifestResult readPluginJson(const QDir& directory) {
+    PythonManifestResult result;
     QFile file(directory.absoluteFilePath(QStringLiteral("plugin.json")));
-    if (!file.open(QIODevice::ReadOnly)) return {};
-    return QJsonDocument::fromJson(file.readAll()).object();
+    if (!file.open(QIODevice::ReadOnly)) {
+        result.error = QStringLiteral("cannot open plugin.json");
+        return result;
+    }
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        result.error = QStringLiteral("invalid plugin.json: %1").arg(parseError.errorString());
+        return result;
+    }
+    result.object = document.object();
+    const QRegularExpression idPattern(QStringLiteral(R"(^[A-Za-z0-9._-]{1,128}$)"));
+    result.id = result.object.value(QStringLiteral("id")).toString().trimmed();
+    if (!idPattern.match(result.id).hasMatch()) {
+        result.error = QStringLiteral("invalid or missing id");
+        return result;
+    }
+    const QString name = result.object.value(QStringLiteral("name")).toString().trimmed();
+    const QString version = result.object.value(QStringLiteral("version")).toString().trimmed();
+    const QRegularExpression semverPattern(QStringLiteral(
+        R"(^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$)"));
+    if (name.isEmpty()) {
+        result.error = QStringLiteral("missing name");
+        return result;
+    }
+    const auto versionMatch = semverPattern.match(version);
+    bool majorOk = false;
+    bool minorOk = false;
+    bool patchOk = false;
+    versionMatch.captured(1).toInt(&majorOk);
+    versionMatch.captured(2).toInt(&minorOk);
+    versionMatch.captured(3).toInt(&patchOk);
+    bool prereleaseOk = true;
+    for (const QString& identifier : versionMatch.captured(4).split(
+             QLatin1Char('.'), Qt::SkipEmptyParts)) {
+        bool numeric = false;
+        identifier.toULongLong(&numeric);
+        if (numeric && identifier.size() > 1
+            && identifier.startsWith(QLatin1Char('0'))) {
+            prereleaseOk = false;
+            break;
+        }
+    }
+    if (!versionMatch.hasMatch() || !majorOk || !minorOk || !patchOk
+        || !prereleaseOk) {
+        result.error = QStringLiteral("invalid or missing semantic version");
+        return result;
+    }
+    const QJsonValue apiVersion = result.object.value(QStringLiteral("apiVersion"));
+    if (!apiVersion.isUndefined()
+        && (!apiVersion.isDouble() || apiVersion.toDouble() != apiVersion.toInt()
+            || (apiVersion.toInt() != 1 && apiVersion.toInt() != 2))) {
+        result.error = QStringLiteral("unsupported apiVersion");
+        return result;
+    }
+
+    QString pathError;
+    if (!xuanhub::validatePluginFilePath(directory.absolutePath(),
+                                         QStringLiteral("backend"),
+                                         QStringLiteral("main.py"), &pathError)) {
+        result.error = pathError;
+        return result;
+    }
+    const QString qml = result.object.value(QStringLiteral("qml")).toString().trimmed();
+    if (!xuanhub::validatePluginFilePath(directory.absolutePath(),
+                                         QStringLiteral("qml"), qml, &pathError)) {
+        result.error = pathError;
+        return result;
+    }
+    const QJsonValue settingsValue = result.object.value(QStringLiteral("settingsQml"));
+    if (!settingsValue.isUndefined() && !settingsValue.isString()) {
+        result.error = QStringLiteral("settingsQml must be a string");
+        return result;
+    }
+    const QString settingsQml = settingsValue.toString().trimmed();
+    if (!settingsQml.isEmpty()
+        && !xuanhub::validatePluginFilePath(directory.absolutePath(),
+                                            QStringLiteral("settingsQml"),
+                                            settingsQml, &pathError)) {
+        result.error = pathError;
+        return result;
+    }
+    result.ok = true;
+    return result;
 }
 } // namespace
 
@@ -197,6 +289,7 @@ void PyBridgePlugin::shutdown() {
     qDeleteAll(m_vms);
     m_vms.clear();
     m_dirs.clear();
+    m_manifests.clear();
     m_pythonExe.clear();
     m_workerScript.clear();
 }
@@ -204,6 +297,7 @@ void PyBridgePlugin::shutdown() {
 QStringList PyBridgePlugin::subPluginIds() {
     QStringList ids;
     m_dirs.clear();
+    m_manifests.clear();
     if (!pyAvailable() || m_pythonExe.isEmpty()) return ids;
     const QDir base(QCoreApplication::applicationDirPath() + QStringLiteral("/plugins_py"));
     if (!base.exists()) {
@@ -212,16 +306,13 @@ QStringList PyBridgePlugin::subPluginIds() {
     }
     for (const QString& sub : base.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
         const QDir directory(base.filePath(sub));
-        const QJsonObject object = readPluginJson(directory);
-        const QString id = object.value(QStringLiteral("id")).toString();
-        if (id.isEmpty()) {
-            qWarning() << "[PyBridge] skip" << directory.path() << ": plugin.json missing id";
+        const PythonManifestResult manifest = readPluginJson(directory);
+        if (!manifest.ok) {
+            qWarning() << "[PyBridge] manifest rejected:" << directory.path()
+                       << "->" << manifest.error;
             continue;
         }
-        if (!directory.exists(QStringLiteral("main.py"))) {
-            qWarning() << "[PyBridge] skip" << id << ": main.py is missing";
-            continue;
-        }
+        const QString id = manifest.id;
         if (m_dirs.contains(id)) {
             qWarning() << "[PyBridge] duplicate sub-plugin id" << id << ":"
                        << directory.path() << "vs" << m_dirs.value(id) << "-> keep first";
@@ -229,6 +320,7 @@ QStringList PyBridgePlugin::subPluginIds() {
         }
         ids << id;
         m_dirs.insert(id, directory.absolutePath());
+        m_manifests.insert(id, manifest.object);
         qDebug() << "[PyBridge] found sub-plugin:" << id << "@" << directory.path();
     }
     return ids;
@@ -246,22 +338,15 @@ xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const 
         return info;
     }
     const QDir directory(dirPath);
-    const QJsonObject object = readPluginJson(directory);
-    QString viewQml = object.value(QStringLiteral("qml")).toString();
-    if (!viewQml.isEmpty() && !directory.exists(viewQml)) {
-        qWarning() << "[PyBridge]" << id << ": declared qml missing:" << viewQml;
-        viewQml.clear();
+    // 发现后到启用前 plugin.json 仍可能被替换，因此启动 worker 前再次完整预检。
+    const PythonManifestResult manifest = readPluginJson(directory);
+    if (!manifest.ok || manifest.id != id) {
+        qWarning() << "[PyBridge] manifest changed or rejected before start:" << id
+                   << "->" << manifest.error;
+        return info;
     }
-    if (viewQml.isEmpty()) {
-        auto qmls = directory.entryList({QStringLiteral("*.qml")}, QDir::Files);
-        const QString settingsQml = object.value(QStringLiteral("settingsQml")).toString();
-        if (!settingsQml.isEmpty()) qmls.removeAll(QFileInfo(settingsQml).fileName());
-        if (qmls.isEmpty()) {
-            qWarning() << "[PyBridge] skip" << id << ": no bar-view QML";
-            return info;
-        }
-        viewQml = qmls.first();
-    }
+    const QJsonObject object = manifest.object;
+    const QString viewQml = object.value(QStringLiteral("qml")).toString().trimmed();
 
     auto* viewModel = new PyWorkerViewModel(id, dirPath, cfg, m_pythonExe,
                                             m_workerScript, m_ctx.eventBus,

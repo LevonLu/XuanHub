@@ -490,7 +490,7 @@ public:
 - [x] 新增 `PluginDescriptor` 和语义版本工具。
 - [x] 校验必填字段、ID、版本、宿主范围和路径。
 - [x] canonical path 必须处于插件目录内。
-- [ ] sidecar 解析失败时不实例化 DLL、不执行 Python。
+- [x] sidecar 解析失败时不实例化 DLL、不执行 Python。
 
 #### 阶段 B：V2 接口和适配器
 

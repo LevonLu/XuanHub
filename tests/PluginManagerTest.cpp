@@ -5,6 +5,8 @@
 
 #include <QDir>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -44,6 +46,50 @@ private Q_SLOTS:
         manager.loadFrom(root.path(), {entry(QStringLiteral("clock"))});
         QVERIFY(!manager.loadedPlugin(QStringLiteral("clock")));
         manager.shutdownAll();
+    }
+
+    void escapingPythonManifestDoesNotExecuteWorker() {
+        const QString pythonPlugins = QDir(QCoreApplication::applicationDirPath())
+                                          .filePath(QStringLiteral("plugins_py"));
+        QTemporaryDir pluginDirectory(
+            QDir(pythonPlugins).filePath(QStringLiteral("escape-test-XXXXXX")));
+        QVERIFY(pluginDirectory.isValid());
+        const QString leaf = QFileInfo(pluginDirectory.path()).fileName();
+        const QString outsideQml = QDir(pythonPlugins).filePath(leaf + QStringLiteral(".qml"));
+        QFile qml(outsideQml);
+        QVERIFY(qml.open(QIODevice::WriteOnly));
+        QVERIFY(qml.write("import QtQuick\nItem {}") > 0);
+        qml.close();
+
+        QFile python(QDir(pluginDirectory.path()).filePath(QStringLiteral("main.py")));
+        QVERIFY(python.open(QIODevice::WriteOnly));
+        QVERIFY(python.write(
+            "from pathlib import Path\n"
+            "Path(__file__).with_name('executed').write_text('bad')\n"
+            "def update(): return {}\n") > 0);
+        python.close();
+        const QString pluginId = QStringLiteral("py_escape_manifest_test");
+        const QJsonObject object{
+            {QStringLiteral("id"), pluginId},
+            {QStringLiteral("name"), QStringLiteral("Escape Test")},
+            {QStringLiteral("version"), QStringLiteral("1.0.0")},
+            {QStringLiteral("qml"), QStringLiteral("../")
+                                       + QFileInfo(outsideQml).fileName()}};
+        QFile manifest(QDir(pluginDirectory.path()).filePath(QStringLiteral("plugin.json")));
+        QVERIFY(manifest.open(QIODevice::WriteOnly));
+        QVERIFY(manifest.write(QJsonDocument(object).toJson(QJsonDocument::Compact)) > 0);
+        manifest.close();
+
+        const QString pluginsDir = qEnvironmentVariable("XUANHUB_TEST_PLUGINS");
+        xuanhub::EventBus bus;
+        PluginManager manager(&bus, QDir::tempPath());
+        manager.loadFrom(pluginsDir,
+                         {entry(QStringLiteral("pybridge")), entry(pluginId)});
+        QVERIFY(!manager.loadedPlugin(pluginId));
+        QVERIFY(!QFileInfo(QDir(pluginDirectory.path()).filePath(
+                              QStringLiteral("executed"))).exists());
+        manager.shutdownAll();
+        QVERIFY(QFile::remove(outsideQml));
     }
 
     void nativePluginCanStopAndReloadWithoutTouchingPeer() {

@@ -3,6 +3,7 @@
 #pragma once
 #include <QObject>
 #include <QHash>
+#include <QJsonObject>
 #include <QList>
 #include "barplugin/IBarPlugin.h"
 #include "barplugin/IBarPluginHost.h"
@@ -36,6 +37,7 @@ public:
 private:
     xuanhub::BarPluginContext m_ctx;   // 拷贝保存（init 传入的 ctx 是核心栈上对象）
     QHash<QString, QString> m_dirs;    // id → 子插件目录（subPluginIds 扫描结果）
+    QHash<QString, QJsonObject> m_manifests; // id → 已通过预检的 plugin.json
     QString m_pythonExe;               // 已验证的 python.exe；worker 由它启动
     QString m_workerScript;             // <exeDir>/plugins_py/bridge_worker.py
     QHash<QString, QObject*> m_vms;     // id → 隔离代理 VM，可单独销毁或 shutdown 全量回收
