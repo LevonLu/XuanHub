@@ -50,7 +50,7 @@ class BridgeWorkerTests(unittest.TestCase):
             "def set_config(config):\n"
             "    state['prefix'] = config.get('prefix', '')\n"
         )
-        host_import = ""
+        host_import = "from xuanhub_host import CallError\n"
         host_init = ""
         migration_code = ""
         if self._testMethodName == "test_config_migration_runs_before_init":
@@ -76,13 +76,13 @@ class BridgeWorkerTests(unittest.TestCase):
                 "    return {'ok': ok, 'errors': [] if ok else ['prefix rejected']}\n"
             )
         if self._testMethodName == "test_host_services_are_available_during_init":
-            host_import = "from xuanhub_host import log, notify\n"
+            host_import += "from xuanhub_host import log, notify\n"
             host_init = (
                 "    state['log_ok'] = log('info', 'worker ready', {'kind': 'test'})['success']\n"
                 "    state['notify_ok'] = notify('Demo', 'Ready')['success']\n"
             )
         if self._testMethodName == "test_event_bus_publish_subscribe_and_request":
-            host_import = "from xuanhub_host import events\n"
+            host_import += "from xuanhub_host import events\n"
             host_init = (
                 "    state['event_value'] = 0\n"
                 "    def on_event(envelope):\n"
@@ -102,6 +102,8 @@ class BridgeWorkerTests(unittest.TestCase):
             "def invoke(name, args):\n"
             "    if name == 'bump': state['count'] += int(args[0])\n"
             "    if name == 'request': state['request'] = events.request('plugin.py_demo.query', {'value': 2})\n"
+            "    if name == 'blocked': raise CallError('business_rule', 'blocked', {'retryable': False})\n"
+            "    if name == 'explode': raise RuntimeError('boom')\n"
             "    return state['count']\n"
             + locale_callback + config_callback +
             "def stop():\n"
@@ -218,6 +220,21 @@ class BridgeWorkerTests(unittest.TestCase):
         self.assertEqual(self.request("update", {})["result"]["locale"], "unset")
         self.assertTrue(self.request("stop", {})["ok"])
         self.process.wait(timeout=5)
+
+    def test_invoke_returns_stable_business_and_exception_errors(self) -> None:
+        self.assertTrue(self.request("init", {"config": {}, "locale": "en-US"})["ok"])
+        blocked = self.request("invoke", {"name": "blocked", "args": []})
+        self.assertEqual(blocked, {
+            "type": "response", "id": "2", "ok": False,
+            "errorCode": "business_rule", "error": "blocked",
+            "details": {"retryable": False},
+        })
+        exploded = self.request("invoke", {"name": "explode", "args": []})
+        self.assertFalse(exploded["ok"])
+        self.assertEqual(exploded["errorCode"], "plugin_exception")
+        self.assertEqual(exploded["error"], "boom")
+        self.assertEqual(exploded["details"]["exceptionType"], "RuntimeError")
+        self.assertIn("RuntimeError: boom", exploded["details"]["traceback"])
 
     def test_host_services_are_available_during_init(self) -> None:
         initialized = self.request("init", {"config": {}, "locale": "en-US"})

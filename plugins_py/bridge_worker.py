@@ -26,6 +26,20 @@ PROTOCOL_VERSION = 2
 PROTOCOL_CAPABILITIES = ["requestResponseV1", "hostServicesV1", "eventBusV2"]
 
 
+class CallError(Exception):
+    """插件可显式抛出的业务错误；code 与 details 会稳定返回给 QML。"""
+
+    def __init__(self, code: str, message: str,
+                 details: dict[str, Any] | None = None) -> None:
+        super().__init__(str(message))
+        normalized = str(code)
+        if not normalized or len(normalized) > 64 \
+                or any(not (char.isalnum() or char in "_.-") for char in normalized):
+            normalized = "plugin_error"
+        self.code = normalized
+        self.details = details if isinstance(details, dict) else {}
+
+
 class HostServices:
     """由宿主绑定插件身份的同步服务代理；插件不能指定或覆盖 plugin id。"""
 
@@ -141,6 +155,7 @@ def _install_host_module(services: HostServices, events: EventBusServices) -> No
     module.log = services.log
     module.notify = services.notify
     module.events = events
+    module.CallError = CallError
     sys.modules["xuanhub_host"] = module
 
 
@@ -294,6 +309,16 @@ def _error_text() -> str:
     return traceback.format_exc(limit=12)[-6000:]
 
 
+def _exception_error_code(error: Exception) -> str:
+    if isinstance(error, NotImplementedError):
+        return "unsupported_operation"
+    if isinstance(error, TimeoutError):
+        return "timeout"
+    if isinstance(error, ValueError):
+        return "invalid_argument"
+    return "plugin_exception"
+
+
 def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
     module = None
     stop_called = False
@@ -409,9 +434,18 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
                         raise ValueError("unknown operation: " + str(op))
                     _send(sock, {"type": "response", "id": request_id, "ok": True,
                                  "result": _json_value(result)})
-                except Exception:
+                except CallError as exc:
                     _send(sock, {"type": "response", "id": request_id, "ok": False,
-                                 "error": _error_text()})
+                                 "errorCode": exc.code, "error": str(exc),
+                                 "details": _json_value(exc.details)})
+                except Exception as exc:
+                    _send(sock, {"type": "response", "id": request_id, "ok": False,
+                                 "errorCode": _exception_error_code(exc),
+                                 "error": str(exc) or type(exc).__name__,
+                                 "details": {
+                                     "exceptionType": type(exc).__name__,
+                                     "traceback": _error_text(),
+                                 }})
     except (ConnectionError, EOFError, OSError, ValueError) as exc:
         _log(str(exc))
         return 2

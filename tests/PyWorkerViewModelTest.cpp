@@ -171,6 +171,7 @@ def update():
     return {"count": state["count"], "prefix": state["prefix"], "locale": state["locale"]}
 def invoke(name, args):
     if name == "bump": state["count"] += int(args[0])
+    if name == "fail": raise RuntimeError("boom")
     return state["count"]
 def stop():
     Path(state["stopFile"]).write_text("stopped", encoding="utf-8")
@@ -229,6 +230,20 @@ def stop():
                      call.value(QStringLiteral("id")).toString());
             QVERIFY(callFinished.at(0).at(1).toBool());
             QCOMPARE(callFinished.at(0).at(2).toInt(), 3);
+            const QVariantMap failedCall = viewModel.call(
+                QStringLiteral("fail"), {}).toMap();
+            QTRY_COMPARE_WITH_TIMEOUT(callFinished.size(), 2, 5000);
+            QCOMPARE(callFinished.at(1).at(0).toString(),
+                     failedCall.value(QStringLiteral("id")).toString());
+            QVERIFY(!callFinished.at(1).at(1).toBool());
+            const QVariantMap error = callFinished.at(1).at(3).toMap();
+            QCOMPARE(error.value(QStringLiteral("code")).toString(),
+                     QStringLiteral("plugin_exception"));
+            QCOMPARE(error.value(QStringLiteral("message")).toString(),
+                     QStringLiteral("boom"));
+            QCOMPARE(error.value(QStringLiteral("details")).toMap()
+                         .value(QStringLiteral("exceptionType")).toString(),
+                     QStringLiteral("RuntimeError"));
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("count")).toInt(), 3, 5000);
         }
         QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(stopFile), 3000);
