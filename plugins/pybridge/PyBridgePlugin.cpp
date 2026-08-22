@@ -24,7 +24,9 @@
 #include <QStandardPaths>
 
 #include "barplugin/EventBus.h"
+#include "barplugin/ManagedPluginStore.h"
 #include "barplugin/PluginPathValidator.h"
+#include "barplugin/ProcessReaper.h"
 
 namespace {
 // 运行时探测结果放 qApp 动态属性：pybridge.dll 热重载会被 unload，文件静态变量会复位。
@@ -554,6 +556,9 @@ void PyBridgePlugin::shutdown() {
     m_workerScript.clear();
     m_doctorScript.clear();
     m_installerScript.clear();
+    // PyWorkerViewModel 会把仍在退出宽限期的 QProcess 交给常驻 reaper；
+    // host DLL 卸载前必须同步收口，否则 QProcess 析构可能触及本 DLL 的连接。
+    xuanhub::drainReapedProcesses();
 }
 
 QStringList PyBridgePlugin::subPluginIds() {
@@ -564,20 +569,51 @@ QStringList PyBridgePlugin::subPluginIds() {
     m_subPluginErrors.clear();
     m_dependencyPlans.clear();
     if (!pyAvailable() || m_pythonExe.isEmpty()) return ids;
-    const QDir base(QCoreApplication::applicationDirPath() + QStringLiteral("/plugins_py"));
-    if (!base.exists()) {
-        qDebug() << "[PyBridge] plugins_py not found:" << base.path();
-        return ids;
+    struct ScanDirectory {
+        QString idHint;
+        QString path;
+        bool managed = false;
+    };
+    QVector<ScanDirectory> directories;
+    QSet<QString> managedIds;
+    for (const auto& managed : xuanhub::readManagedPluginCurrents(
+             m_ctx.configDir, QStringLiteral("python"))) {
+        directories.append({managed.id, managed.payloadDirectory, true});
+        managedIds.insert(managed.id);
     }
-    for (const QString& sub : base.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
-        const QDir directory(base.filePath(sub));
+    const QDir base(QCoreApplication::applicationDirPath() + QStringLiteral("/plugins_py"));
+    if (base.exists()) {
+        for (const QString& sub : base.entryList(QDir::Dirs | QDir::NoDotAndDotDot))
+            directories.append({sub, base.filePath(sub), false});
+    } else {
+        qDebug() << "[PyBridge] built-in plugins_py not found:" << base.path();
+    }
+    for (const ScanDirectory& scan : directories) {
+        const QDir directory(scan.path);
         const PythonManifestResult manifest = readPluginJson(directory);
         if (!manifest.ok) {
             qWarning() << "[PyBridge] manifest rejected:" << directory.path()
                        << "->" << manifest.error;
+            if (scan.managed && !ids.contains(scan.idHint)) {
+                ids.append(scan.idHint);
+                m_subPluginErrors.insert(scan.idHint, manifest.error);
+            }
             continue;
         }
         const QString id = manifest.id;
+        if (scan.managed && id != scan.idHint) {
+            const QString error = QStringLiteral(
+                "managed Python manifest id does not match install record");
+            qWarning() << "[PyBridge]" << scan.idHint << error << id;
+            if (!ids.contains(scan.idHint)) ids.append(scan.idHint);
+            m_subPluginErrors.insert(scan.idHint, error);
+            continue;
+        }
+        if (!scan.managed && managedIds.contains(id)) {
+            qDebug() << "[PyBridge] built-in Python plugin shadowed by managed version:"
+                     << id << directory.path();
+            continue;
+        }
         if (m_dirs.contains(id)) {
             qWarning() << "[PyBridge] duplicate sub-plugin id" << id << ":"
                        << directory.path() << "vs" << m_dirs.value(id) << "-> keep first";
@@ -600,16 +636,18 @@ QStringList PyBridgePlugin::subPluginIds() {
 
 xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const QVariantMap& cfg) {
     xuanhub::SubPluginInfo info;
-    m_subPluginErrors.remove(id);
     if (m_vms.contains(id)) {
         qWarning() << "[PyBridge] createSubPlugin: already running" << id;
         return info;
     }
     const QString dirPath = m_dirs.value(id);
     if (dirPath.isEmpty()) {
+        if (!m_subPluginErrors.contains(id))
+            m_subPluginErrors.insert(id, QStringLiteral("Python plugin directory is unavailable"));
         qWarning() << "[PyBridge] createSubPlugin: unknown id" << id;
         return info;
     }
+    m_subPluginErrors.remove(id);
     const QDir directory(dirPath);
     // 发现后到启用前 plugin.json 仍可能被替换，因此启动 worker 前再次完整预检。
     const PythonManifestResult manifest = readPluginJson(directory);

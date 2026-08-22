@@ -1079,6 +1079,15 @@ void PyWorkerViewModel::stopWorker() {
 }
 
 void PyWorkerViewModel::detachProcess(QProcess* process, int gracefulMs) {
+    // 精确移除本 DLL 中的三个接收回调。不能使用 process->disconnect() 的
+    // wildcard 形式，它会尝试断开 QObject::destroyed 并产生运行时警告。
+    QObject::disconnect(process, &QProcess::readyReadStandardError,
+                        this, nullptr);
+    QObject::disconnect(process, &QProcess::errorOccurred,
+                        this, nullptr);
+    QObject::disconnect(process,
+                        qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+                        this, nullptr);
     // 回收器位于不会随 pybridge 卸载的 barplugin.dll。不能把带 lambda 的 QTimer/
     // finished 回调留在本 DLL：热重载后再触发会跳进已卸载机器码而崩溃。
     xuanhub::reapProcess(process, gracefulMs);

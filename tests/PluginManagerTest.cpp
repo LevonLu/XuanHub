@@ -20,6 +20,38 @@ PluginConfigEntry entry(const QString& id, const QVariantMap& config = {}) {
     value.config = config;
     return value;
 }
+
+bool writeJson(const QString& path, const QJsonObject& object) {
+    QFile file(path);
+    return QDir().mkpath(QFileInfo(path).absolutePath())
+        && file.open(QIODevice::WriteOnly)
+        && file.write(QJsonDocument(object).toJson(QJsonDocument::Indented)) > 0;
+}
+
+QString prepareManagedPayload(const QString& configDirectory,
+                              const QString& id,
+                              const QString& version,
+                              const QString& runtime) {
+    const QString versionDirectory = QDir(configDirectory).filePath(
+        QStringLiteral("plugin-store/%1/versions/%2").arg(id, version));
+    const QString payload = QDir(versionDirectory).filePath(QStringLiteral("payload"));
+    if (!QDir().mkpath(payload)) return {};
+    if (!writeJson(QDir(configDirectory).filePath(
+            QStringLiteral("plugin-store/%1/current.json").arg(id)),
+        {{QStringLiteral("schemaVersion"), 1},
+         {QStringLiteral("version"), version}})) {
+        return {};
+    }
+    if (!writeJson(QDir(versionDirectory).filePath(QStringLiteral("install.json")),
+        {{QStringLiteral("schemaVersion"), 1},
+         {QStringLiteral("id"), id},
+         {QStringLiteral("version"), version},
+         {QStringLiteral("runtime"), runtime},
+         {QStringLiteral("source"), QStringLiteral("test")}})) {
+        return {};
+    }
+    return payload;
+}
 } // namespace
 
 class PluginManagerTest final : public QObject {
@@ -51,67 +83,141 @@ private Q_SLOTS:
         manager.shutdownAll();
     }
 
+    void managedNativeVersionShadowsBuiltInPlugin() {
+        const QString sourceRoot = qEnvironmentVariable("XUANHUB_TEST_PLUGINS");
+        const QString builtIn = QDir(sourceRoot).filePath(QStringLiteral("clock"));
+        QTemporaryDir config;
+        QVERIFY(config.isValid());
+        const QString payload = prepareManagedPayload(
+            config.path(), QStringLiteral("clock"), QStringLiteral("0.1.0"),
+            QStringLiteral("native"));
+        QVERIFY(!payload.isEmpty());
+        for (const QString& file : {QStringLiteral("clock.dll"),
+                                    QStringLiteral("Clock.qml"),
+                                    QStringLiteral("metadata.json")}) {
+            const QString target = QDir(payload).filePath(file);
+            QVERIFY2(QFile::copy(QDir(builtIn).filePath(file), target), qPrintable(file));
+            QVERIFY(QFile::setPermissions(
+                target, QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+        }
+
+        xuanhub::EventBus bus;
+        PluginManager manager(&bus, config.path());
+        manager.loadFrom(sourceRoot, {entry(QStringLiteral("clock"))});
+        const auto* loaded = manager.loadedPlugin(QStringLiteral("clock"));
+        QVERIFY2(loaded, qPrintable(manager.loadError(QStringLiteral("clock"))));
+        QVERIFY(QFileInfo(loaded->qmlUrl.toLocalFile()).absoluteFilePath()
+                    .startsWith(QFileInfo(payload).absoluteFilePath(),
+                                Qt::CaseInsensitive));
+        manager.shutdownAll();
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        const QString managedLibrary =
+            QDir(payload).filePath(QStringLiteral("clock.dll"));
+        bool removed = false;
+        for (int attempt = 0; attempt < 20 && !removed; ++attempt) {
+            QTest::qWait(50);
+            removed = QFile::remove(managedLibrary);
+        }
+        QVERIFY2(removed,
+                 "受管插件 DLL 在 shutdownAll 后仍被进程占用");
+    }
+
+    void managedPythonVersionShadowsBuiltInPlugin() {
+        const QString sourceRoot = qEnvironmentVariable("XUANHUB_TEST_PLUGINS");
+        const QString builtIn = QDir(QCoreApplication::applicationDirPath())
+                                    .filePath(QStringLiteral("plugins_py/hello"));
+        QTemporaryDir config;
+        QVERIFY(config.isValid());
+        const QString payload = prepareManagedPayload(
+            config.path(), QStringLiteral("py_hello"), QStringLiteral("0.1.0"),
+            QStringLiteral("python"));
+        QVERIFY(!payload.isEmpty());
+        for (const QString& file : {QStringLiteral("main.py"),
+                                    QStringLiteral("Hello.qml"),
+                                    QStringLiteral("plugin.json")}) {
+            QVERIFY2(QFile::copy(QDir(builtIn).filePath(file),
+                                 QDir(payload).filePath(file)), qPrintable(file));
+            QVERIFY(QFile::setPermissions(QDir(payload).filePath(file),
+                QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+        }
+
+        xuanhub::EventBus bus;
+        PluginManager manager(&bus, config.path());
+        manager.loadFrom(sourceRoot,
+                         {entry(QStringLiteral("pybridge")),
+                          entry(QStringLiteral("py_hello"))});
+        const auto* loaded = manager.loadedPlugin(QStringLiteral("py_hello"));
+        QVERIFY2(loaded, qPrintable(manager.loadError(QStringLiteral("py_hello"))));
+        QVERIFY(QFileInfo(loaded->qmlUrl.toLocalFile()).absoluteFilePath()
+                    .startsWith(QFileInfo(payload).absoluteFilePath(),
+                                Qt::CaseInsensitive));
+        manager.shutdownAll();
+    }
+
     void escapingPythonManifestDoesNotExecuteWorker() {
-        const QString pythonPlugins = QDir(QCoreApplication::applicationDirPath())
-                                          .filePath(QStringLiteral("plugins_py"));
-        QTemporaryDir pluginDirectory(
-            QDir(pythonPlugins).filePath(QStringLiteral("escape-test-XXXXXX")));
-        QVERIFY(pluginDirectory.isValid());
-        const QString leaf = QFileInfo(pluginDirectory.path()).fileName();
-        const QString outsideQml = QDir(pythonPlugins).filePath(leaf + QStringLiteral(".qml"));
+        QTemporaryDir configRoot;
+        QVERIFY(configRoot.isValid());
+        const QString pluginId = QStringLiteral("py_escape_manifest_test");
+        const QString payload = prepareManagedPayload(
+            configRoot.path(), pluginId, QStringLiteral("1.0.0"),
+            QStringLiteral("python"));
+        QVERIFY(!payload.isEmpty());
+        const QDir pluginDirectory(payload);
+        const QString outsideQml = QDir(payload).absoluteFilePath(
+            QStringLiteral("../escape-test.qml"));
         QFile qml(outsideQml);
         QVERIFY(qml.open(QIODevice::WriteOnly));
         QVERIFY(qml.write("import QtQuick\nItem {}") > 0);
         qml.close();
 
-        QFile python(QDir(pluginDirectory.path()).filePath(QStringLiteral("main.py")));
+        QFile python(pluginDirectory.filePath(QStringLiteral("main.py")));
         QVERIFY(python.open(QIODevice::WriteOnly));
         QVERIFY(python.write(
             "from pathlib import Path\n"
             "Path(__file__).with_name('executed').write_text('bad')\n"
             "def update(): return {}\n") > 0);
         python.close();
-        const QString pluginId = QStringLiteral("py_escape_manifest_test");
         const QJsonObject object{
             {QStringLiteral("id"), pluginId},
             {QStringLiteral("name"), QStringLiteral("Escape Test")},
             {QStringLiteral("version"), QStringLiteral("1.0.0")},
-            {QStringLiteral("qml"), QStringLiteral("../")
-                                       + QFileInfo(outsideQml).fileName()}};
-        QFile manifest(QDir(pluginDirectory.path()).filePath(QStringLiteral("plugin.json")));
+            {QStringLiteral("qml"), QStringLiteral("../escape-test.qml")}};
+        QFile manifest(pluginDirectory.filePath(QStringLiteral("plugin.json")));
         QVERIFY(manifest.open(QIODevice::WriteOnly));
         QVERIFY(manifest.write(QJsonDocument(object).toJson(QJsonDocument::Compact)) > 0);
         manifest.close();
 
         const QString pluginsDir = qEnvironmentVariable("XUANHUB_TEST_PLUGINS");
         xuanhub::EventBus bus;
-        PluginManager manager(&bus, QDir::tempPath());
+        PluginManager manager(&bus, configRoot.path());
         manager.loadFrom(pluginsDir,
                          {entry(QStringLiteral("pybridge")), entry(pluginId)});
         QVERIFY(!manager.loadedPlugin(pluginId));
         QVERIFY(!manager.loadError(pluginId).isEmpty());
-        QVERIFY(!QFileInfo(QDir(pluginDirectory.path()).filePath(
+        QVERIFY(!QFileInfo(pluginDirectory.filePath(
                               QStringLiteral("executed"))).exists());
         manager.shutdownAll();
         QVERIFY(QFile::remove(outsideQml));
     }
 
     void missingPythonDependencyIsReportedBeforeWorkerStarts() {
-        const QString pythonPlugins = QDir(QCoreApplication::applicationDirPath())
-                                          .filePath(QStringLiteral("plugins_py"));
-        QTemporaryDir pluginDirectory(
-            QDir(pythonPlugins).filePath(QStringLiteral("doctor-test-XXXXXX")));
-        QVERIFY(pluginDirectory.isValid());
+        QTemporaryDir configRoot;
+        QVERIFY(configRoot.isValid());
         const QString pluginId = QStringLiteral("py_doctor_missing_test");
+        const QString payload = prepareManagedPayload(
+            configRoot.path(), pluginId, QStringLiteral("1.0.0"),
+            QStringLiteral("python"));
+        QVERIFY(!payload.isEmpty());
+        const QDir pluginDirectory(payload);
 
-        QFile python(QDir(pluginDirectory.path()).filePath(QStringLiteral("main.py")));
+        QFile python(pluginDirectory.filePath(QStringLiteral("main.py")));
         QVERIFY(python.open(QIODevice::WriteOnly));
         QVERIFY(python.write(
             "from pathlib import Path\n"
             "Path(__file__).with_name('executed').write_text('bad')\n"
             "def update(): return {}\n") > 0);
         python.close();
-        QFile qml(QDir(pluginDirectory.path()).filePath(QStringLiteral("Doctor.qml")));
+        QFile qml(pluginDirectory.filePath(QStringLiteral("Doctor.qml")));
         QVERIFY(qml.open(QIODevice::WriteOnly));
         QVERIFY(qml.write("import QtQuick\nItem { property var plugin }") > 0);
         qml.close();
@@ -131,14 +237,14 @@ private Q_SLOTS:
                 }}},
             }},
         };
-        QFile manifest(QDir(pluginDirectory.path()).filePath(QStringLiteral("plugin.json")));
+        QFile manifest(pluginDirectory.filePath(QStringLiteral("plugin.json")));
         QVERIFY(manifest.open(QIODevice::WriteOnly));
         QVERIFY(manifest.write(QJsonDocument(manifestObject).toJson(
             QJsonDocument::Compact)) > 0);
         manifest.close();
 
         xuanhub::EventBus bus;
-        PluginManager manager(&bus, QDir::tempPath());
+        PluginManager manager(&bus, configRoot.path());
         manager.loadFrom(qEnvironmentVariable("XUANHUB_TEST_PLUGINS"),
                          {entry(QStringLiteral("pybridge")), entry(pluginId)});
         QVERIFY(!manager.loadedPlugin(pluginId));
@@ -146,34 +252,34 @@ private Q_SLOTS:
         QVERIFY2(loadError.contains(QStringLiteral("xuanhub-package-that-does-not-exist")),
                  qPrintable(loadError));
         QVERIFY2(loadError.contains(QStringLiteral("wheel")), qPrintable(loadError));
-        QVERIFY(!QFileInfo(QDir(pluginDirectory.path()).filePath(
+        QVERIFY(!QFileInfo(pluginDirectory.filePath(
                               QStringLiteral("executed"))).exists());
         manager.shutdownAll();
     }
 
     void privatePythonEnvironmentRequiresExplicitInstall() {
-        const QString pythonPlugins = QDir(QCoreApplication::applicationDirPath())
-                                          .filePath(QStringLiteral("plugins_py"));
-        QTemporaryDir pluginDirectory(
-            QDir(pythonPlugins).filePath(QStringLiteral("private-env-test-XXXXXX")));
         QTemporaryDir configRoot;
-        QVERIFY(pluginDirectory.isValid());
         QVERIFY(configRoot.isValid());
-        QVERIFY(QDir(pluginDirectory.path()).mkpath(QStringLiteral("wheels")));
-        QFile wheel(QDir(pluginDirectory.path()).filePath(
+        const QString pluginId = QStringLiteral("py_private_environment_test");
+        const QString payload = prepareManagedPayload(
+            configRoot.path(), pluginId, QStringLiteral("1.0.0"),
+            QStringLiteral("python"));
+        QVERIFY(!payload.isEmpty());
+        const QDir pluginDirectory(payload);
+        QVERIFY(pluginDirectory.mkpath(QStringLiteral("wheels")));
+        QFile wheel(pluginDirectory.filePath(
             QStringLiteral("wheels/demo-1.0.0-py3-none-any.whl")));
         QVERIFY(wheel.open(QIODevice::WriteOnly));
         QVERIFY(wheel.write("not installed without confirmation") > 0);
         wheel.close();
-        QFile main(QDir(pluginDirectory.path()).filePath(QStringLiteral("main.py")));
+        QFile main(pluginDirectory.filePath(QStringLiteral("main.py")));
         QVERIFY(main.open(QIODevice::WriteOnly));
         QVERIFY(main.write("def update(): return {}\n") > 0);
         main.close();
-        QFile qml(QDir(pluginDirectory.path()).filePath(QStringLiteral("Private.qml")));
+        QFile qml(pluginDirectory.filePath(QStringLiteral("Private.qml")));
         QVERIFY(qml.open(QIODevice::WriteOnly));
         QVERIFY(qml.write("import QtQuick\nItem { property var plugin }") > 0);
         qml.close();
-        const QString pluginId = QStringLiteral("py_private_environment_test");
         const QJsonObject object{
             {QStringLiteral("id"), pluginId},
             {QStringLiteral("name"), QStringLiteral("Private Environment Test")},
@@ -189,7 +295,7 @@ private Q_SLOTS:
                     {QStringLiteral("wheels"), QStringLiteral("wheels")}}},
             }},
         };
-        QFile manifest(QDir(pluginDirectory.path()).filePath(QStringLiteral("plugin.json")));
+        QFile manifest(pluginDirectory.filePath(QStringLiteral("plugin.json")));
         QVERIFY(manifest.open(QIODevice::WriteOnly));
         QVERIFY(manifest.write(QJsonDocument(object).toJson(QJsonDocument::Compact)) > 0);
         manifest.close();
@@ -336,18 +442,20 @@ private Q_SLOTS:
     }
 
     void pythonSubPluginReportsMigrationSuggestion() {
-        const QString pythonPlugins = QDir(QCoreApplication::applicationDirPath())
-                                          .filePath(QStringLiteral("plugins_py"));
-        QTemporaryDir pluginDirectory(
-            QDir(pythonPlugins).filePath(QStringLiteral("migration-test-XXXXXX")));
-        QVERIFY(pluginDirectory.isValid());
+        QTemporaryDir configRoot;
+        QVERIFY(configRoot.isValid());
         const QString pluginId = QStringLiteral("py_migration_test");
+        const QString payload = prepareManagedPayload(
+            configRoot.path(), pluginId, QStringLiteral("1.0.0"),
+            QStringLiteral("python"));
+        QVERIFY(!payload.isEmpty());
+        const QDir pluginDirectory(payload);
 
-        QFile qml(QDir(pluginDirectory.path()).filePath(QStringLiteral("Migration.qml")));
+        QFile qml(pluginDirectory.filePath(QStringLiteral("Migration.qml")));
         QVERIFY(qml.open(QIODevice::WriteOnly | QIODevice::Truncate));
         QVERIFY(qml.write("import QtQuick\nItem { property var plugin }") > 0);
         qml.close();
-        QFile python(QDir(pluginDirectory.path()).filePath(QStringLiteral("main.py")));
+        QFile python(pluginDirectory.filePath(QStringLiteral("main.py")));
         QVERIFY(python.open(QIODevice::WriteOnly | QIODevice::Truncate));
         QVERIFY(python.write(
             "CONFIG_VERSION = 2\n"
@@ -367,7 +475,7 @@ private Q_SLOTS:
             "    return values\n"
             "def invoke(name, args): state['invoked'] = name\n") > 0);
         python.close();
-        QFile manifest(QDir(pluginDirectory.path()).filePath(QStringLiteral("plugin.json")));
+        QFile manifest(pluginDirectory.filePath(QStringLiteral("plugin.json")));
         QVERIFY(manifest.open(QIODevice::WriteOnly | QIODevice::Truncate));
         QVERIFY(manifest.write(QJsonDocument(QJsonObject{
             {QStringLiteral("id"), pluginId},
@@ -398,7 +506,7 @@ private Q_SLOTS:
 
         const QString pluginsDir = qEnvironmentVariable("XUANHUB_TEST_PLUGINS");
         xuanhub::EventBus bus;
-        PluginManager manager(&bus, QDir::tempPath());
+        PluginManager manager(&bus, configRoot.path());
         PluginConfigEntry child = entry(pluginId);
         child.position.clear();
         child.configVersion = 1;

@@ -2,6 +2,7 @@
 #pragma once
 
 #include "PluginPackageValidator.h"
+#include "barplugin/ManagedPluginStore.h"
 
 #include <QJsonObject>
 #include <QStringList>
@@ -19,14 +20,7 @@ struct PluginPackageStoreResult {
     QString payloadDirectory;
 };
 
-struct ManagedPluginVersion {
-    QString id;
-    QString version;
-    QString previousVersion;
-    QString runtime;
-    QString payloadDirectory;
-    QJsonObject installRecord;
-};
+using ManagedPluginVersion = xuanhub::ManagedPluginVersion;
 
 class PluginPackageStore final {
 public:

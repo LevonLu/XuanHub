@@ -2,6 +2,7 @@
 #include "PluginPackageStore.h"
 
 #include "SemanticVersion.h"
+#include "barplugin/ManagedPluginStore.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -114,8 +115,7 @@ PluginPackageStore::PluginPackageStore(QString configDirectory)
 
 QString PluginPackageStore::storeRootForConfigDirectory(
     const QString& configDirectory) {
-    return QDir(QFileInfo(configDirectory).absoluteFilePath())
-        .filePath(QStringLiteral("plugin-store"));
+    return xuanhub::managedPluginStoreRoot(configDirectory);
 }
 
 QString PluginPackageStore::storeRoot() const { return m_storeRoot; }
@@ -228,46 +228,28 @@ void PluginPackageStore::cleanupTransientDirectories() const {
 }
 
 ManagedPluginVersion PluginPackageStore::current(const QString& id) const {
-    ManagedPluginVersion result;
-    if (!kPluginIdPattern.match(id).hasMatch()) return result;
-    const QJsonObject pointer = readObject(currentFile(id));
-    const QString version = pointer.value(QStringLiteral("version")).toString();
-    const QString previous = pointer.value(QStringLiteral("previousVersion")).toString();
-    if (!validIdentity(id, version)
-        || (!previous.isEmpty() && !SemanticVersion::parse(previous, nullptr))) {
+    ManagedPluginVersion result =
+        xuanhub::readManagedPluginCurrent(m_configDirectory, id);
+    if (result.id.isEmpty() || !validIdentity(result.id, result.version)
+        || (!result.previousVersion.isEmpty()
+            && !SemanticVersion::parse(result.previousVersion, nullptr))) {
         return {};
     }
-    const QString directory = versionDirectory(id, version);
-    const QJsonObject record = readObject(
-        QDir(directory).filePath(QStringLiteral("install.json")));
-    const QString runtime = record.value(QStringLiteral("runtime")).toString();
-    const QString payload = QDir(directory).filePath(QStringLiteral("payload"));
-    if ((runtime != QLatin1String("native") && runtime != QLatin1String("python"))
-        || !QFileInfo(payload).isDir()) {
-        return {};
-    }
-    result.id = id;
-    result.version = version;
-    result.previousVersion = previous;
-    result.runtime = runtime;
-    result.payloadDirectory = payload;
-    result.installRecord = record;
     return result;
 }
 
 QList<ManagedPluginVersion> PluginPackageStore::currentVersions(
     const QString& runtime) const {
-    QList<ManagedPluginVersion> result;
-    QDir root(m_storeRoot);
-    if (!root.exists()) return result;
-    const QStringList ids = root.entryList(QDir::Dirs | QDir::NoDotAndDotDot,
-                                           QDir::Name | QDir::IgnoreCase);
-    for (const QString& id : ids) {
-        if (!kPluginIdPattern.match(id).hasMatch()) continue;
-        ManagedPluginVersion version = current(id);
-        if (version.id.isEmpty() || (!runtime.isEmpty() && version.runtime != runtime))
-            continue;
-        result.append(std::move(version));
+    QList<ManagedPluginVersion> result =
+        xuanhub::readManagedPluginCurrents(m_configDirectory, runtime);
+    for (auto it = result.begin(); it != result.end();) {
+        if (!validIdentity(it->id, it->version)
+            || (!it->previousVersion.isEmpty()
+                && !SemanticVersion::parse(it->previousVersion, nullptr))) {
+            it = result.erase(it);
+        } else {
+            ++it;
+        }
     }
     return result;
 }

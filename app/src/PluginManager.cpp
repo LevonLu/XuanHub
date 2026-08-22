@@ -17,10 +17,13 @@
 #include "barplugin/IBarPluginHostDependencies.h"
 #include "barplugin/IBarPluginHostEventBus.h"
 #include "barplugin/IBarPluginHostServices.h"
+#include "barplugin/ManagedPluginStore.h"
 #include "barplugin/PluginEventScope.h"
 
 #include <QDir>
 #include <QFileInfo>
+#include <QFile>
+#include <QJsonDocument>
 #include <QLibrary>
 #include <QDebug>
 #include <QDateTime>
@@ -70,6 +73,24 @@ QVariantMap actionState(QObject* viewModel, const QString& actionId) {
     }
     return states.value(actionId).toMap();
 }
+
+QStringList nativeBackendCandidates(const QDir& directory) {
+    QFile manifest(directory.filePath(QStringLiteral("metadata.json")));
+    if (manifest.open(QIODevice::ReadOnly) && manifest.size() <= 1024 * 1024) {
+        const QJsonDocument document = QJsonDocument::fromJson(manifest.readAll());
+        const QString backend = document.isObject()
+            ? document.object().value(QStringLiteral("entry"))
+                  .toObject().value(QStringLiteral("backend")).toString().trimmed()
+            : QString();
+        if (!backend.isEmpty()) return {directory.absoluteFilePath(backend)};
+    }
+    QStringList result;
+    for (const QString& dll : directory.entryList(
+             {QStringLiteral("*.dll")}, QDir::Files, QDir::Name | QDir::IgnoreCase)) {
+        result.append(directory.absoluteFilePath(dll));
+    }
+    return result;
+}
 } // namespace
 
 PluginManager::PluginManager(xuanhub::EventBus* bus, const QString& configDir,
@@ -110,11 +131,28 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
     QHash<QString, const PluginConfigEntry*> enabledMap;
     for (const auto& e : enabled) enabledMap.insert(e.id, &e);
 
+    struct ScanDirectory {
+        QString idHint;
+        QString path;
+        bool managed = false;
+    };
+    QVector<ScanDirectory> scanDirectories;
+    QSet<QString> managedIds;
+    for (const auto& managed : xuanhub::readManagedPluginCurrents(
+             m_configDir, QStringLiteral("native"))) {
+        scanDirectories.append({managed.id, managed.payloadDirectory, true});
+        managedIds.insert(managed.id);
+    }
     QDir base(pluginsDir);
-    if (!base.exists()) {
-        qDebug() << "[Plugin] plugins dir not found:" << pluginsDir;
+    if (base.exists()) {
+        for (const QString& sub : base.entryList(QDir::Dirs | QDir::NoDotAndDotDot))
+            scanDirectories.append({sub, base.filePath(sub), false});
+    } else {
+        qDebug() << "[Plugin] built-in plugins dir not found:" << pluginsDir;
+    }
+    if (scanDirectories.isEmpty()) {
         for (const auto& entry : enabled)
-            recordLoadError(entry.id, QStringLiteral("plugins directory does not exist"));
+            recordLoadError(entry.id, QStringLiteral("no plugin directories are available"));
         return;
     }
     struct Candidate {
@@ -123,17 +161,18 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
         QString path;
         QString iid;
         PluginManifestResult manifest;
+        QPluginLoader* loader = nullptr;
     };
     QVector<Candidate> candidates;
     QVector<xuanhub::PluginDescriptor> descriptors = m_descriptorById.values().toVector();
     const PluginValidationEnvironment validationEnvironment =
         PluginValidationEnvironment::current();
-    const auto subdirs = base.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-    for (const QString& sub : subdirs) {
-        QDir d(base.filePath(sub));
-        const auto dlls = d.entryList({QStringLiteral("*.dll")}, QDir::Files);
-        for (const QString& dllName : dlls) {
-            const QString path = d.absoluteFilePath(dllName);
+    QSet<QString> discoveredIds = m_loadedIds;
+    for (const ScanDirectory& scan : scanDirectories) {
+        QDir d(scan.path);
+        const QStringList backendCandidates = nativeBackendCandidates(d);
+        for (const QString& path : backendCandidates) {
+            const QString dllName = QFileInfo(path).fileName();
             // sidecar 是发现阶段的信任边界：必须在构造 QPluginLoader 前完成
             // 解析和路径/ABI 校验，失败插件的 DLL 代码完全不进入宿主进程。
             PluginManifestResult manifest = PluginManifest::load(
@@ -141,28 +180,39 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             if (!manifest.ok) {
                 qWarning() << "[Plugin] manifest rejected:" << path << "->"
                            << manifest.error;
-                recordLoadError(sub, manifest.error);
+                recordLoadError(scan.idHint, manifest.error);
                 continue;
             }
             const QString manifestId = manifest.descriptor.id;
-            if (m_loadedIds.contains(manifestId)) {
+            if (!scan.managed && managedIds.contains(manifestId)) {
+                qDebug() << "[Plugin] built-in plugin shadowed by managed version:"
+                         << manifestId << "->" << path;
+                continue;
+            }
+            if (discoveredIds.contains(manifestId)) {
                 qWarning() << "[Plugin] duplicate manifest id, skip:"
                            << manifestId << "->" << path;
                 continue;
             }
+            discoveredIds.insert(manifestId);
             const PluginConfigEntry* entry = enabledMap.value(manifestId, nullptr);
             if (!entry) {
                 qDebug() << "[Plugin] not enabled in config, skip:" << manifestId;
                 continue;
             }
             // metaData() 读取 Qt 插件节，不调用 instance()，可安全参与预加载依赖规划。
-            QPluginLoader probe(path);
-            const QString iid = probe.metaData().value(QStringLiteral("IID")).toString();
+            auto* probe = new QPluginLoader;
+            // probe 与正式 loader 共享 Qt 的库缓存；若保留默认 PreventUnloadHint，
+            // 即使正式实例 shutdown/unload 成功，Windows 仍会占用 DLL，导致包升级无法切换。
+            probe->setLoadHints(QLibrary::ResolveAllSymbolsHint);
+            probe->setFileName(path);
+            const QString iid = probe->metaData().value(QStringLiteral("IID")).toString();
             if (iid != QStringLiteral("xuanhub.BarPlugin/1.0")
                 && iid != QStringLiteral("xuanhub.BarPlugin/2.0")) {
                 qWarning() << "[Plugin] skip (IID mismatch):" << path << "->" << iid;
                 recordLoadError(manifestId,
                     QStringLiteral("unsupported plugin IID: %1").arg(iid));
+                delete probe;
                 continue;
             }
             const int iidApiVersion = iid.endsWith(QStringLiteral("/2.0")) ? 2 : 1;
@@ -171,10 +221,12 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                            << manifest.descriptor.apiVersion << iid;
                 recordLoadError(manifestId,
                     QStringLiteral("manifest apiVersion does not match plugin IID"));
+                delete probe;
                 continue;
             }
             descriptors.append(manifest.descriptor);
-            candidates.append({d.absolutePath(), dllName, path, iid, std::move(manifest)});
+            candidates.append({d.absolutePath(), dllName, path, iid,
+                               std::move(manifest), probe});
         }
     }
 
@@ -195,7 +247,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
     for (const QString& plannedId : dependencyPlan.loadOrder) {
         const auto candidateIt = candidateIndex.constFind(plannedId);
         if (candidateIt == candidateIndex.cend()) continue; // 已加载依赖无需重复执行。
-        const Candidate& candidate = candidates.at(candidateIt.value());
+        Candidate& candidate = candidates[candidateIt.value()];
         const QString path = candidate.path;
         const QString iid = candidate.iid;
         const PluginManifestResult& manifest = candidate.manifest;
@@ -221,10 +273,10 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
         }
         if (dependencyUnavailable) continue;
 
-            auto* loader = new QPluginLoader(path);
-            // 清掉 Qt 默认的 PreventUnloadHint，使 unload() 真正卸载 DLL
-            //（热重载/插件升级的前提；代价是必须严格先 shutdown 再 unload）
-            loader->setLoadHints(QLibrary::ResolveAllSymbolsHint);
+            // 发现与实例化复用同一个 loader，避免同路径的第二个 Qt 库缓存引用
+            // 在 unload 后继续持有 Windows 模块句柄。
+            auto* loader = candidate.loader;
+            candidate.loader = nullptr;
 
             // IID 校验
             const QString runtimeIid = loader->metaData().value(QStringLiteral("IID")).toString();
@@ -255,17 +307,29 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                 continue;
             }
 
-            auto descriptor = runtime->descriptor();
+            QString runtimeId;
+            QString runtimeVersion;
+            {
+                // 插件常用 QStringLiteral 返回描述字段，其字符缓冲位于插件 DLL。
+                // 只在 DLL 仍加载时读取，并显式深拷贝日志字段；后续状态统一采用
+                // 宿主解析 sidecar 得到的 descriptor，避免卸载后留下悬空字符串。
+                const auto runtimeDescriptor = runtime->descriptor();
+                runtimeId = QString(runtimeDescriptor.id.constData(),
+                                    runtimeDescriptor.id.size());
+                runtimeVersion = QString(runtimeDescriptor.version.constData(),
+                                         runtimeDescriptor.version.size());
+            }
             if (!runtime->descriptorMatches(manifest.descriptor, &runtimeError)) {
                 qWarning() << "[Plugin] sidecar/runtime descriptor mismatch:" << path
                            << "manifest=" << manifestId << manifest.descriptor.version
-                           << "runtime=" << descriptor.id << descriptor.version
+                           << "runtime=" << runtimeId << runtimeVersion
                            << "->" << runtimeError;
                 recordLoadError(manifestId, runtimeError);
                 loader->unload();
                 delete loader;
                 continue;
             }
+            auto descriptor = manifest.descriptor;
             // V1 运行时接口没有 actions 字段；声明式动作来自已在发现阶段完成
             // 信任边界校验的 sidecar。V2 两侧已做逐字段一致性校验，覆盖后值相同。
             descriptor.actions = manifest.descriptor.actions;
@@ -283,10 +347,10 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                 entry->configVersion, entry->config);
             if (migration.status == PluginRuntime::MigrationStatus::Migrated) {
                 effectiveConfig = migration.config;
-                m_migrationSuggestions.insert(descriptor.id, {
+                m_migrationSuggestions.insert(manifestId, {
                     entry->configVersion, migration.targetVersion,
                     migration.config, {}});
-                qDebug() << "[Plugin] config migration suggested:" << descriptor.id
+                qDebug() << "[Plugin] config migration suggested:" << manifestId
                          << entry->configVersion << "->" << migration.targetVersion;
             } else if (migration.status == PluginRuntime::MigrationStatus::Unsupported
                        || migration.status == PluginRuntime::MigrationStatus::Rejected) {
@@ -294,11 +358,11 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                     "config migration %1 -> %2 failed: %3")
                     .arg(entry->configVersion).arg(migration.targetVersion)
                     .arg(migration.error);
-                m_migrationSuggestions.insert(descriptor.id, {
+                m_migrationSuggestions.insert(manifestId, {
                     entry->configVersion, migration.targetVersion,
                     {}, migrationError});
-                qWarning() << "[Plugin]" << descriptor.id << migrationError;
-                recordLoadError(descriptor.id, migrationError);
+                qWarning() << "[Plugin]" << manifestId << migrationError;
+                recordLoadError(manifestId, migrationError);
                 loader->unload();
                 delete loader;
                 continue;
@@ -414,7 +478,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             // qmlUrl：契约是相对 DLL 目录的文件名，拼成绝对 file URL；
             // 绝对 URL 原样采用——旧实现对 file:///C:/... 取 rel.path() 得到带
             // 前导斜杠的 "/C:/..."，再 fromLocalFile 会拼出损坏路径静默红占位
-            const QUrl rel = runtime->qmlUrl();
+            const QUrl rel = QUrl::fromEncoded(runtime->qmlUrl().toEncoded());
             if (runtime->isV2()
                 && (!rel.isRelative()
                     || QDir::cleanPath(rel.path())
@@ -465,6 +529,10 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                                std::move(qmlContext));
             qDebug() << "[Plugin] loaded:" << descriptor.id
                      << "pos=" << lp.position << "qml=" << qmlUrl.toString();
+    }
+    for (Candidate& candidate : candidates) {
+        delete candidate.loader;
+        candidate.loader = nullptr;
     }
     for (const auto& entry : enabled) {
         if (!m_loadedIds.contains(entry.id) && !m_loadErrors.contains(entry.id)) {
@@ -802,13 +870,15 @@ bool PluginManager::stopOne(const QString& id) {
     m_loadedIds.remove(id);
     m_descriptorById.remove(id);
     m_migrationSuggestions.remove(id);
+    // HostServices/QML context 可能保存指向插件元对象的 Qt 连接，必须在 DLL
+    // 卸载前析构；否则稍后的 QObject 断连会读取已经释放的 staticMetaObject。
+    removeHostServices(id);
     removeRuntime(runtime);
     if (!loader->unload()) {
         qWarning() << "[Plugin] unload one failed:" << loader->fileName()
                    << loader->errorString();
     }
     delete loader;
-    removeHostServices(id);
     Q_EMIT pluginsChanged();
     return true;
 }
@@ -927,6 +997,9 @@ void PluginManager::shutdownAll() {
                  << "durationMs=" << timer.elapsed();
     }
     m_hosts.clear();
+    // 这些宿主服务对象可能保存指向插件元对象的连接，必须先于 runtime 和
+    // QPluginLoader 析构，避免卸载 DLL 后再由 QObject 清理跨模块连接。
+    m_hostServiceScopes.clear();
     // 适配器只保存接口指针，仍应在 QPluginLoader 删除根 QObject 前释放，
     // 防止以后给适配器增加析构逻辑时误触已卸载代码。
     m_runtimeById.clear();
@@ -950,7 +1023,6 @@ void PluginManager::shutdownAll() {
     m_descriptorById.clear();
     m_candidateHostBySubPluginId.clear();
     m_migrationSuggestions.clear();
-    m_hostServiceScopes.clear();
     Q_EMIT pluginsChanged();
 }
 
