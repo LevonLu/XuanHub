@@ -391,6 +391,43 @@ private Q_SLOTS:
                     .value(QStringLiteral("config")).toObject().value(QStringLiteral("aiApiKey")).isObject());
     }
 
+    void secretTransactionCanRollbackAndFinalize() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString secretId = SecretStore::idForPluginField(
+            QStringLiteral("py_secret_demo"), QStringLiteral("token"));
+        SecretStore store(dir.path());
+        QVERIFY(store.write(secretId, QStringLiteral("old")));
+
+        {
+            auto transaction = store.beginTransaction();
+            QVERIFY(transaction.stageWrite(secretId, QStringLiteral("temporary")));
+            QVERIFY(transaction.commit());
+            QCOMPARE(store.read(secretId).value_or({}), QStringLiteral("temporary"));
+            QVERIFY(transaction.rollback());
+        }
+        QCOMPARE(store.read(secretId).value_or({}), QStringLiteral("old"));
+
+        {
+            auto transaction = store.beginTransaction();
+            QVERIFY(transaction.stageWrite(secretId, QStringLiteral("final")));
+            QVERIFY(transaction.commit());
+            transaction.finalize();
+        }
+        QCOMPARE(store.read(secretId).value_or({}), QStringLiteral("final"));
+
+        const QString freshDir = dir.filePath(QStringLiteral("fresh"));
+        QVERIFY(QDir().mkpath(freshDir));
+        {
+            SecretStore fresh(freshDir);
+            auto transaction = fresh.beginTransaction();
+            QVERIFY(transaction.stageWrite(secretId, QStringLiteral("discarded")));
+            QVERIFY(transaction.commit());
+            // 未 finalize：析构自动恢复为“文件原本不存在”。
+        }
+        QVERIFY(!QFileInfo::exists(QDir(freshDir).filePath(QStringLiteral("secrets.json"))));
+    }
+
     void usageHubVendorSecretMigratesAndHydrates() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());

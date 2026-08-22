@@ -8,6 +8,8 @@
 #include <QSaveFile>
 #include <QDebug>
 
+#include <utility>
+
 #include <windows.h>
 #include <wincrypt.h>
 
@@ -64,6 +66,80 @@ std::optional<QString> unprotect(const QByteArray& encrypted) {
 SecretStore::SecretStore(QString directory)
     : m_path(QDir(directory).absoluteFilePath(QStringLiteral("secrets.json"))) {}
 
+SecretStore::Transaction::Transaction(QString path)
+    : m_path(std::move(path)), m_originalExists(QFile::exists(m_path)) {
+    QFile file(m_path);
+    if (file.open(QIODevice::ReadOnly)) m_originalBytes = file.readAll();
+    m_root = loadRoot(m_path);
+}
+
+SecretStore::Transaction::~Transaction() {
+    if (m_committed && !m_finalized && !rollback())
+        qCritical() << "[Secrets] automatic rollback failed:" << m_path;
+}
+
+bool SecretStore::Transaction::stageWrite(const QString& secretId,
+                                          const QString& plaintext) {
+    if (m_committed || secretId.isEmpty()) return false;
+    QJsonObject secrets = m_root.value(QStringLiteral("secrets")).toObject();
+    if (plaintext.isEmpty()) {
+        if (!secrets.contains(secretId)) return true;
+        secrets.remove(secretId);
+    } else {
+        const QByteArray encrypted = protect(plaintext);
+        if (encrypted.isEmpty()) return false;
+        secrets.insert(secretId, QString::fromLatin1(
+            encrypted.toBase64(QByteArray::Base64UrlEncoding
+                               | QByteArray::OmitTrailingEquals)));
+    }
+    m_root.insert(QStringLiteral("version"), 1);
+    m_root.insert(QStringLiteral("secrets"), secrets);
+    m_changed = true;
+    return true;
+}
+
+bool SecretStore::Transaction::writeBytes(const QByteArray& bytes) const {
+    QSaveFile file(m_path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        qWarning() << "[Secrets] cannot open secret store for writing:" << m_path;
+        return false;
+    }
+    if (file.write(bytes) != bytes.size() || !file.commit()) {
+        qWarning() << "[Secrets] cannot save secret store:" << m_path;
+        return false;
+    }
+    QFile::setPermissions(m_path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    return true;
+}
+
+bool SecretStore::Transaction::commit() {
+    if (m_committed) return true;
+    if (m_changed
+        && !writeBytes(QJsonDocument(m_root).toJson(QJsonDocument::Compact))) {
+        return false;
+    }
+    m_committed = true;
+    return true;
+}
+
+bool SecretStore::Transaction::rollback() {
+    if (!m_committed) return true;
+    bool ok = true;
+    if (m_changed) {
+        if (m_originalExists) {
+            ok = writeBytes(m_originalBytes);
+        } else if (QFile::exists(m_path)) {
+            ok = QFile::remove(m_path);
+            if (!ok) qWarning() << "[Secrets] cannot remove rolled-back store:" << m_path;
+        }
+    }
+    if (ok) {
+        m_committed = false;
+        m_finalized = true;
+    }
+    return ok;
+}
+
 QString SecretStore::idForPluginField(const QString& pluginId, const QString& fieldKey) {
     return QStringLiteral("plugin/") + pluginId + QLatin1Char('/') + fieldKey;
 }
@@ -87,30 +163,8 @@ std::optional<QString> SecretStore::read(const QString& secretId) const {
 }
 
 bool SecretStore::write(const QString& secretId, const QString& plaintext) const {
-    QJsonObject root = loadRoot(m_path);
-    QJsonObject secrets = root.value(QStringLiteral("secrets")).toObject();
-    if (plaintext.isEmpty()) {
-        secrets.remove(secretId);
-    } else {
-        const QByteArray encrypted = protect(plaintext);
-        if (encrypted.isEmpty()) return false;
-        secrets.insert(secretId, QString::fromLatin1(
-            encrypted.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals)));
-    }
-    root.insert(QStringLiteral("version"), 1);
-    root.insert(QStringLiteral("secrets"), secrets);
-
-    QSaveFile file(m_path);
-    if (!file.open(QIODevice::WriteOnly)) {
-        qWarning() << "[Secrets] cannot open secret store for writing:" << m_path;
-        return false;
-    }
-    const QByteArray json = QJsonDocument(root).toJson(QJsonDocument::Compact);
-    if (file.write(json) != json.size() || !file.commit()) {
-        qWarning() << "[Secrets] cannot save secret store:" << m_path;
-        return false;
-    }
-    // DPAPI 已绑定当前用户；仍尽量避免把密文文件开放给组/其他用户。
-    QFile::setPermissions(m_path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    Transaction transaction(m_path);
+    if (!transaction.stageWrite(secretId, plaintext) || !transaction.commit()) return false;
+    transaction.finalize();
     return true;
 }
