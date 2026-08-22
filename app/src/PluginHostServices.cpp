@@ -1,5 +1,6 @@
 // PluginHostServices.cpp — 执行插件身份绑定、权限校验和私有数据目录隔离
 #include "PluginHostServices.h"
+#include "barplugin/PluginLog.h"
 
 #include "SecretStore.h"
 #include "barplugin/EventBus.h"
@@ -9,6 +10,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QUrl>
@@ -129,12 +131,31 @@ xuanhub::IPluginTheme* PluginHostServices::theme() { return this; }
 
 void PluginHostServices::log(xuanhub::PluginLogLevel level, const QString& message,
                              const QVariantMap& fields) {
-    const QString prefix = QStringLiteral("[Plugin:%1]").arg(m_pluginId);
+    QVariantMap safeFields = fields;
+    QString errorCode = safeFields.take(QStringLiteral("errorCode")).toString();
+    if (errorCode.isEmpty()) {
+        switch (level) {
+        case xuanhub::PluginLogLevel::Debug: errorCode = QStringLiteral("plugin.log.debug"); break;
+        case xuanhub::PluginLogLevel::Info: errorCode = QStringLiteral("plugin.log.info"); break;
+        case xuanhub::PluginLogLevel::Warning: errorCode = QStringLiteral("plugin.log.warning"); break;
+        case xuanhub::PluginLogLevel::Error: errorCode = QStringLiteral("plugin.log.error"); break;
+        }
+    }
+    const QString text = safeFields.isEmpty()
+        ? message
+        : QStringLiteral("%1 %2").arg(
+              message,
+              QString::fromUtf8(QJsonDocument::fromVariant(safeFields)
+                                    .toJson(QJsonDocument::Compact)));
     switch (level) {
-    case xuanhub::PluginLogLevel::Debug: qDebug() << prefix << message << fields; break;
-    case xuanhub::PluginLogLevel::Info: qInfo() << prefix << message << fields; break;
-    case xuanhub::PluginLogLevel::Warning: qWarning() << prefix << message << fields; break;
-    case xuanhub::PluginLogLevel::Error: qCritical() << prefix << message << fields; break;
+    case xuanhub::PluginLogLevel::Debug:
+        xuanhub::PluginLog::debug(m_pluginId, errorCode, text); break;
+    case xuanhub::PluginLogLevel::Info:
+        xuanhub::PluginLog::info(m_pluginId, errorCode, text); break;
+    case xuanhub::PluginLogLevel::Warning:
+        xuanhub::PluginLog::warning(m_pluginId, errorCode, text); break;
+    case xuanhub::PluginLogLevel::Error:
+        xuanhub::PluginLog::critical(m_pluginId, errorCode, text); break;
     }
 }
 

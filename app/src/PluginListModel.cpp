@@ -44,6 +44,7 @@ QVariant PluginListModel::data(const QModelIndex& index, int role) const {
         case CapabilitiesRole: return it.capabilities;
         case HealthStateRole:        return xuanhub::pluginStateKey(it.health.state);
         case LastErrorRole:          return it.health.lastError;
+        case LastErrorCodeRole:      return it.health.lastErrorCode;
         case LastErrorAtRole:        return it.health.lastErrorAt;
         case StartedAtRole:          return it.health.startedAt;
         case LastHealthyAtRole:      return it.health.lastHealthyAt;
@@ -77,6 +78,7 @@ QHash<int, QByteArray> PluginListModel::roleNames() const {
         { CapabilitiesRole, "capabilities" },
         { HealthStateRole,         "healthState" },
         { LastErrorRole,           "lastError" },
+        { LastErrorCodeRole,       "lastErrorCode" },
         { LastErrorAtRole,         "lastErrorAt" },
         { StartedAtRole,           "startedAt" },
         { LastHealthyAtRole,       "lastHealthyAt" },
@@ -304,6 +306,8 @@ void PluginListModel::reportHealth(const QString& id, const QVariantMap& update)
     }
     if (update.contains(QStringLiteral("lastError")))
         health.lastError = update.value(QStringLiteral("lastError")).toString();
+    if (update.contains(QStringLiteral("lastErrorCode")))
+        health.lastErrorCode = update.value(QStringLiteral("lastErrorCode")).toString();
     if (update.contains(QStringLiteral("lastErrorAt")))
         health.lastErrorAt = update.value(QStringLiteral("lastErrorAt")).toDateTime();
     if (update.contains(QStringLiteral("startedAt")))
@@ -323,7 +327,7 @@ void PluginListModel::reportHealth(const QString& id, const QVariantMap& update)
 
     const QModelIndex changed = index(row);
     Q_EMIT dataChanged(changed, changed, {
-        HealthStateRole, LastErrorRole, LastErrorAtRole, StartedAtRole,
+        HealthStateRole, LastErrorRole, LastErrorCodeRole, LastErrorAtRole, StartedAtRole,
         LastHealthyAtRole, RestartCountRole, ConsecutiveFailuresRole,
         LoadDurationMsRole, QueueDepthRole, ProcessIdRole,
     });
@@ -335,6 +339,7 @@ QVariantMap PluginListModel::health(const QString& id) const {
         return {
             {QStringLiteral("state"), xuanhub::pluginStateKey(item.health.state)},
             {QStringLiteral("lastError"), item.health.lastError},
+            {QStringLiteral("lastErrorCode"), item.health.lastErrorCode},
             {QStringLiteral("lastErrorAt"), item.health.lastErrorAt},
             {QStringLiteral("startedAt"), item.health.startedAt},
             {QStringLiteral("lastHealthyAt"), item.health.lastHealthyAt},

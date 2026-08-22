@@ -1765,7 +1765,10 @@ Pane {
                                                 visible: String((detailPanel.rowData.health || {}).lastError || "").length > 0
                                                 spacing: UiMetrics.space1
                                                 Text {
-                                                    text: root.trText("最近错误")
+                                                    text: String((detailPanel.rowData.health || {}).lastErrorCode || "").length > 0
+                                                        ? root.trText("最近错误（%1）").arg(String(
+                                                            (detailPanel.rowData.health || {}).lastErrorCode))
+                                                        : root.trText("最近错误")
                                                     color: root.c.danger
                                                     font.pixelSize: UiMetrics.fontS
                                                     font.weight: Font.DemiBold

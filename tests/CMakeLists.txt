@@ -208,9 +208,13 @@ add_executable(xuanhub_plugin_diagnostics_tests
 set_target_properties(xuanhub_plugin_diagnostics_tests PROPERTIES AUTOMOC ON)
 target_include_directories(xuanhub_plugin_diagnostics_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/app/src
+    ${CMAKE_SOURCE_DIR}/lib/barplugin/include
 )
-target_link_libraries(xuanhub_plugin_diagnostics_tests PRIVATE Qt6::Core Qt6::Test)
+target_link_libraries(xuanhub_plugin_diagnostics_tests PRIVATE
+    barplugin Qt6::Core Qt6::Test)
 add_custom_command(TARGET xuanhub_plugin_diagnostics_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:barplugin>" "$<TARGET_FILE_DIR:xuanhub_plugin_diagnostics_tests>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:Qt6::Core>" "$<TARGET_FILE_DIR:xuanhub_plugin_diagnostics_tests>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different

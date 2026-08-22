@@ -1,5 +1,6 @@
 // PluginDiagnosticsTest.cpp — 插件日志过滤与诊断包脱敏回归测试
 #include "PluginDiagnostics.h"
+#include "barplugin/PluginLog.h"
 
 #include <QFile>
 #include <QJsonDocument>
@@ -10,6 +11,18 @@ class PluginDiagnosticsTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void formatsScopedSingleLineLogs() {
+        QCOMPARE(xuanhub::PluginLog::format(
+                     QStringLiteral("py_demo"), QStringLiteral("worker.timeout"),
+                     QStringLiteral("line one\nline two")),
+                 QStringLiteral(
+                     "[Plugin:py_demo] [code=worker.timeout] line one\\nline two"));
+        QVERIFY(xuanhub::PluginLog::format(
+                    QStringLiteral("bad id"), QStringLiteral("bad"), QStringLiteral("message"))
+                    .startsWith(QStringLiteral(
+                        "[Plugin:unknown] [code=plugin.log.message]")));
+    }
+
     void filtersByPluginAndKeepsStableErrorCodes() {
         QTemporaryDir temporary;
         QVERIFY(temporary.isValid());

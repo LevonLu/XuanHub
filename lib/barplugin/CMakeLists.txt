@@ -4,6 +4,7 @@
 add_library(barplugin SHARED
     src/EventBus.cpp
     src/PluginEventScope.cpp
+    src/PluginLog.cpp
     src/PluginPathValidator.cpp
     src/ManagedPluginStore.cpp
     src/ProcessReaper.cpp
@@ -22,6 +23,7 @@ add_library(barplugin SHARED
     include/barplugin/PluginHealth.h
     include/barplugin/PluginDescriptor.h
     include/barplugin/PluginEventScope.h
+    include/barplugin/PluginLog.h
     include/barplugin/PluginPathValidator.h
     include/barplugin/ManagedPluginStore.h
     include/barplugin/ProcessReaper.h

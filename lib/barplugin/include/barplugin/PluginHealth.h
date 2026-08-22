@@ -53,6 +53,7 @@ inline PluginState pluginStateFromKey(QStringView key, PluginState fallback) {
 struct PluginHealth {
     PluginState state = PluginState::Discovered;
     QString lastError;
+    QString lastErrorCode;
     QDateTime lastErrorAt;
     QDateTime startedAt;
     QDateTime lastHealthyAt;

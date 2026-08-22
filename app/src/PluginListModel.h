@@ -35,6 +35,7 @@ public:
         CapabilitiesRole,
         HealthStateRole,
         LastErrorRole,
+        LastErrorCodeRole,
         LastErrorAtRole,
         StartedAtRole,
         LastHealthyAtRole,

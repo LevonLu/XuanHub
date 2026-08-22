@@ -63,6 +63,7 @@
       "导出插件诊断": "Export plugin diagnostics",
       "玄枢诊断包 (*.json)": "XuanHub diagnostic bundle (*.json)",
       "最近错误": "Latest error",
+      "最近错误（%1）": "Latest error (%1)",
       "权限与安全": "Permissions and security",
       "查看插件声明、实际授权和运行隔离级别": "Review declarations, grants, and isolation level",
       "隔离插件": "Isolated plugin",

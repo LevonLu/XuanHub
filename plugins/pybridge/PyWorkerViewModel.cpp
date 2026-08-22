@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "barplugin/ProcessReaper.h"
+#include "barplugin/PluginLog.h"
 #include "barplugin/EventBus.h"
 #include "barplugin/HostServices.h"
 #include "barplugin/IBarPluginHostConfigValidation.h"
@@ -36,6 +37,31 @@ constexpr int kMaxEventRequestTimeoutMs = 10000;
 
 QString processStatusText(QProcess::ExitStatus status) {
     return status == QProcess::CrashExit ? QStringLiteral("crash") : QStringLiteral("normal");
+}
+
+QString workerFailureCode(const QString& reason, const QString& callErrorCode) {
+    if (callErrorCode == QLatin1String("timeout")) return QStringLiteral("worker.timeout");
+    if (!callErrorCode.isEmpty())
+        return QStringLiteral("worker.%1").arg(callErrorCode.toLower());
+    if (reason.contains(QStringLiteral("connection timed out")))
+        return QStringLiteral("worker.start_timeout");
+    if (reason.contains(QStringLiteral("IPC disconnected")))
+        return QStringLiteral("worker.ipc_disconnected");
+    if (reason.contains(QStringLiteral("cannot write")))
+        return QStringLiteral("worker.ipc_write_failed");
+    if (reason.contains(QStringLiteral("cannot start")))
+        return QStringLiteral("worker.start_failed");
+    if (reason.contains(QStringLiteral("exited")))
+        return QStringLiteral("worker.exited");
+    if (reason.contains(QStringLiteral("undeclared push capability")))
+        return QStringLiteral("worker.capability_violation");
+    if (reason.contains(QStringLiteral("frame rejected")))
+        return QStringLiteral("worker.frame_rejected");
+    if (reason.contains(QStringLiteral("mismatch"))
+        || reason.contains(QStringLiteral("invalid"))
+        || reason.contains(QStringLiteral("unexpected")))
+        return QStringLiteral("worker.protocol_error");
+    return QStringLiteral("worker.failure");
 }
 } // namespace
 
@@ -112,6 +138,7 @@ QVariantMap PyWorkerViewModel::health() const {
     return {
         {QStringLiteral("state"), xuanhub::pluginStateKey(m_health.state)},
         {QStringLiteral("lastError"), m_health.lastError},
+        {QStringLiteral("lastErrorCode"), m_health.lastErrorCode},
         {QStringLiteral("lastErrorAt"), m_health.lastErrorAt},
         {QStringLiteral("startedAt"), m_health.startedAt},
         {QStringLiteral("lastHealthyAt"), m_health.lastHealthyAt},
@@ -929,7 +956,8 @@ void PyWorkerViewModel::handleProcessFinished(int exitCode, QProcess::ExitStatus
 void PyWorkerViewModel::failWorker(const QString& reason, bool retry,
                                    const QString& callErrorCode) {
     if (m_stopping) return;
-    qWarning() << "[PyBridge]" << m_id << ":" << reason;
+    m_health.lastErrorCode = workerFailureCode(reason, callErrorCode);
+    xuanhub::PluginLog::warning(m_id, m_health.lastErrorCode, reason);
     m_health.lastError = reason;
     m_health.lastErrorAt = QDateTime::currentDateTimeUtc();
     m_startTimer.stop();

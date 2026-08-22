@@ -27,6 +27,7 @@ private Q_SLOTS:
         plugin.pluginContext = &pluginContext;
         plugin.health.state = xuanhub::PluginState::CircuitOpen;
         plugin.health.lastError = QStringLiteral("worker crashed");
+        plugin.health.lastErrorCode = QStringLiteral("worker.exited");
         plugin.health.lastErrorAt = QDateTime::fromMSecsSinceEpoch(1000, QTimeZone::UTC);
         plugin.health.startedAt = QDateTime::fromMSecsSinceEpoch(2000, QTimeZone::UTC);
         plugin.health.lastHealthyAt = QDateTime::fromMSecsSinceEpoch(3000, QTimeZone::UTC);
@@ -43,6 +44,8 @@ private Q_SLOTS:
                  QStringLiteral("circuitOpen"));
         QCOMPARE(model.data(index, PluginListModel::LastErrorRole).toString(),
                  QStringLiteral("worker crashed"));
+        QCOMPARE(model.data(index, PluginListModel::LastErrorCodeRole).toString(),
+                 QStringLiteral("worker.exited"));
         QCOMPARE(model.data(index, PluginListModel::LastErrorAtRole).toDateTime(),
                  plugin.health.lastErrorAt);
         QCOMPARE(model.data(index, PluginListModel::StartedAtRole).toDateTime(),
@@ -61,6 +64,7 @@ private Q_SLOTS:
 
         const auto roles = model.roleNames();
         QCOMPARE(roles.value(PluginListModel::HealthStateRole), QByteArray("healthState"));
+        QCOMPARE(roles.value(PluginListModel::LastErrorCodeRole), QByteArray("lastErrorCode"));
         QCOMPARE(roles.value(PluginListModel::LastErrorRole), QByteArray("lastError"));
         QCOMPARE(roles.value(PluginListModel::QueueDepthRole), QByteArray("queueDepth"));
         QCOMPARE(roles.value(PluginListModel::ProcessIdRole), QByteArray("processId"));
@@ -81,6 +85,7 @@ private Q_SLOTS:
         model.reportHealth(QStringLiteral("runtime_health"), {
             {QStringLiteral("state"), QStringLiteral("restarting")},
             {QStringLiteral("lastError"), QStringLiteral("IPC disconnected")},
+            {QStringLiteral("lastErrorCode"), QStringLiteral("worker.ipc_disconnected")},
             {QStringLiteral("lastHealthyAt"), healthyAt},
             {QStringLiteral("restartCount"), 3},
             {QStringLiteral("queueDepth"), 1},
@@ -93,6 +98,8 @@ private Q_SLOTS:
                  QStringLiteral("restarting"));
         QCOMPARE(model.data(index, PluginListModel::LastErrorRole).toString(),
                  QStringLiteral("IPC disconnected"));
+        QCOMPARE(model.data(index, PluginListModel::LastErrorCodeRole).toString(),
+                 QStringLiteral("worker.ipc_disconnected"));
         QCOMPARE(model.data(index, PluginListModel::LastHealthyAtRole).toDateTime(), healthyAt);
         QCOMPARE(model.data(index, PluginListModel::RestartCountRole).toInt(), 3);
         QCOMPARE(model.data(index, PluginListModel::QueueDepthRole).toInt(), 1);
