@@ -29,11 +29,14 @@ private slots:
     void setTaskbarMode(bool on);   // 菜单 "任务栏模式"：写回 config.json 走热重载生效
     void refreshIcon();             // 主题变化时重绘图标（连 ThemeManager::themeChanged）
     void onAppNotify(QVariantMap payload);  // EventBus "app.notify"：插件请求的气泡提示
+    void onQuickMenuCommand(QVariantMap payload);  // bar 菜单插件复用托盘动作
+    void publishQuickMenuState(QVariantMap payload = {});  // 向插件回传当前勾选状态
 
 private:
     QSystemTrayIcon* m_tray = nullptr;
     ThemeManager*    m_theme;
     ConfigService*   m_config;
+    xuanhub::EventBus* m_bus;
     QMenu*           m_menu = nullptr;
     QAction*         m_autoStartAction = nullptr;
     QAction*         m_taskbarModeAction = nullptr;

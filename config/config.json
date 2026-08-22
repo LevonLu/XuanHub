@@ -1,6 +1,7 @@
 {
   "bar": { "height": 40, "edge": "top", "monitor": "primary", "opacity": 1.0, "themeId": "xuanhub-default", "theme": "dark", "mode": "appbar", "taskbarOffsetX": 0 },
   "plugins": [
+    { "id": "xuanhub_menu", "position": "left", "order": -100, "config": {} },
     { "id": "sysinfo",  "position": "right", "order": 0, "config": { "intervalMs": 1000, "itemsPerColumn": 5, "items": [ { "metric": "cpu", "prefix": "CPU ", "color": "" }, { "metric": "mem", "prefix": "RAM ", "color": "" }, { "metric": "gpu", "prefix": "GPU ", "color": "" }, { "metric": "netDown", "prefix": "↓ ", "color": "" }, { "metric": "netUp", "prefix": "↑ ", "color": "" } ] } },
     { "id": "clock",    "position": "right", "order": 1, "config": { "format": "HH:mm:ss" } },
     { "id": "pybridge", "position": "right", "order": 9, "config": {} },

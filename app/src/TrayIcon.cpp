@@ -16,7 +16,7 @@
 
 TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
                    ConfigService* config, QObject* parent)
-    : QObject(parent), m_theme(theme), m_config(config),
+    : QObject(parent), m_theme(theme), m_config(config), m_bus(bus),
       m_menu(nullptr), m_autoStartAction(nullptr), m_taskbarModeAction(nullptr) {
     m_tray = new QSystemTrayIcon(this);
     refreshIcon();   // 首次绘制（读当前主题色板）
@@ -29,6 +29,14 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
     // 注意 slot 用裸签名串而非 SLOT() 宏：EventBus 经 QMetaObject::invokeMethod
     // 投递，后者不接受 SLOT() 的 "1" 前缀（会报 No such method）。
     if (bus) bus->subscribe(QStringLiteral("app.notify"), this, "onAppNotify(QVariantMap)");
+    if (bus) {
+        // bar 上的玄枢菜单是普通插件，不能依赖宿主类型；通过 EventBus 请求动作，
+        // 实际执行仍落到托盘控制器，保证两个入口的行为和状态来源一致。
+        bus->subscribe(QStringLiteral("app.quickMenu.command"), this,
+                       "onQuickMenuCommand(QVariantMap)");
+        bus->subscribe(QStringLiteral("app.quickMenu.requestState"), this,
+                       "publishQuickMenuState(QVariantMap)");
+    }
 
     m_menu = new QMenu();
 
@@ -150,4 +158,50 @@ void TrayIcon::onAppNotify(QVariantMap payload) {
     QTimer::singleShot(0, m_tray, [tray = m_tray, title, msg] {
         tray->showMessage(title, msg, QSystemTrayIcon::Warning, 10000);
     });
+}
+
+void TrayIcon::onQuickMenuCommand(QVariantMap payload) {
+    const QString action = payload.value(QStringLiteral("action")).toString();
+    const bool enabled = payload.value(QStringLiteral("enabled")).toBool();
+
+    if (action == QStringLiteral("settings")) {
+        emit settingsRequested();
+    } else if (action == QStringLiteral("autostart")) {
+        setAutoStartEnabled(enabled);
+    } else if (action == QStringLiteral("taskbarMode")) {
+        setTaskbarMode(enabled);
+    } else if (action == QStringLiteral("lightMode")) {
+        if (m_theme) m_theme->switchMode(enabled ? QStringLiteral("light")
+                                                 : QStringLiteral("dark"));
+    } else if (action == QStringLiteral("reload")) {
+        // forceReload 会卸载并重载所有插件。必须等当前插件的 QML→ViewModel→
+        // EventBus 调用栈返回后再执行，否则会在插件代码仍在栈上时卸载 DLL。
+        QTimer::singleShot(0, this, [this] { emit reloadRequested(); });
+    } else if (action == QStringLiteral("quit")) {
+        // 同样顺延到本次插件调用完全返回后再退出和析构插件。
+        QTimer::singleShot(0, QCoreApplication::instance(), &QCoreApplication::quit);
+    } else {
+        qWarning() << "[Tray] unknown quick menu action:" << action;
+    }
+
+    if (action != QStringLiteral("quit")) publishQuickMenuState();
+}
+
+void TrayIcon::publishQuickMenuState(QVariantMap) {
+    if (!m_bus) return;
+
+    // save() 会先更新 rawConfig，watcher 稍后才让 barMode() 生效；读 rawConfig
+    // 能让插件中的开关在点击后立即显示已持久化的新状态。
+    QString mode = m_config ? m_config->barMode() : QStringLiteral("appbar");
+    if (m_config) {
+        const QJsonObject bar = m_config->rawConfig().value(QStringLiteral("bar")).toObject();
+        mode = bar.value(QStringLiteral("mode")).toString(mode);
+    }
+
+    QVariantMap state;
+    state.insert(QStringLiteral("autoStartEnabled"), autostart::isEnabled());
+    state.insert(QStringLiteral("taskbarMode"), mode == QStringLiteral("taskbar"));
+    state.insert(QStringLiteral("themeMode"),
+                 m_theme ? m_theme->mode() : QStringLiteral("dark"));
+    m_bus->publish(QStringLiteral("app.quickMenu.state"), state);
 }

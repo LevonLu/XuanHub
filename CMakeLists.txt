@@ -26,6 +26,7 @@ set(XUANHUB_BIN_DIR "${CMAKE_BINARY_DIR}/dist/$<CONFIG>" CACHE INTERNAL "runtime
 
 add_subdirectory(lib/barplugin)
 add_subdirectory(app)
+add_subdirectory(plugins/xuanhub_menu)
 add_subdirectory(plugins/clock)
 add_subdirectory(plugins/sysinfo)
 
