@@ -256,6 +256,71 @@ bool parseActions(const QJsonObject& object,
     }
     return true;
 }
+
+bool parseLayout(const QJsonObject& object,
+                 xuanhub::PluginLayoutPreference* output,
+                 QString* error) {
+    const QJsonValue value = object.value(QStringLiteral("layout"));
+    if (value.isUndefined()) return true;
+    if (!value.isObject()) {
+        *error = QStringLiteral("manifest field 'layout' must be an object");
+        return false;
+    }
+    const QJsonObject layout = value.toObject();
+    output->declared = true;
+    if (!optionalString(layout, QStringLiteral("region"), &output->region, error)
+        || !optionalString(layout, QStringLiteral("overflow"), &output->overflow, error)) {
+        return false;
+    }
+    if (!output->region.isEmpty()
+        && output->region != QStringLiteral("left")
+        && output->region != QStringLiteral("center")
+        && output->region != QStringLiteral("right")) {
+        *error = QStringLiteral("layout region is invalid: %1").arg(output->region);
+        return false;
+    }
+    if (output->overflow.isEmpty()) output->overflow = QStringLiteral("clip");
+    if (output->overflow != QStringLiteral("clip")
+        && output->overflow != QStringLiteral("hide")
+        && output->overflow != QStringLiteral("menu")) {
+        *error = QStringLiteral("layout overflow is invalid: %1").arg(output->overflow);
+        return false;
+    }
+    auto readInteger = [&layout, error](const QString& key, int fallback,
+                                       int minimum, int maximum, int* target) {
+        const QJsonValue field = layout.value(key);
+        if (field.isUndefined()) {
+            *target = fallback;
+            return true;
+        }
+        if (!field.isDouble() || field.toDouble() != field.toInt()
+            || field.toInt() < minimum || field.toInt() > maximum) {
+            *error = QStringLiteral("layout field '%1' must be an integer in %2-%3")
+                         .arg(key).arg(minimum).arg(maximum);
+            return false;
+        }
+        *target = field.toInt();
+        return true;
+    };
+    if (!readInteger(QStringLiteral("minWidth"), 0, 0, 800, &output->minWidth)
+        || !readInteger(QStringLiteral("preferredWidth"), 0, 0, 800,
+                        &output->preferredWidth)
+        || !readInteger(QStringLiteral("maxWidth"), 0, 0, 800, &output->maxWidth)
+        || !readInteger(QStringLiteral("flex"), 0, 0, 100, &output->flex)
+        || !readInteger(QStringLiteral("priority"), 50, 0, 100, &output->priority)) {
+        return false;
+    }
+    if (output->preferredWidth > 0 && output->preferredWidth < output->minWidth) {
+        *error = QStringLiteral("layout preferredWidth must be at least minWidth");
+        return false;
+    }
+    const int lowerBound = qMax(output->minWidth, output->preferredWidth);
+    if (output->maxWidth > 0 && output->maxWidth < lowerBound) {
+        *error = QStringLiteral("layout maxWidth must not be smaller than min/preferred width");
+        return false;
+    }
+    return true;
+}
 } // namespace
 
 PluginValidationEnvironment PluginValidationEnvironment::current() {
@@ -341,6 +406,7 @@ PluginManifestResult PluginManifest::load(
         || !stringArray(object, QStringLiteral("permissions"),
                         &descriptor.permissions, &error)
         || !parseActions(object, &descriptor.actions, &error)
+        || !parseLayout(object, &descriptor.layout, &error)
         || !parseDependencies(object, &descriptor.dependencies, &error)) {
         return failed(error);
     }

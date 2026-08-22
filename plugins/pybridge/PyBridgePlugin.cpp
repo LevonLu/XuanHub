@@ -204,6 +204,74 @@ bool readPythonActions(const QJsonObject& object,
     return true;
 }
 
+bool readPythonLayout(const QJsonObject& object,
+                      xuanhub::PluginLayoutPreference* output,
+                      QString* error) {
+    const QJsonValue value = object.value(QStringLiteral("layout"));
+    if (value.isUndefined()) return true;
+    if (!value.isObject()) {
+        *error = QStringLiteral("layout must be an object");
+        return false;
+    }
+    const QJsonObject layout = value.toObject();
+    output->declared = true;
+    const QJsonValue region = layout.value(QStringLiteral("region"));
+    const QJsonValue overflow = layout.value(QStringLiteral("overflow"));
+    if ((!region.isUndefined() && !region.isString())
+        || (!overflow.isUndefined() && !overflow.isString())) {
+        *error = QStringLiteral("layout region/overflow must be strings");
+        return false;
+    }
+    output->region = region.toString().trimmed();
+    output->overflow = overflow.toString(QStringLiteral("clip")).trimmed();
+    if (!output->region.isEmpty()
+        && output->region != QStringLiteral("left")
+        && output->region != QStringLiteral("center")
+        && output->region != QStringLiteral("right")) {
+        *error = QStringLiteral("layout region is invalid");
+        return false;
+    }
+    if (output->overflow != QStringLiteral("clip")
+        && output->overflow != QStringLiteral("hide")
+        && output->overflow != QStringLiteral("menu")) {
+        *error = QStringLiteral("layout overflow is invalid");
+        return false;
+    }
+    auto readInteger = [&layout, error](const QString& key, int fallback,
+                                       int minimum, int maximum, int* target) {
+        const QJsonValue field = layout.value(key);
+        if (field.isUndefined()) {
+            *target = fallback;
+            return true;
+        }
+        if (!field.isDouble() || field.toDouble() != field.toInt()
+            || field.toInt() < minimum || field.toInt() > maximum) {
+            *error = QStringLiteral("layout field '%1' is invalid").arg(key);
+            return false;
+        }
+        *target = field.toInt();
+        return true;
+    };
+    if (!readInteger(QStringLiteral("minWidth"), 0, 0, 800, &output->minWidth)
+        || !readInteger(QStringLiteral("preferredWidth"), 0, 0, 800,
+                        &output->preferredWidth)
+        || !readInteger(QStringLiteral("maxWidth"), 0, 0, 800, &output->maxWidth)
+        || !readInteger(QStringLiteral("flex"), 0, 0, 100, &output->flex)
+        || !readInteger(QStringLiteral("priority"), 50, 0, 100, &output->priority)) {
+        return false;
+    }
+    if (output->preferredWidth > 0 && output->preferredWidth < output->minWidth) {
+        *error = QStringLiteral("layout preferredWidth is smaller than minWidth");
+        return false;
+    }
+    const int lowerBound = qMax(output->minWidth, output->preferredWidth);
+    if (output->maxWidth > 0 && output->maxWidth < lowerBound) {
+        *error = QStringLiteral("layout maxWidth is smaller than min/preferred width");
+        return false;
+    }
+    return true;
+}
+
 PythonManifestResult readPluginJson(const QDir& directory) {
     PythonManifestResult result;
     QFile file(directory.absoluteFilePath(QStringLiteral("plugin.json")));
@@ -299,6 +367,8 @@ PythonManifestResult readPluginJson(const QDir& directory) {
     }
     QVector<xuanhub::PluginAction> actions;
     if (!readPythonActions(result.object, &actions, &result.error)) return result;
+    xuanhub::PluginLayoutPreference layout;
+    if (!readPythonLayout(result.object, &layout, &result.error)) return result;
 
     QString pathError;
     if (!xuanhub::validatePluginFilePath(directory.absolutePath(),
@@ -482,6 +552,14 @@ xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const 
     if (!readPythonActions(object, &info.actions, &actionError)) {
         qWarning() << "[PyBridge] action manifest changed before start:" << id
                    << "->" << actionError;
+        delete viewModel;
+        m_vms.remove(id);
+        return {};
+    }
+    QString layoutError;
+    if (!readPythonLayout(object, &info.layout, &layoutError)) {
+        qWarning() << "[PyBridge] layout manifest changed before start:" << id
+                   << "->" << layoutError;
         delete viewModel;
         m_vms.remove(id);
         return {};

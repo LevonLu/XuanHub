@@ -29,6 +29,18 @@ bool sameAction(const xuanhub::PluginAction& left,
         && left.checkable == right.checkable;
 }
 
+bool sameLayout(const xuanhub::PluginLayoutPreference& left,
+                const xuanhub::PluginLayoutPreference& right) {
+    return left.declared == right.declared
+        && left.region == right.region
+        && left.minWidth == right.minWidth
+        && left.preferredWidth == right.preferredWidth
+        && left.maxWidth == right.maxWidth
+        && left.flex == right.flex
+        && left.priority == right.priority
+        && left.overflow == right.overflow;
+}
+
 bool sameV2Descriptor(const xuanhub::PluginDescriptor& left,
                       const xuanhub::PluginDescriptor& right) {
     if (left.id != right.id || left.displayName != right.displayName
@@ -42,6 +54,7 @@ bool sameV2Descriptor(const xuanhub::PluginDescriptor& left,
         || left.entry.settingsQml != right.entry.settingsQml
         || left.capabilities != right.capabilities
         || left.permissions != right.permissions
+        || !sameLayout(left.layout, right.layout)
         || left.compatibility.architecture != right.compatibility.architecture
         || left.compatibility.qtVersion != right.compatibility.qtVersion
         || left.compatibility.compiler != right.compatibility.compiler

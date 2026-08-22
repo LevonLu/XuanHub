@@ -257,6 +257,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             // V1 运行时接口没有 actions 字段；声明式动作来自已在发现阶段完成
             // 信任边界校验的 sidecar。V2 两侧已做逐字段一致性校验，覆盖后值相同。
             descriptor.actions = manifest.descriptor.actions;
+            descriptor.layout = manifest.descriptor.layout;
             // 按 id 去重：同名插件（多目录/多 DLL 副本）只加载第一份
             if (m_loadedIds.contains(descriptor.id)) {
                 qWarning() << "[Plugin] duplicate id, skip:" << descriptor.id << "->" << path;
@@ -415,6 +416,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             lp.apiVersion = descriptor.apiVersion;
             lp.capabilities = descriptor.capabilities;
             lp.actions = descriptor.actions;
+            lp.layout = descriptor.layout;
             lp.position = pos;
             lp.order = entry->order;
             lp.width = entry->width;
@@ -522,6 +524,7 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
     lp.pluginContext = qmlContext.get();
     lp.capabilities = sp.capabilities;
     lp.actions = sp.actions;
+    lp.layout = sp.layout;
     lp.qmlUrl = QUrl::fromLocalFile(QDir(sp.dirPath).absoluteFilePath(sp.qmlFilePath));
     lp.health.state = xuanhub::PluginState::Running;
     lp.health.startedAt = QDateTime::currentDateTimeUtc();
@@ -535,6 +538,7 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
     descriptor.version = sp.meta.version;
     descriptor.author = sp.meta.author;
     descriptor.actions = sp.actions;
+    descriptor.layout = sp.layout;
     m_descriptorById.insert(entry.id, descriptor);
     m_loadErrors.remove(entry.id);
     m_subPluginHostId.insert(entry.id, hostId);

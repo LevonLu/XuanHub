@@ -60,6 +60,7 @@ public:
         int apiVersion = 1;          // SDK 接口版本，host 子插件暂按 V1 契约
         QStringList capabilities;
         QVector<xuanhub::PluginAction> actions;
+        xuanhub::PluginLayoutPreference layout;
         QString position;            // left/center/right
         int order = 0;
         int width = 0;               // 插件宽度（像素，0=跟随内容自适应）

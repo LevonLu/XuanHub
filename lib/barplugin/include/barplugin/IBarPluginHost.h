@@ -21,6 +21,7 @@ struct SubPluginInfo {
     QStringList capabilities;     // 追加字段保持旧 host 源码兼容
     QStringList permissions;      // 隔离子插件实际授权以前置 Manifest 为准
     QVector<PluginAction> actions; // 声明式动作；宿主按 ID 校验后才允许调用
+    PluginLayoutPreference layout; // 可选响应式布局偏好；缺省保持旧固定行为
 };
 
 class IBarPluginHost {

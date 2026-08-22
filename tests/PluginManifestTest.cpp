@@ -210,6 +210,44 @@ private Q_SLOTS:
         QVERIFY(loadManifest(badPlacement).error.contains(QStringLiteral("invalid placement")));
     }
 
+    void parsesResponsiveLayoutPreferences() {
+        auto manifest = validV2Manifest();
+        manifest[QStringLiteral("layout")] = QJsonObject{
+            {QStringLiteral("region"), QStringLiteral("right")},
+            {QStringLiteral("minWidth"), 48},
+            {QStringLiteral("preferredWidth"), 160},
+            {QStringLiteral("maxWidth"), 320},
+            {QStringLiteral("flex"), 1},
+            {QStringLiteral("priority"), 70},
+            {QStringLiteral("overflow"), QStringLiteral("menu")},
+        };
+        const auto result = loadManifest(manifest);
+        QVERIFY2(result.ok, qPrintable(result.error));
+        QVERIFY(result.descriptor.layout.declared);
+        QCOMPARE(result.descriptor.layout.region, QStringLiteral("right"));
+        QCOMPARE(result.descriptor.layout.minWidth, 48);
+        QCOMPARE(result.descriptor.layout.preferredWidth, 160);
+        QCOMPARE(result.descriptor.layout.maxWidth, 320);
+        QCOMPARE(result.descriptor.layout.flex, 1);
+        QCOMPARE(result.descriptor.layout.priority, 70);
+        QCOMPARE(result.descriptor.layout.overflow, QStringLiteral("menu"));
+    }
+
+    void rejectsMalformedResponsiveLayoutPreferences() {
+        auto invalidRange = validV2Manifest();
+        invalidRange[QStringLiteral("layout")] = QJsonObject{
+            {QStringLiteral("minWidth"), 120},
+            {QStringLiteral("preferredWidth"), 80},
+        };
+        QVERIFY(loadManifest(invalidRange).error.contains(QStringLiteral("preferredWidth")));
+
+        auto invalidOverflow = validV2Manifest();
+        invalidOverflow[QStringLiteral("layout")] = QJsonObject{
+            {QStringLiteral("overflow"), QStringLiteral("overlap")},
+        };
+        QVERIFY(loadManifest(invalidOverflow).error.contains(QStringLiteral("overflow")));
+    }
+
     void rejectsMalformedJson() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());

@@ -257,6 +257,11 @@ private Q_SLOTS:
             {QStringLiteral("apiVersion"), 2},
             {QStringLiteral("configVersion"), 2},
             {QStringLiteral("qml"), QStringLiteral("Migration.qml")},
+            {QStringLiteral("layout"), QJsonObject{
+                {QStringLiteral("minWidth"), 40},
+                {QStringLiteral("preferredWidth"), 120},
+                {QStringLiteral("priority"), 75},
+                {QStringLiteral("overflow"), QStringLiteral("menu")}}},
             {QStringLiteral("actions"), QJsonArray{
                 QJsonObject{
                     {QStringLiteral("id"), QStringLiteral("refresh")},
@@ -282,6 +287,11 @@ private Q_SLOTS:
         QCOMPARE(manager.loadedPlugin(pluginId)->actions.size(), 2);
         QCOMPARE(manager.loadedPlugin(pluginId)->actions.first().id,
                  QStringLiteral("refresh"));
+        QVERIFY(manager.loadedPlugin(pluginId)->layout.declared);
+        QCOMPARE(manager.loadedPlugin(pluginId)->layout.preferredWidth, 120);
+        QCOMPARE(manager.loadedPlugin(pluginId)->layout.priority, 75);
+        QCOMPARE(manager.loadedPlugin(pluginId)->layout.overflow,
+                 QStringLiteral("menu"));
         QTRY_VERIFY_WITH_TIMEOUT(manager.migrationSuggestion(pluginId), 5000);
         QTRY_VERIFY_WITH_TIMEOUT(
             manager.loadedPlugin(pluginId)->viewModel->property("values").toMap()

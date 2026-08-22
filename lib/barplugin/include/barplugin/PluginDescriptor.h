@@ -35,6 +35,17 @@ struct PluginAction {
     bool checkable = false;
 };
 
+struct PluginLayoutPreference {
+    bool declared = false;
+    QString region;
+    int minWidth = 0;
+    int preferredWidth = 0;
+    int maxWidth = 0; // 0 表示不另设上限
+    int flex = 0;
+    int priority = 50;
+    QString overflow = QStringLiteral("clip");
+};
+
 struct PluginDescriptor {
     QString id;
     QString displayName;
@@ -48,6 +59,7 @@ struct PluginDescriptor {
     QStringList capabilities;
     QStringList permissions;
     QVector<PluginAction> actions;
+    PluginLayoutPreference layout;
     QVector<PluginDependency> dependencies;
     PluginCompatibility compatibility;
 };
