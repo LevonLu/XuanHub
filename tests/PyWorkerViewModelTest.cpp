@@ -296,6 +296,26 @@ def stop():
         QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(stopFile), 3000);
     }
 
+    void startsBuiltInHeartrateWithoutPeriodicPolling() {
+        const QString python = qEnvironmentVariable("XUANHUB_TEST_PYTHON");
+        const QString worker = qEnvironmentVariable("XUANHUB_TEST_WORKER");
+        const QString plugins = qEnvironmentVariable("XUANHUB_TEST_PYTHON_PLUGINS");
+        QVERIFY2(!python.isEmpty() && !worker.isEmpty() && !plugins.isEmpty(),
+                 "CTest must provide Python worker and built-in plugin paths");
+        const QString pluginDir = QDir(plugins).filePath(QStringLiteral("heartrate"));
+        QVERIFY(QFileInfo::exists(QDir(pluginDir).filePath(QStringLiteral("main.py"))));
+
+        PyWorkerViewModel viewModel(
+            QStringLiteral("py_heartrate"), pluginDir,
+            {{QStringLiteral("autoReconnect"), false}}, python, worker, nullptr);
+        QVERIFY(viewModel.start());
+        QTRY_VERIFY_WITH_TIMEOUT(viewModel.running(), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(viewModel.usesPushValues(), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(!viewModel.values().isEmpty(), 5000);
+        QVERIFY(!viewModel.m_updateTimer.isActive());
+        QVERIFY(viewModel.protocolCapabilities().contains(QStringLiteral("pushValues")));
+    }
+
     void routesHostServicesWithBoundPluginIdentity() {
         const QString python = qEnvironmentVariable("XUANHUB_TEST_PYTHON");
         const QString worker = qEnvironmentVariable("XUANHUB_TEST_WORKER");

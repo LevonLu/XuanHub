@@ -371,7 +371,7 @@ if(Python_Interpreter_FOUND)
     )
     add_test(NAME xuanhub_pyworker_viewmodel_tests COMMAND xuanhub_pyworker_viewmodel_tests)
     set_tests_properties(xuanhub_pyworker_viewmodel_tests PROPERTIES
-        ENVIRONMENT "XUANHUB_TEST_PYTHON=${Python_EXECUTABLE};XUANHUB_TEST_WORKER=${CMAKE_SOURCE_DIR}/plugins_py/bridge_worker.py")
+        ENVIRONMENT "XUANHUB_TEST_PYTHON=${Python_EXECUTABLE};XUANHUB_TEST_WORKER=${CMAKE_SOURCE_DIR}/plugins_py/bridge_worker.py;XUANHUB_TEST_PYTHON_PLUGINS=${CMAKE_SOURCE_DIR}/plugins_py")
 
     add_executable(xuanhub_plugin_manager_tests
         PluginManagerTest.cpp
