@@ -240,7 +240,13 @@ private Q_SLOTS:
             "def validate_config(config):\n"
             "    return {'ok': config.get('prefix') == 'migrated', 'errors': []}\n"
             "def init(config): state.update(config)\n"
-            "def update(): return dict(state)\n") > 0);
+            "def update():\n"
+            "    values = dict(state)\n"
+            "    values['actionStates'] = {\n"
+            "        'refresh': {'enabled': True},\n"
+            "        'disabled': {'enabled': False}}\n"
+            "    return values\n"
+            "def invoke(name, args): state['invoked'] = name\n") > 0);
         python.close();
         QFile manifest(QDir(pluginDirectory.path()).filePath(QStringLiteral("plugin.json")));
         QVERIFY(manifest.open(QIODevice::WriteOnly | QIODevice::Truncate));
@@ -251,11 +257,17 @@ private Q_SLOTS:
             {QStringLiteral("apiVersion"), 2},
             {QStringLiteral("configVersion"), 2},
             {QStringLiteral("qml"), QStringLiteral("Migration.qml")},
-            {QStringLiteral("actions"), QJsonArray{QJsonObject{
-                {QStringLiteral("id"), QStringLiteral("refresh")},
-                {QStringLiteral("label"), QStringLiteral("立即刷新")},
-                {QStringLiteral("placements"),
-                 QJsonArray{QStringLiteral("quickMenu"), QStringLiteral("tray")}}}}},
+            {QStringLiteral("actions"), QJsonArray{
+                QJsonObject{
+                    {QStringLiteral("id"), QStringLiteral("refresh")},
+                    {QStringLiteral("label"), QStringLiteral("立即刷新")},
+                    {QStringLiteral("placements"),
+                     QJsonArray{QStringLiteral("quickMenu"), QStringLiteral("tray")}}},
+                QJsonObject{
+                    {QStringLiteral("id"), QStringLiteral("disabled")},
+                    {QStringLiteral("label"), QStringLiteral("不可用动作")},
+                    {QStringLiteral("placements"),
+                     QJsonArray{QStringLiteral("quickMenu")}}}}},
         }).toJson(QJsonDocument::Compact)) > 0);
         manifest.close();
 
@@ -267,16 +279,18 @@ private Q_SLOTS:
         manager.loadFrom(pluginsDir,
                          {entry(QStringLiteral("pybridge")), child});
         QVERIFY(manager.loadedPlugin(pluginId));
-        QCOMPARE(manager.loadedPlugin(pluginId)->actions.size(), 1);
+        QCOMPARE(manager.loadedPlugin(pluginId)->actions.size(), 2);
         QCOMPARE(manager.loadedPlugin(pluginId)->actions.first().id,
                  QStringLiteral("refresh"));
+        QTRY_VERIFY_WITH_TIMEOUT(manager.migrationSuggestion(pluginId), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(
+            manager.loadedPlugin(pluginId)->viewModel->property("values").toMap()
+                .contains(QStringLiteral("actionStates")), 5000);
         PluginActionRegistry actions(&manager, nullptr);
         const QVariantList quickActions = actions.actions(QStringLiteral("quickMenu"));
-        QCOMPARE(quickActions.size(), 1);
-        QCOMPARE(quickActions.first().toMap().value(QStringLiteral("actionId")).toString(),
-                 QStringLiteral("refresh"));
-        QVERIFY(quickActions.first().toMap().value(QStringLiteral("enabled")).toBool());
-        QTRY_VERIFY_WITH_TIMEOUT(manager.migrationSuggestion(pluginId), 5000);
+        QCOMPARE(quickActions.size(), 2);
+        QVERIFY(quickActions.at(0).toMap().value(QStringLiteral("enabled")).toBool());
+        QVERIFY(!quickActions.at(1).toMap().value(QStringLiteral("enabled")).toBool());
         const auto* suggestion = manager.migrationSuggestion(pluginId);
         QVERIFY(suggestion->ready());
         QCOMPARE(suggestion->currentVersion, 1);
@@ -295,6 +309,10 @@ private Q_SLOTS:
         const QVariantMap invoked = actions.invoke(pluginId, QStringLiteral("refresh"));
         QVERIFY(invoked.value(QStringLiteral("accepted")).toBool());
         QVERIFY(invoked.value(QStringLiteral("pending")).toBool());
+        const QVariantMap disabled = actions.invoke(pluginId, QStringLiteral("disabled"));
+        QVERIFY(!disabled.value(QStringLiteral("accepted")).toBool());
+        QCOMPARE(disabled.value(QStringLiteral("errorCode")).toString(),
+                 QStringLiteral("action_disabled"));
         manager.shutdownAll();
     }
 };
