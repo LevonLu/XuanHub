@@ -8,6 +8,7 @@ import QtQuick.Window
 Item {
     id: root
     property var plugin
+    property var pluginContext
 
     function trText(source) {
         return qsTranslate("plugin.py_intime.main", source)

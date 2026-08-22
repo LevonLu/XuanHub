@@ -2,6 +2,7 @@
 #include <QtTest>
 
 #include "PluginHostServices.h"
+#include "PluginContextObject.h"
 #include "barplugin/EventBus.h"
 
 #include <QDir>
@@ -15,6 +16,7 @@ private Q_SLOTS:
     void isolatesStorageAndSecrets();
     void rejectsPathEscapesAndJunctions();
     void enforcesPermissionAndBindsIdentity();
+    void exposesQmlContextWithoutIdentityOverride();
 };
 
 namespace {
@@ -108,6 +110,29 @@ void PluginHostServicesTest::enforcesPermissionAndBindsIdentity() {
     QCOMPARE(spy.at(0).at(0).toString(), QStringLiteral("app.notify"));
     QCOMPARE(spy.at(0).at(1).toMap().value(QStringLiteral("source")).toString(),
              QStringLiteral("plugin.allowed"));
+}
+
+void PluginHostServicesTest::exposesQmlContextWithoutIdentityOverride() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    auto services = makeServices(directory.path(), QStringLiteral("plugin.qml"),
+                                 {QStringLiteral("storage.private")});
+    PluginContextObject context(&services, nullptr, nullptr);
+    QCOMPARE(context.pluginId(), QStringLiteral("plugin.qml"));
+    QCOMPARE(context.trustLevel(), QStringLiteral("trusted-in-process"));
+    QCOMPARE(context.activeLocale(), QStringLiteral("zh-CN"));
+    QVERIFY(context.hasPermission(QStringLiteral("storage.private")));
+    QVERIFY(!context.hasPermission(QStringLiteral("notifications")));
+
+    QSignalSpy geometrySpy(&context, &PluginContextObject::screenGeometryChanged);
+    context.setScreenGeometry({{QStringLiteral("x"), 10},
+                               {QStringLiteral("width"), 1920}});
+    QCOMPARE(geometrySpy.size(), 1);
+    QCOMPARE(context.screenGeometry().value(QStringLiteral("x")).toInt(), 10);
+    QVERIFY(context.writeText(QStringLiteral("qml/state.txt"),
+                              QStringLiteral("状态")).value(QStringLiteral("success")).toBool());
+    QCOMPARE(context.readText(QStringLiteral("qml/state.txt")).value(
+                 QStringLiteral("value")).toString(), QStringLiteral("状态"));
 }
 
 QTEST_APPLESS_MAIN(PluginHostServicesTest)

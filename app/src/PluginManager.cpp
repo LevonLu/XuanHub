@@ -4,6 +4,8 @@
 #include "PluginDependencyGraph.h"
 #include "PluginManifest.h"
 #include "PluginRuntime.h"
+#include "PluginHostServices.h"
+#include "PluginContextObject.h"
 #include "SemanticVersion.h"
 #include "barplugin/EventBus.h"
 #include "barplugin/IBarPluginHost.h"
@@ -34,8 +36,11 @@ QString sanitizePosition(QString pos, const QString& id) {
 }
 } // namespace
 
-PluginManager::PluginManager(xuanhub::EventBus* bus, const QString& configDir, QObject* parent)
-    : QObject(parent), m_bus(bus), m_configDir(configDir) {}
+PluginManager::PluginManager(xuanhub::EventBus* bus, const QString& configDir,
+                             HostEnvironment hostEnvironment,
+                             QObject* parent)
+    : QObject(parent), m_bus(bus), m_configDir(configDir),
+      m_hostEnvironment(std::move(hostEnvironment)) {}
 
 PluginManager::~PluginManager() {
     shutdownAll();
@@ -229,6 +234,10 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             ctx.eventBus = m_bus;
             ctx.configDir = m_configDir;
             ctx.pluginConfig = entry->config;
+            auto hostServices = createHostServices(
+                descriptor.id, xuanhub::HostPluginTrustLevel::TrustedInProcess,
+                descriptor.permissions, descriptor.permissions);
+            ctx.hostServices = hostServices.get();
             for (const auto& dependency : descriptor.dependencies) {
                 const auto loadedDependency = m_descriptorById.constFind(dependency.id);
                 if (loadedDependency != m_descriptorById.cend()
@@ -273,6 +282,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                 m_descriptorById.insert(descriptor.id, descriptor);
                 m_loadErrors.remove(descriptor.id);
                 m_hosts.append(runtimePtr);
+                retainHostServices(descriptor.id, std::move(hostServices));
                 qDebug() << "[Plugin] loaded host:" << descriptor.id;
                 const QStringList subIds = host->subPluginIds();
                 if (subIds.isEmpty())
@@ -306,6 +316,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                 m_descriptorById.insert(descriptor.id, descriptor);
                 m_loadErrors.remove(descriptor.id);
                 m_services.append(runtimePtr);
+                retainHostServices(descriptor.id, std::move(hostServices));
                 qDebug() << "[Plugin] loaded background service:" << descriptor.id;
                 continue;
             }
@@ -340,6 +351,10 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             lp.order = entry->order;
             lp.width = entry->width;
             lp.viewModel = runtime->viewModel();
+            auto qmlContext = std::make_unique<PluginContextObject>(
+                hostServices.get(), m_hostEnvironment.localeNotifier,
+                m_hostEnvironment.themeNotifier);
+            lp.pluginContext = qmlContext.get();
             lp.qmlUrl = qmlUrl;
             lp.health.state = xuanhub::PluginState::Running;
             lp.health.startedAt = QDateTime::currentDateTimeUtc();
@@ -356,6 +371,8 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             m_loadedIds.insert(descriptor.id);
             m_descriptorById.insert(descriptor.id, descriptor);
             m_loadErrors.remove(descriptor.id);
+            retainHostServices(descriptor.id, std::move(hostServices),
+                               std::move(qmlContext));
             qDebug() << "[Plugin] loaded:" << descriptor.id
                      << "pos=" << lp.position << "qml=" << qmlUrl.toString();
     }
@@ -387,6 +404,13 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
     lp.order = entry.order;
     lp.width = entry.width;
     lp.viewModel = sp.viewModel;
+    auto hostServices = createHostServices(
+        entry.id, xuanhub::HostPluginTrustLevel::Isolated,
+        sp.permissions, sp.permissions);
+    auto qmlContext = std::make_unique<PluginContextObject>(
+        hostServices.get(), m_hostEnvironment.localeNotifier,
+        m_hostEnvironment.themeNotifier);
+    lp.pluginContext = qmlContext.get();
     lp.qmlUrl = QUrl::fromLocalFile(QDir(sp.dirPath).absoluteFilePath(sp.qmlFilePath));
     lp.health.state = xuanhub::PluginState::Running;
     lp.health.startedAt = QDateTime::currentDateTimeUtc();
@@ -402,6 +426,7 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
     m_descriptorById.insert(entry.id, descriptor);
     m_loadErrors.remove(entry.id);
     m_subPluginHostId.insert(entry.id, hostId);
+    retainHostServices(entry.id, std::move(hostServices), std::move(qmlContext));
     qDebug() << "[Plugin] loaded:" << entry.id << "pos=" << lp.position
              << "qml=" << lp.qmlUrl.toLocalFile() << "(via host" << hostId << ")";
     return true;
@@ -459,6 +484,7 @@ bool PluginManager::stopOne(const QString& id) {
         m_subPluginHostId.remove(id);
         m_loadedIds.remove(id);
         m_descriptorById.remove(id);
+        removeHostServices(id);
         return true;
     }
 
@@ -505,6 +531,7 @@ bool PluginManager::stopOne(const QString& id) {
                    << loader->errorString();
     }
     delete loader;
+    removeHostServices(id);
     return true;
 }
 
@@ -615,6 +642,34 @@ void PluginManager::shutdownAll() {
     m_loaded.clear();
     m_loadedIds.clear();
     m_descriptorById.clear();
+    m_hostServiceScopes.clear();
+}
+
+std::unique_ptr<PluginHostServices> PluginManager::createHostServices(
+    const QString& id, xuanhub::HostPluginTrustLevel trustLevel,
+    const QStringList& declaredPermissions,
+    const QStringList& grantedPermissions) const {
+    PluginHostServices::Environment environment;
+    environment.eventBus = m_bus;
+    environment.configDir = m_configDir;
+    environment.activeLocale = m_hostEnvironment.activeLocale;
+    environment.currentPalette = m_hostEnvironment.currentPalette;
+    return std::make_unique<PluginHostServices>(
+        id, trustLevel, declaredPermissions, grantedPermissions,
+        std::move(environment));
+}
+
+void PluginManager::retainHostServices(
+    const QString& id, std::unique_ptr<PluginHostServices> services,
+    std::unique_ptr<PluginContextObject> qmlContext) {
+    m_hostServiceScopes.push_back(
+        {id, std::move(services), std::move(qmlContext)});
+}
+
+void PluginManager::removeHostServices(const QString& id) {
+    const auto it = std::find_if(m_hostServiceScopes.begin(), m_hostServiceScopes.end(),
+        [&id](const HostServiceScope& scope) { return scope.id == id; });
+    if (it != m_hostServiceScopes.end()) m_hostServiceScopes.erase(it);
 }
 
 void PluginManager::removeRuntime(PluginRuntime* runtime) {

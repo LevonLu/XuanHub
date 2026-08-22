@@ -4,6 +4,7 @@ import QtQuick
 Item {
     id: root
     property var plugin
+    property var pluginContext
 
     // 宽度跟随内容：prefix 可配，写死宽度会被槽位 clip:true 静默截断
     width: helloText.implicitWidth + 24

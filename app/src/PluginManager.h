@@ -13,21 +13,32 @@
 #include <QHash>
 
 #include <memory>
+#include <functional>
 #include <vector>
 
 #include "barplugin/IBarPlugin.h"
 #include "barplugin/PluginHealth.h"
 #include "barplugin/PluginDescriptor.h"
+#include "barplugin/HostServices.h"
 
 struct PluginConfigEntry;
 namespace xuanhub { class EventBus; }
 namespace xuanhub { class PluginEventScope; }
 namespace xuanhub { class IBarPluginHost; }
 class PluginRuntime;
+class PluginHostServices;
+class PluginContextObject;
 
 class PluginManager : public QObject {
     Q_OBJECT
 public:
+    struct HostEnvironment {
+        std::function<QString()> activeLocale;
+        std::function<QVariantMap()> currentPalette;
+        QObject* localeNotifier = nullptr;
+        QObject* themeNotifier = nullptr;
+    };
+
     enum class ConfigApplyResult { Applied, Unsupported, Rejected };
     struct LoadedPlugin {
         QString id;
@@ -37,11 +48,14 @@ public:
         int order = 0;
         int width = 0;               // 插件宽度（像素，0=跟随内容自适应）
         QObject* viewModel = nullptr;
+        QObject* pluginContext = nullptr; // 宿主拥有、与插件生命周期相同的 QML 服务代理
         QUrl qmlUrl;                 // 绝对 file URL
         xuanhub::PluginHealth health;
     };
 
-    PluginManager(xuanhub::EventBus* bus, const QString& configDir, QObject* parent = nullptr);
+    PluginManager(xuanhub::EventBus* bus, const QString& configDir,
+                  HostEnvironment hostEnvironment = {},
+                  QObject* parent = nullptr);
     ~PluginManager() override;
 
     void loadFrom(const QString& pluginsDir, const QList<PluginConfigEntry>& enabled);
@@ -64,10 +78,19 @@ private:
     bool createHostedPlugin(const QString& hostId, xuanhub::IBarPluginHost* host,
                             const PluginConfigEntry& entry);
     void removeRuntime(PluginRuntime* runtime);
+    std::unique_ptr<PluginHostServices> createHostServices(
+        const QString& id, xuanhub::HostPluginTrustLevel trustLevel,
+        const QStringList& declaredPermissions,
+        const QStringList& grantedPermissions) const;
+    void retainHostServices(const QString& id,
+                            std::unique_ptr<PluginHostServices> services,
+                            std::unique_ptr<PluginContextObject> qmlContext = {});
+    void removeHostServices(const QString& id);
     void recordLoadError(const QString& id, const QString& error);
 
     xuanhub::EventBus* m_bus;
     QString m_configDir;
+    HostEnvironment m_hostEnvironment;
     QVector<LoadedPlugin> m_loaded;
     QVector<QPluginLoader*> m_loaders;
     // host 插件（IBarPluginHost，如 pybridge）：shutdownAll 时最后 shutdown，
@@ -76,6 +99,12 @@ private:
     QVector<PluginRuntime*> m_services; // 无 barItem 能力的 V2 后台插件
     std::vector<std::unique_ptr<PluginRuntime>> m_runtimes;
     std::vector<std::unique_ptr<xuanhub::PluginEventScope>> m_eventScopes;
+    struct HostServiceScope {
+        QString id;
+        std::unique_ptr<PluginHostServices> services;
+        std::unique_ptr<PluginContextObject> qmlContext;
+    };
+    std::vector<HostServiceScope> m_hostServiceScopes;
     QHash<QString, QPluginLoader*> m_loaderById;             // 原生插件/host id → loader
     QHash<QString, PluginRuntime*> m_runtimeById;            // 原生插件/host id → V1/V2 适配
     QHash<QString, xuanhub::PluginDescriptor> m_descriptorById; // 已加载依赖与能力快照

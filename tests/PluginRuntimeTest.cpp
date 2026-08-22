@@ -37,6 +37,7 @@ public:
     xuanhub::PluginInitResult initialize(const xuanhub::PluginContext2& context) override {
         initialized = true;
         dependencyAvailable = context.hasDependency(QStringLiteral("base"));
+        receivedHostServices = context.hostServices;
         return xuanhub::PluginInitResult::succeeded();
     }
     xuanhub::PluginConfigValidationResult validateConfig(
@@ -54,6 +55,7 @@ public:
     bool initialized = false;
     bool stopped = false;
     bool dependencyAvailable = false;
+    xuanhub::IHostServices* receivedHostServices = nullptr;
 };
 
 class PluginRuntimeTest final : public QObject {
@@ -84,8 +86,10 @@ private Q_SLOTS:
         QVERIFY(runtime->descriptorMatches(plugin.descriptor(), &error));
         xuanhub::BarPluginContext context;
         context.dependencyVersions.insert(QStringLiteral("base"), QStringLiteral("1.0.0"));
+        context.hostServices = reinterpret_cast<xuanhub::IHostServices*>(quintptr(1));
         QVERIFY(runtime->initialize(&context, &error));
         QVERIFY(plugin.dependencyAvailable);
+        QCOMPARE(plugin.receivedHostServices, context.hostServices);
         QCOMPARE(runtime->applyConfig({}).status,
                  PluginRuntime::ApplyStatus::Applied);
         QCOMPARE(runtime->applyConfig({{QStringLiteral("reject"), true}}).status,

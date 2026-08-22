@@ -25,6 +25,7 @@ public:
         PositionRole,
         QmlUrlRole,
         ViewModelRole,
+        PluginContextRole,
         WidthRole,
         CapabilitiesRole,
         HealthStateRole,
@@ -76,6 +77,7 @@ private:
         int order = 0;
         QUrl qmlUrl;
         QObject* vm = nullptr;
+        QObject* pluginContext = nullptr;
         int width = 0;
         QStringList capabilities;
         xuanhub::PluginHealth health;

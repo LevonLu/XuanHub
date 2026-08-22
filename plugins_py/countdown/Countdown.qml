@@ -6,6 +6,7 @@ import QtQuick
 Item {
     id: root
     property var plugin
+    property var pluginContext
 
     function formatDuration(seconds) {
         var total = Math.max(0, Number(seconds) || 0)

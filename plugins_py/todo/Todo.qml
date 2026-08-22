@@ -13,6 +13,7 @@ import XuanHub
 Item {
     id: root
     property var plugin
+    property var pluginContext
     function trText(source) { return qsTranslate("plugin.py_todo.main", source) }
 
     // childrenRect 取实际几何（不走 implicit 链——positioner/Rectangle 的 implicit 语义不可靠）

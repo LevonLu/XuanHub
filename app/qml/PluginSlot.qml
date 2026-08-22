@@ -42,6 +42,25 @@ Item {
         ignoreUnknownSignals: true
         function onHealthChanged() { wrapper.reportHealth() }
     }
+    Connections {
+        target: typeof barWindow !== "undefined" ? barWindow : null
+        function onBarPressed() {
+            if (model.pluginContext)
+                model.pluginContext.notifyBarPressed()
+        }
+    }
+    Binding {
+        target: model.pluginContext
+        property: "screenGeometry"
+        value: typeof barScreenGeometry !== "undefined" ? barScreenGeometry : ({})
+        when: model.pluginContext !== null && model.pluginContext !== undefined
+    }
+    Binding {
+        target: model.pluginContext
+        property: "barEdge"
+        value: typeof barConfig !== "undefined" && barConfig ? barConfig.barEdge : "top"
+        when: model.pluginContext !== null && model.pluginContext !== undefined
+    }
     // 高度跟随所属 ListView（即 bar 实际高度），与 config.barHeight 联动；
     // 脱离 ListView 使用时的回退值 40
     height: ListView.view ? ListView.view.height : 40
@@ -74,8 +93,11 @@ Item {
         source: model.qmlUrl
 
         onLoaded: {
-            if (slot.item)
+            if (slot.item) {
                 slot.item.plugin = model.viewModel
+                if (slot.item.pluginContext !== undefined)
+                    slot.item.pluginContext = model.pluginContext
+            }
             // 零宽/负宽告警：插件根 Item 忘声明正 width 时槽位宽 0，加载
             // 成功却完全不可见且无任何日志——此处显式提示（模型里有插件 id）
             if (slot.item && slot.item.width <= 0)

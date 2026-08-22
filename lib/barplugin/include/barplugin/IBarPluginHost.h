@@ -17,6 +17,8 @@ struct SubPluginInfo {
     QObject* viewModel = nullptr; // 由 host 创建并持有，随 host shutdown 销毁
     QString qmlFilePath;          // 子插件 QML 文件名（相对 dirPath）
     QString dirPath;              // 子插件目录绝对路径（核心用它拼 qmlUrl）
+    QStringList capabilities;     // 追加字段保持旧 host 源码兼容
+    QStringList permissions;      // 隔离子插件实际授权以前置 Manifest 为准
 };
 
 class IBarPluginHost {

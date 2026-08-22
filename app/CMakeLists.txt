@@ -43,6 +43,8 @@ qt_add_executable(XuanHub WIN32
     src/PluginRuntime.cpp
     src/PluginHostServices.h
     src/PluginHostServices.cpp
+    src/PluginContextObject.h
+    src/PluginContextObject.cpp
     src/PluginDependencyGraph.h
     src/PluginDependencyGraph.cpp
 

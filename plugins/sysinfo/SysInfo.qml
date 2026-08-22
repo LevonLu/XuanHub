@@ -8,6 +8,7 @@ import QtQuick
 Item {
     id: root
     property var plugin
+    property var pluginContext
 
     // 宽度/高度跟随内容（列数与前缀长度不定），两侧留呼吸位
     width: grid.implicitWidth + 12

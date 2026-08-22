@@ -6,6 +6,7 @@ import QtQuick.Window
 Item {
     id: root
     property var plugin
+    property var pluginContext
     width: 40
     height: 40
 

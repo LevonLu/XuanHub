@@ -167,7 +167,12 @@ int main(int argc, char* argv[]) {
     TrayIcon tray(&theme, &bus, &config, &locale);
     tray.show();
 
-    PluginManager pm(&bus, configDir);
+    PluginManager::HostEnvironment pluginHostEnvironment;
+    pluginHostEnvironment.activeLocale = [&locale] { return locale.activeLocale(); };
+    pluginHostEnvironment.currentPalette = [&theme] { return theme.colors(); };
+    pluginHostEnvironment.localeNotifier = &locale;
+    pluginHostEnvironment.themeNotifier = &theme;
+    PluginManager pm(&bus, configDir, std::move(pluginHostEnvironment));
     pm.loadFrom(QDir(exeDir).absoluteFilePath(QStringLiteral("plugins")),
                 config.pluginEntries());
 

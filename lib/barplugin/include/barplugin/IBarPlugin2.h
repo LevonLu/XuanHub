@@ -12,6 +12,7 @@
 namespace xuanhub {
 class EventBus;
 class PluginEventScope;
+class IHostServices;
 
 struct PluginContext2 {
     EventBus* eventBus = nullptr;
@@ -19,6 +20,7 @@ struct PluginContext2 {
     QVariantMap pluginConfig;
     PluginEventScope* eventScope = nullptr;
     QHash<QString, QString> dependencyVersions;
+    IHostServices* hostServices = nullptr;
 
     bool hasDependency(const QString& id) const {
         return dependencyVersions.contains(id);

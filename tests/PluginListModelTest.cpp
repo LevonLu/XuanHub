@@ -23,6 +23,8 @@ private Q_SLOTS:
         plugin.id = QStringLiteral("health_test");
         plugin.position = QStringLiteral("left");
         plugin.capabilities = {QStringLiteral("barItem"), QStringLiteral("popup")};
+        QObject pluginContext;
+        plugin.pluginContext = &pluginContext;
         plugin.health.state = xuanhub::PluginState::CircuitOpen;
         plugin.health.lastError = QStringLiteral("worker crashed");
         plugin.health.lastErrorAt = QDateTime::fromMSecsSinceEpoch(1000, QTimeZone::UTC);
@@ -52,12 +54,15 @@ private Q_SLOTS:
         QCOMPARE(model.data(index, PluginListModel::QueueDepthRole).toInt(), 2);
         QCOMPARE(model.data(index, PluginListModel::CapabilitiesRole).toStringList(),
                  plugin.capabilities);
+        QCOMPARE(model.data(index, PluginListModel::PluginContextRole).value<QObject*>(),
+                 &pluginContext);
 
         const auto roles = model.roleNames();
         QCOMPARE(roles.value(PluginListModel::HealthStateRole), QByteArray("healthState"));
         QCOMPARE(roles.value(PluginListModel::LastErrorRole), QByteArray("lastError"));
         QCOMPARE(roles.value(PluginListModel::QueueDepthRole), QByteArray("queueDepth"));
         QCOMPARE(roles.value(PluginListModel::CapabilitiesRole), QByteArray("capabilities"));
+        QCOMPARE(roles.value(PluginListModel::PluginContextRole), QByteArray("pluginContext"));
     }
 
     void mergesRuntimeHealthReports() {

@@ -17,6 +17,7 @@ import QtQuick.Window
 Item {
     id: root
     property var plugin
+    property var pluginContext
 
     // 宽度跟随内容：format 可配（如 yyyy-MM-dd HH:mm:ss），写死宽度会被槽位
     // clip:true 静默截断；留 24px 水平内边距保持视觉留白

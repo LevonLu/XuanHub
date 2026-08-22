@@ -113,6 +113,7 @@ bool PluginRuntime::initialize(xuanhub::BarPluginContext* context, QString* erro
         context2.pluginConfig = context->pluginConfig;
         context2.eventScope = context->eventScope;
         context2.dependencyVersions = context->dependencyVersions;
+        context2.hostServices = context->hostServices;
     }
     const xuanhub::PluginInitResult result = m_v2->initialize(context2);
     if (!result.success) setError(error, result.error);

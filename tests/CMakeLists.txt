@@ -233,6 +233,8 @@ add_executable(xuanhub_plugin_host_services_tests
     PluginHostServicesTest.cpp
     ${CMAKE_SOURCE_DIR}/app/src/PluginHostServices.h
     ${CMAKE_SOURCE_DIR}/app/src/PluginHostServices.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/PluginContextObject.h
+    ${CMAKE_SOURCE_DIR}/app/src/PluginContextObject.cpp
     ${CMAKE_SOURCE_DIR}/app/src/SecretStore.h
     ${CMAKE_SOURCE_DIR}/app/src/SecretStore.cpp
 )
@@ -304,6 +306,12 @@ if(Python_Interpreter_FOUND)
         ${CMAKE_SOURCE_DIR}/app/src/SemanticVersion.cpp
         ${CMAKE_SOURCE_DIR}/app/src/PluginRuntime.h
         ${CMAKE_SOURCE_DIR}/app/src/PluginRuntime.cpp
+        ${CMAKE_SOURCE_DIR}/app/src/PluginHostServices.h
+        ${CMAKE_SOURCE_DIR}/app/src/PluginHostServices.cpp
+        ${CMAKE_SOURCE_DIR}/app/src/PluginContextObject.h
+        ${CMAKE_SOURCE_DIR}/app/src/PluginContextObject.cpp
+        ${CMAKE_SOURCE_DIR}/app/src/SecretStore.h
+        ${CMAKE_SOURCE_DIR}/app/src/SecretStore.cpp
         ${CMAKE_SOURCE_DIR}/app/src/PluginDependencyGraph.h
         ${CMAKE_SOURCE_DIR}/app/src/PluginDependencyGraph.cpp
     )
@@ -314,7 +322,9 @@ if(Python_Interpreter_FOUND)
     target_link_libraries(xuanhub_plugin_manager_tests PRIVATE
         barplugin
         Qt6::Core
+        Qt6::Gui
         Qt6::Test
+        crypt32
     )
     add_dependencies(xuanhub_plugin_manager_tests clock xuanhub_menu pybridge)
     add_custom_command(TARGET xuanhub_plugin_manager_tests POST_BUILD
@@ -322,6 +332,8 @@ if(Python_Interpreter_FOUND)
             "$<TARGET_FILE:barplugin>" "$<TARGET_FILE_DIR:xuanhub_plugin_manager_tests>"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:Qt6::Core>" "$<TARGET_FILE_DIR:xuanhub_plugin_manager_tests>"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:Qt6::Gui>" "$<TARGET_FILE_DIR:xuanhub_plugin_manager_tests>"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:Qt6::Test>" "$<TARGET_FILE_DIR:xuanhub_plugin_manager_tests>"
         COMMAND ${CMAKE_COMMAND} -E copy_directory

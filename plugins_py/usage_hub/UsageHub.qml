@@ -10,6 +10,7 @@ import XuanHub
 Item {
     id: root
     property var plugin
+    property var pluginContext
 
     function trText(source) {
         return qsTranslate("plugin.py_usage_hub.main", source)

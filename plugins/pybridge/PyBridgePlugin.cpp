@@ -13,6 +13,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonParseError>
 #include <QProcess>
@@ -364,6 +365,10 @@ xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const 
     info.viewModel = viewModel;
     info.qmlFilePath = viewQml;
     info.dirPath = dirPath;
+    for (const QJsonValue& value : object.value(QStringLiteral("capabilities")).toArray())
+        if (value.isString()) info.capabilities.append(value.toString());
+    for (const QJsonValue& value : object.value(QStringLiteral("permissions")).toArray())
+        if (value.isString()) info.permissions.append(value.toString());
     return info;
 }
 
