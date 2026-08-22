@@ -69,6 +69,10 @@ class BridgeWorkerTests(unittest.TestCase):
         )
         host_init = ""
         migration_code = ""
+        push_declaration = (
+            "PUSH_VALUES = True\n"
+            if self._testMethodName == "test_push_values_capability_is_declared" else ""
+        )
         if self._testMethodName == "test_config_migration_runs_before_init":
             migration_code = (
                 "CONFIG_VERSION = 3\n"
@@ -108,7 +112,7 @@ class BridgeWorkerTests(unittest.TestCase):
             )
         (self.plugin_dir / "main.py").write_text(
             "import os\n"
-            + host_import + migration_code +
+            + host_import + migration_code + push_declaration +
             "state = {'count': 0, 'prefix': '', 'locale': 'unset'}\n"
             "def init(config):\n"
             "    state['prefix'] = config.get('prefix', '')\n"
@@ -255,6 +259,11 @@ class BridgeWorkerTests(unittest.TestCase):
         self.assertEqual(self.request("update", {})["result"]["locale"], "unset")
         self.assertTrue(self.request("stop", {})["ok"])
         self.process.wait(timeout=5)
+
+    def test_push_values_capability_is_declared(self) -> None:
+        initialized = self.request("init", {"config": {}, "locale": "en-US"})
+        self.assertTrue(initialized["ok"])
+        self.assertIn("push_values", initialized["result"]["capabilities"])
 
     def test_invoke_returns_stable_business_and_exception_errors(self) -> None:
         self.assertTrue(self.request("init", {"config": {}, "locale": "en-US"})["ok"])

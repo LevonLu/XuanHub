@@ -176,6 +176,7 @@ private Q_SLOTS:
         QVERIFY(mainFile.write(R"PY(
 from pathlib import Path
 from xuanhub_host import emit_event, emit_values, report_progress
+PUSH_VALUES = True
 state = {"count": 0, "prefix": "", "stopFile": "", "locale": "unset"}
 def init(config):
     state["prefix"] = config.get("prefix", "")
@@ -223,6 +224,8 @@ def stop():
                                       QStringLiteral("zh-CN"), 5000);
             QTRY_VERIFY_WITH_TIMEOUT(viewModel.supportsHotConfig(), 5000);
             QTRY_VERIFY_WITH_TIMEOUT(viewModel.supportsConfigValidation(), 5000);
+            QVERIFY(viewModel.usesPushValues());
+            QVERIFY(!viewModel.m_updateTimer.isActive());
             const auto accepted = viewModel.validateConfig(
                 {{QStringLiteral("prefix"), QStringLiteral("allowed")}}, 5000);
             QVERIFY(accepted.supported);

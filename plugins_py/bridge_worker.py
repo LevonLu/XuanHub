@@ -506,6 +506,11 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
                             capabilities.append("set_config")
                         if callable(getattr(module, "validate_config", None)):
                             capabilities.append("validate_config")
+                        push_values = getattr(module, "PUSH_VALUES", False)
+                        if not isinstance(push_values, bool):
+                            raise TypeError("PUSH_VALUES must be a bool")
+                        if push_values:
+                            capabilities.append("push_values")
                         capabilities.append("host_services.v1")
                         capabilities.append("event_bus.v2")
                         capabilities.append("config_migration.v1")

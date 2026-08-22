@@ -49,6 +49,7 @@ public:
     int updateIntervalMs() const { return m_updateIntervalMs; }
     bool supportsHotConfig() const { return m_supportsHotConfig; }
     bool supportsConfigValidation() const { return m_supportsConfigValidation; }
+    bool usesPushValues() const { return m_usesPushValues; }
     int protocolVersion() const { return m_protocolVersion; }
     QStringList protocolCapabilities() const { return m_protocolCapabilities; }
     QVariantMap health() const;
@@ -168,6 +169,7 @@ private:
     bool m_circuitOpen = false;
     bool m_supportsHotConfig = false;
     bool m_supportsConfigValidation = false;
+    bool m_usesPushValues = false;
     int m_protocolVersion = 0;
     QStringList m_protocolCapabilities;
     bool m_validationWaiting = false;

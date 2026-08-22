@@ -121,6 +121,7 @@ QVariantMap PyWorkerViewModel::health() const {
         {QStringLiteral("queueDepth"), m_queue.size() + (m_inFlightId != 0 ? 1 : 0)},
         {QStringLiteral("protocolVersion"), m_protocolVersion},
         {QStringLiteral("protocolCapabilities"), m_protocolCapabilities},
+        {QStringLiteral("usesPushValues"), m_usesPushValues},
     };
 }
 
@@ -144,6 +145,7 @@ bool PyWorkerViewModel::start() {
     m_frameCodec.clear();
     m_protocolVersion = 0;
     m_protocolCapabilities.clear();
+    m_usesPushValues = false;
     m_queue.clear();
     m_eventQueue.clear();
     m_pluginEventQueue.clear();
@@ -495,6 +497,7 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
         m_supportsHotConfig = capabilities.contains(QStringLiteral("set_config"));
         m_supportsConfigValidation = capabilities.contains(
             QStringLiteral("validate_config"));
+        m_usesPushValues = capabilities.contains(QStringLiteral("push_values"));
         const QJsonObject migration = initResult.value(QStringLiteral("migration")).toObject();
         if (migration.value(QStringLiteral("required")).toBool(false)) {
             const QVariantMap migratedConfig = migration.value(QStringLiteral("config"))
@@ -544,7 +547,7 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
     if (op == QLatin1String("init") || op == QLatin1String("invoke")
         || op == QLatin1String("set_locale") || op == QLatin1String("set_config"))
         scheduleUpdate(0);
-    if (op == QLatin1String("update")) scheduleUpdate();
+    if (op == QLatin1String("update") && !m_usesPushValues) scheduleUpdate();
     dispatchNext();
 }
 
@@ -936,6 +939,7 @@ void PyWorkerViewModel::failWorker(const QString& reason, bool retry,
     m_authenticated = false;
     m_supportsHotConfig = false;
     m_supportsConfigValidation = false;
+    m_usesPushValues = false;
     const QVariantMap callError{
         {QStringLiteral("code"), callErrorCode},
         {QStringLiteral("message"), reason},
@@ -1043,6 +1047,7 @@ void PyWorkerViewModel::stopWorker() {
     m_pluginEventTimer.stop();
     m_supportsHotConfig = false;
     m_supportsConfigValidation = false;
+    m_usesPushValues = false;
     m_queue.clear();
     m_eventQueue.clear();
     m_pluginEventQueue.clear();
