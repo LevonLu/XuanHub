@@ -113,6 +113,30 @@ def invoke(name, args):
 `plugin.cancelCall(id)` 取消尚未开始的队列项；已进入 Python 的调用返回
 `not_interruptible`，因为向运行中 CPython 注入异步异常无法保证资源和状态一致性。
 
+### 后台主动推送
+
+实时数据插件可声明 `PUSH_VALUES = True`，并从任意 Python 后台线程调用受控 API：
+
+```python
+from xuanhub_host import emit_event, emit_values
+
+PUSH_VALUES = True
+
+def on_sample(value):
+    emit_values({"value": value, "updatedAt": time.time()})
+    if value > 100:
+        emit_event("threshold", {"value": value})
+```
+
+`emit_values(patch)` 只覆盖给出的顶层键；多个高频 patch 会在 Worker 队列和宿主约 16 ms
+刷新窗口内合并，sequence 防止旧消息覆盖新值。push-only 插件仍需实现 `update()` 以提供初始
+完整快照，但初始成功后不再周期调用；`invoke/set_config/set_locale` 后保留一次兼容刷新。
+
+`emit_event(name, data)` 在 QML 侧触发 `pluginEvent(name, data)`。Worker 和宿主各自最多缓存
+128 个待投递事件，满时丢弃最新项并记录不含 payload 的日志，内存不会随消费者变慢持续增长。
+这两个 API 在后台线程中只写锁保护的 Python 队列，绝不直接写 socket；实际协议发送集中在
+Worker 主循环。完整范式见 `plugins_py/heartrate/`。
+
 ### 配置版本与迁移
 
 `plugin.json.configVersion` 是当前目标版本，必须为正整数，缺失视为 1。升级格式时在
@@ -341,7 +365,8 @@ def stop():          # 可选。卸载/热重载前调用，用来停后台线�
 **`update()/invoke()` 内仍禁止阻塞**。它们现在在各自 worker 中执行，不会卡住宿主 GUI，
 但同一插件的 IPC 请求串行：`requests.get()` 之类会让该插件的显示与点击反馈停滞，直到超时或
 worker 被桥接层回收。允许自己起 Python 线程做后台 IO；线程只碰纯 Python 状态即可。
-规则：线程只碰纯 Python 对象（**绝不触达任何 Qt/QML 对象**），结果写进模块级缓存，`update()` 只瞬读缓存；
+规则：线程只碰纯 Python 对象（**绝不触达任何 Qt/QML 对象**），结果写进模块级缓存，再由
+`update()` 瞬读或 `emit_values()` 写入 bridge 队列；
 
 ```python
 import threading, time, json, urllib.request

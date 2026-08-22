@@ -1196,10 +1196,10 @@ Connections {
 
 #### 阶段 C：主动推送
 
-- [ ] Worker 提供线程安全 `emit_values/emit_event` API。
-- [ ] 协议发送集中在单线程，后台线程不得直接写 Socket。
-- [ ] 宿主合并高频 patch，并限制事件队列。
-- [ ] heartrate 作为高频推送验证插件。
+- [x] Worker 提供线程安全 `emit_values/emit_event` API。
+- [x] 协议发送集中在单线程，后台线程不得直接写 Socket。
+- [x] 宿主合并高频 patch，并限制事件队列。
+- [x] heartrate 作为高频推送验证插件。
 
 #### 阶段 D：服务和事件
 
@@ -1233,6 +1233,11 @@ Connections {
   超时映射到稳定错误码，进度通过 `report_progress()` 与 `callProgress` 传递。`cancelCall()` 只
   移除尚未执行的队列项；运行中调用明确返回 `not_interruptible`，Worker 故障会把所有未完成
   调用收敛为确定失败。测试覆盖成功、业务错误、异常、进度和取消。
+- 2026-08-22：阶段 C 完成。`emit_values/emit_event` 可从 Python 后台线程写入受锁保护的
+  内存队列，socket 只由 Worker 主循环发送；values 在 Worker 与 Qt 两端合并，sequence 拒绝
+  乱序覆盖，插件事件队列固定为 128 并丢弃最新项。声明 `PUSH_VALUES = True` 后宿主只取一次
+  初始快照并停止周期轮询。heartrate 的扫描、连接、曲线与心率缓存均迁移到 push；100 个连续
+  心率采样合并为 1 帧，真实 heartrate Worker 验证无周期 update 定时器。
 
 ### 风险与回滚
 
