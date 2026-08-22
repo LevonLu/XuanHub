@@ -9,16 +9,17 @@ Button {
 
     // 形态：primary = accent 实心 + highlightedText(onAccent) 字；outline = 描边；ghost = 纯文字
     property string variant: "outline"
+    property bool compact: false
 
-    font.pixelSize: UiMetrics.fontM
-    leftPadding: UiMetrics.space4
-    rightPadding: UiMetrics.space4
+    font.pixelSize: compact ? UiMetrics.fontS : UiMetrics.fontM
+    leftPadding: compact ? UiMetrics.space2 : UiMetrics.space4
+    rightPadding: compact ? UiMetrics.space2 : UiMetrics.space4
     topPadding: 0
     bottomPadding: 0
     opacity: enabled ? 1.0 : 0.5
 
     background: Rectangle {
-        implicitHeight: UiMetrics.controlHeightM
+        implicitHeight: control.compact ? UiMetrics.controlHeightS : UiMetrics.controlHeightM
         radius: UiMetrics.radiusS
         readonly property color acc: control.palette.highlight
         readonly property color fg: control.palette.buttonText

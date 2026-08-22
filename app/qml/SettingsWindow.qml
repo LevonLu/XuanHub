@@ -1153,32 +1153,45 @@ Pane {
                                     Layout.fillWidth: true
                                     placeholderText: root.trText("搜索插件…")
                                 }
-                                UiButton {
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    variant: "outline"
-                                    text: root.trText("安装插件包…")
-                                    onClicked: {
-                                        const path = settingsCtl.choosePluginPackage()
-                                        if (!path || path.length === 0) return
-                                        const info = settingsVM.inspectPluginPackage(path)
-                                        if (info.ok === true) packageInstallConfirm.ask(info)
+                                    spacing: UiMetrics.space1
+                                    UiButton {
+                                        Layout.fillWidth: true
+                                        compact: true
+                                        variant: "outline"
+                                        text: root.trText("安装…")
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: root.trText("安装插件包…")
+                                        onClicked: {
+                                            const path = settingsCtl.choosePluginPackage()
+                                            if (!path || path.length === 0) return
+                                            const info = settingsVM.inspectPluginPackage(path)
+                                            if (info.ok === true) packageInstallConfirm.ask(info)
+                                        }
                                     }
-                                }
-                                UiButton {
-                                    Layout.fillWidth: true
-                                    variant: "outline"
-                                    text: root.trText("更新源…")
-                                    onClicked: updateSourcesPopup.ask()
-                                }
-                                UiButton {
-                                    Layout.fillWidth: true
-                                    enabled: !settingsVM.pluginUpdateChecking
-                                             && !settingsVM.pluginUpdateDownloading
-                                    variant: "outline"
-                                    text: settingsVM.pluginUpdateChecking
-                                        ? root.trText("正在检查…")
-                                        : root.trText("检查更新")
-                                    onClicked: settingsVM.checkPluginUpdates()
+                                    UiButton {
+                                        Layout.fillWidth: true
+                                        compact: true
+                                        variant: "outline"
+                                        text: root.trText("更新源")
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: root.trText("更新源…")
+                                        onClicked: updateSourcesPopup.ask()
+                                    }
+                                    UiButton {
+                                        Layout.fillWidth: true
+                                        compact: true
+                                        enabled: !settingsVM.pluginUpdateChecking
+                                                 && !settingsVM.pluginUpdateDownloading
+                                        variant: "outline"
+                                        text: settingsVM.pluginUpdateChecking
+                                            ? root.trText("检查中…")
+                                            : root.trText("检查")
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: root.trText("检查更新")
+                                        onClicked: settingsVM.checkPluginUpdates()
+                                    }
                                 }
 
                                 ListView {
@@ -1435,13 +1448,13 @@ Pane {
                             ScrollView {
                                 id: detailScroll
                                 anchors.fill: parent
-                                anchors.margins: UiMetrics.space5
+                                anchors.margins: UiMetrics.space4
                                 clip: true
                                 visible: detailPanel.currentRow >= 0
 
                                 ColumnLayout {
                                     width: detailScroll.availableWidth
-                                    spacing: UiMetrics.space4
+                                    spacing: UiMetrics.space3
 
                                     // 头部：名称、类型徽章与启用状态
                                     RowLayout {
@@ -1498,6 +1511,7 @@ Pane {
 
                                     UiCard {
                                         Layout.fillWidth: true
+                                        compact: true
                                         visible: detailPanel.rowData.migrationAvailable === true
                                                  || String(detailPanel.rowData.migrationError || "").length > 0
                                         title: root.trText("配置迁移")
@@ -1530,6 +1544,7 @@ Pane {
 
                                     UiCard {
                                         Layout.fillWidth: true
+                                        compact: true
                                         visible: (detailPanel.rowData.managedInfo || {}).managed === true
                                         title: root.trText("插件包管理")
                                         description: root.trText("查看已安装版本并执行安全回滚或卸载")
@@ -1597,39 +1612,44 @@ Pane {
 
                                     UiCard {
                                         Layout.fillWidth: true
+                                        compact: true
                                         title: root.trText("权限与安全")
                                         description: root.trText("查看插件声明、实际授权和运行隔离级别")
 
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: UiMetrics.space2
-                                            Rectangle {
-                                                Layout.preferredWidth: trustTag.implicitWidth + 18
-                                                Layout.preferredHeight: 24
-                                                radius: 12
-                                                color: root.translucent(
-                                                    detailPanel.rowData.trustLevel === "isolated"
-                                                        ? root.accentColor : root.c.warning, 0.16)
-                                                Text {
-                                                    id: trustTag
-                                                    anchors.centerIn: parent
-                                                    color: detailPanel.rowData.trustLevel === "isolated"
-                                                        ? root.c.accent : root.c.warning
-                                                    font.pixelSize: UiMetrics.fontTiny
-                                                    font.weight: Font.DemiBold
-                                                    text: detailPanel.rowData.trustLevel === "isolated"
-                                                        ? root.trText("隔离插件")
-                                                        : root.trText("受信任的进程内插件")
-                                                }
-                                            }
-                                            Text {
+                                            RowLayout {
                                                 Layout.fillWidth: true
-                                                color: root.c.muted
-                                                font.pixelSize: UiMetrics.fontS
-                                                wrapMode: Text.Wrap
-                                                text: detailPanel.rowData.trustLevel === "isolated"
-                                                    ? root.trText("Python 后端运行在独立进程中，HostServices 请求按声明权限强制校验。")
-                                                    : root.trText("原生插件与宿主在同一进程运行，权限仅作说明，不能限制其直接访问系统资源。")
+                                                spacing: UiMetrics.space2
+                                                Rectangle {
+                                                    Layout.preferredWidth: trustTag.implicitWidth + 18
+                                                    Layout.preferredHeight: 24
+                                                    radius: 12
+                                                    color: root.translucent(
+                                                        detailPanel.rowData.trustLevel === "isolated"
+                                                            ? root.accentColor : root.c.warning, 0.16)
+                                                    Text {
+                                                        id: trustTag
+                                                        anchors.centerIn: parent
+                                                        color: detailPanel.rowData.trustLevel === "isolated"
+                                                            ? root.c.accent : root.c.warning
+                                                        font.pixelSize: UiMetrics.fontTiny
+                                                        font.weight: Font.DemiBold
+                                                        text: detailPanel.rowData.trustLevel === "isolated"
+                                                            ? root.trText("隔离插件")
+                                                            : root.trText("受信任的进程内插件")
+                                                    }
+                                                }
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    color: root.c.muted
+                                                    font.pixelSize: UiMetrics.fontS
+                                                    wrapMode: Text.Wrap
+                                                    text: detailPanel.rowData.trustLevel === "isolated"
+                                                        ? root.trText("Python 后端运行在独立进程中，HostServices 请求按声明权限强制校验。")
+                                                        : root.trText("原生插件与宿主在同一进程运行，权限仅作说明，不能限制其直接访问系统资源。")
+                                                }
                                             }
                                             Text {
                                                 Layout.fillWidth: true
@@ -1667,6 +1687,7 @@ Pane {
 
                                         UiCard {
                                             Layout.fillWidth: true
+                                            compact: true
                                             visible: Object.keys(detailPanel.rowData.health || {}).length > 0
                                             title: root.trText("运行状态")
                                             description: root.trText("显示插件当前健康状态和最近一次运行错误")
@@ -1705,6 +1726,7 @@ Pane {
                                                     visible: detailPanel.rowData.kind === "python"
                                                              && (detailPanel.rowData.dependencyPlan || {}).available !== true
                                                     variant: "outline"
+                                                    compact: true
                                                     text: root.trText("重新启动插件")
                                                     Layout.preferredWidth: Math.max(112, implicitWidth)
                                                     onClicked: settingsVM.restartPlugin(pluginList.currentId)
@@ -1714,6 +1736,7 @@ Pane {
                                                              && (detailPanel.rowData.dependencyPlan || {}).available === true
                                                     enabled: (detailPanel.rowData.dependencyPlan || {}).installing !== true
                                                     variant: "primary"
+                                                    compact: true
                                                     text: (detailPanel.rowData.dependencyPlan || {}).installing === true
                                                         ? root.trText("正在安装…")
                                                         : root.trText("安装离线依赖")
@@ -1721,6 +1744,18 @@ Pane {
                                                     onClicked: dependencyConfirm.ask(
                                                         pluginList.currentId,
                                                         detailPanel.rowData.dependencyPlan)
+                                                }
+                                                UiButton {
+                                                    variant: "outline"
+                                                    compact: true
+                                                    text: root.trText("导出诊断")
+                                                    onClicked: {
+                                                        const path = settingsCtl.choosePluginDiagnostics(
+                                                            pluginList.currentId)
+                                                        if (path.length > 0)
+                                                            settingsVM.exportPluginDiagnostics(
+                                                                pluginList.currentId, path)
+                                                    }
                                                 }
                                             }
                                             Text {
@@ -1742,22 +1777,6 @@ Pane {
                                                             Number(health.processId)))
                                                     }
                                                     return parts.join(" · ")
-                                                }
-                                            }
-                                            RowLayout {
-                                                Layout.fillWidth: true
-                                                Item { Layout.fillWidth: true }
-                                                UiButton {
-                                                    variant: "outline"
-                                                    text: root.trText("导出诊断")
-                                                    Layout.preferredWidth: Math.max(104, implicitWidth)
-                                                    onClicked: {
-                                                        const path = settingsCtl.choosePluginDiagnostics(
-                                                            pluginList.currentId)
-                                                        if (path.length > 0)
-                                                            settingsVM.exportPluginDiagnostics(
-                                                                pluginList.currentId, path)
-                                                    }
                                                 }
                                             }
                                             ColumnLayout {
@@ -1785,6 +1804,7 @@ Pane {
 
                                         UiCard {
                                             Layout.fillWidth: true
+                                            compact: true
                                             title: root.trText("基础设置")
                                             description: root.trText("控制插件在状态栏中的位置、显示顺序与占用宽度")
 

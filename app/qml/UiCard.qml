@@ -9,10 +9,11 @@ Pane {
 
     property string title: ""
     property string description: ""
+    property bool compact: false
     // 卡片内容：default 子项落到 body 列（列间距统一 12）
     default property alias content: body.data
 
-    padding: UiMetrics.space5
+    padding: compact ? UiMetrics.space4 : UiMetrics.space5
 
     background: Rectangle {
         // 浅色主题下略透出窗口底色，深色主题下保留足够层次；避免旧版厚重灰框。
@@ -23,7 +24,7 @@ Pane {
     }
 
     contentItem: ColumnLayout {
-        spacing: UiMetrics.space2
+        spacing: card.compact ? UiMetrics.space1 : UiMetrics.space2
 
         Text {
             visible: card.title.length > 0
@@ -42,9 +43,10 @@ Pane {
         }
         ColumnLayout {
             id: body
-            spacing: UiMetrics.space3
+            spacing: card.compact ? UiMetrics.space2 : UiMetrics.space3
             Layout.fillWidth: true
-            Layout.topMargin: card.title.length > 0 ? UiMetrics.space2 : 0
+            Layout.topMargin: card.title.length > 0
+                              ? (card.compact ? UiMetrics.space1 : UiMetrics.space2) : 0
         }
     }
 }
