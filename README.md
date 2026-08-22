@@ -109,6 +109,11 @@
 
 # 插件开发总览
 
+当前原生 DLL 是同进程受信任代码，权限声明不能形成安全沙箱；第三方不受信任插件应优先使用
+Python/Protocol V2 隔离路径。`experiments/native_worker/` 已验证原生后端进程隔离的崩溃、
+超时和开销，但尚未接入发布版。边界、指标和产品化门槛见
+`docs/native-worker-isolation-evaluation.md`。
+
 | | C++ 插件 | Python 子插件 |
 |---|---|---|
 | 形态 | `plugins/<id>/<id>.dll + <Id>.qml + metadata.json` | `plugins_py/<name>/plugin.json + main.py + <X>.qml` |
