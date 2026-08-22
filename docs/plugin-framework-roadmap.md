@@ -1209,8 +1209,8 @@ Connections {
 
 #### 阶段 E：依赖检查
 
-- [ ] Manifest 支持 Python 版本和包声明。
-- [ ] doctor 检测缺失包、版本、架构和原生扩展兼容。
+- [x] Manifest 支持 Python 版本和包声明。
+- [x] doctor 检测缺失包、版本、架构和原生扩展兼容。
 - [ ] 支持离线 wheel 或插件私有环境，但安装必须用户确认。
 
 ### 测试与验收
@@ -1242,6 +1242,10 @@ Connections {
   `event_bus.v2`；HostServices 首批日志、通知 RPC 复用 PF-04 的确定错误模型，EventBus 支持
   publish/subscribe/unsubscribe/request/response。请求不含可覆盖的插件 ID，宿主按子插件实例
   绑定身份、声明权限与 topic scope。回归覆盖授权通知、权限拒绝及跨运行时事件请求响应。
+- 2026-08-22：阶段 E 前两项完成。`python.version` 和 `python.packages` 使用无需 pip 的确定
+  约束子集；只读 doctor 由实际 Worker 解释器执行，检查版本、x64 位数、distribution/导入根及
+  `.pyd` ABI 标签，不加载插件 `main.py`。失败通过 host diagnostics 进入设置页“最近错误”，
+  包含稳定错误码对应的包名和修复建议；缺包回归验证 Worker 未启动。私有环境与确认安装仍待实现。
 
 ### 风险与回滚
 

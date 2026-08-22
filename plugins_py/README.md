@@ -45,6 +45,33 @@ plugins_py/
 
 - 另需保留 `{ "id": "pybridge", ... }` 条目作为总开关；删掉它则所有 Python 子插件都不加载。
 
+### Python 版本与包依赖
+
+需要第三方包时在 `plugin.json` 声明 `python`。旧插件省略该字段时继续按 Python 3.12+
+运行，不额外执行包检查。
+
+```json
+{
+  "python": {
+    "version": ">=3.12,<4.0",
+    "packages": [
+      { "name": "bleak", "import": "bleak", "version": "*" },
+      { "name": "orjson", "import": "orjson", "version": ">=3.10", "native": true }
+    ]
+  }
+}
+```
+
+- `version` 接受 `*`，或逗号连接的 `==`、`!=`、`>=`、`<=`、`>`、`<`；每个版本为
+  2–4 个十进制段。该受限语法可由宿主离线判断，不依赖尚未安装的 `packaging`。
+- `packages[].name` 是 distribution 名；`import` 是实际导入根，省略时把名称中的 `-`
+  转成 `_`。`native: true` 要求安装内容含与当前 CPython/Windows x64 匹配的 `.pyd`。
+- doctor 只对已启用插件运行，使用该插件即将采用的真实解释器；它读取包元数据并探测导入根，
+  不导入插件 `main.py`，也不自动联网或安装任何内容。
+- 依赖失败时插件不启动，设置页“最近错误”显示缺失包、版本/架构/ABI 问题和修复建议；
+  其他插件继续运行。离线 wheel 与插件私有环境的确认安装仍在 PF-08 后续阶段，当前请由用户
+  明确操作对应解释器安装依赖。
+
 ### Bridge Protocol V2
 
 内置 worker 连接后首先发送版本化 hello：
