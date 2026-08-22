@@ -120,6 +120,10 @@ function Assert-PackageSafe {
     Get-ChildItem $PackageDir -Recurse -Directory -Force -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -in @("__pycache__", ".git", ".hg", ".svn") } |
         ForEach-Object { $violations.Add("禁止目录: $($_.FullName)") }
+    $pythonTestDir = Join-Path $PackageDir "plugins_py\tests"
+    if (Test-Path $pythonTestDir) {
+        $violations.Add("禁止发布 Python 测试目录: $pythonTestDir")
+    }
 
     $packageFiles = @(Get-ChildItem $PackageDir -Recurse -File -Force)
     foreach ($file in $packageFiles) {
@@ -219,6 +223,9 @@ function Assert-ZipManifestSafe {
             if ($parts -contains ".git" -or $parts -contains ".hg" -or
                 $parts -contains ".svn" -or $parts -contains "__pycache__") {
                 $violations.Add("禁止目录: $($entry.FullName)")
+            }
+            if ($entry.FullName -like "plugins_py/tests/*") {
+                $violations.Add("禁止发布 Python 测试目录: $($entry.FullName)")
             }
             $extension = [IO.Path]::GetExtension($entry.Name).ToLowerInvariant()
             if ($entry.Name -in $forbiddenNames -or
@@ -348,7 +355,7 @@ $versionMatch = Select-String -Path $CmakeFile -Pattern 'VERSION\s+(\d+\.\d+\.\d
 if ($versionMatch) {
     $Version = $versionMatch.Matches[0].Groups[1].Value
 } else {
-    $Version = "0.2.1"
+    $Version = "0.4.0"
 }
 
 $packageName = "XuanHub-v$Version-portable-x64"
@@ -405,6 +412,7 @@ $stageCopyArgs = @(
     "/DCOPY:DAT",
     "/R:1", "/W:1",
     "/XD", "__pycache__", ".git", ".hg", ".svn",
+           (Join-Path $SourceDistDir "plugins_py\tests"),
     "/XF", "config.json", "secrets.json", "XuanHub.lock", "xuanhub.log", "portable",
             "*.pyc", "*.pyo", "*.pdb", "*.log", "*.db", "*.sqlite", "*.sqlite3",
             "*.dmp", "*.dump", "*.trace", "*.pem", "*.key", "*.p12", "*.pfx",
