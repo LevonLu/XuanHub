@@ -35,6 +35,9 @@ qt_add_executable(XuanHub WIN32
     src/PluginChangeSet.h
     src/PluginChangeSet.cpp
 
+    src/SemanticVersion.h
+    src/SemanticVersion.cpp
+
     src/AutoStart.h
 
     src/SettingsViewModel.h

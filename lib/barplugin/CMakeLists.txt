@@ -10,6 +10,7 @@ add_library(barplugin SHARED
     include/barplugin/IBarPluginHostConfigurable.h
     include/barplugin/IBarPluginHostLifecycle.h
     include/barplugin/PluginHealth.h
+    include/barplugin/PluginDescriptor.h
     include/barplugin/PluginEventScope.h
     include/barplugin/ProcessReaper.h
 )
