@@ -40,6 +40,16 @@ public:
     };
 
     enum class ConfigApplyResult { Applied, Unsupported, Rejected };
+    struct ConfigMigrationSuggestion {
+        int currentVersion = 1;
+        int targetVersion = 1;
+        QVariantMap config;
+        QString error;
+
+        bool ready() const {
+            return error.isEmpty() && targetVersion > currentVersion;
+        }
+    };
     struct LoadedPlugin {
         QString id;
         int apiVersion = 1;          // SDK 接口版本，host 子插件暂按 V1 契约
@@ -68,6 +78,7 @@ public:
     const LoadedPlugin* loadedPlugin(const QString& id) const;
     QString loadError(const QString& id) const { return m_loadErrors.value(id); }
     const QHash<QString, QString>& loadErrors() const { return m_loadErrors; }
+    const ConfigMigrationSuggestion* migrationSuggestion(const QString& id) const;
 
     const QVector<LoadedPlugin>& loaded() const { return m_loaded; }
     void shutdownAll();   // 重载周期约定：必须先 shutdownAll() 再 loadFrom()（入口有重入保护）
@@ -113,5 +124,6 @@ private:
     QHash<QString, xuanhub::PluginEventScope*> m_scopeById;  // 原生插件/host id → 作用域
     QSet<QString> m_loadedIds;   // 按 metadata.id 去重
     QHash<QString, QString> m_loadErrors; // 未实例化/初始化失败也向设置页暴露原因
+    QHash<QString, ConfigMigrationSuggestion> m_migrationSuggestions;
     bool m_shut = false;
 };

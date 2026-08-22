@@ -61,8 +61,14 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
         qWarning() << "[Plugin] loadFrom called without prior shutdownAll, ignored";
         return;
     }
-    if (!allowExisting) m_loadErrors.clear();
-    for (const auto& entry : enabled) m_loadErrors.remove(entry.id);
+    if (!allowExisting) {
+        m_loadErrors.clear();
+        m_migrationSuggestions.clear();
+    }
+    for (const auto& entry : enabled) {
+        m_loadErrors.remove(entry.id);
+        m_migrationSuggestions.remove(entry.id);
+    }
     m_shut = false;   // 复位闩锁，支持 shutdownAll() → loadFrom() 热重载周期
 
     QHash<QString, const PluginConfigEntry*> enabledMap;
@@ -232,10 +238,35 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                 delete loader;
                 continue;
             }
+            QVariantMap effectiveConfig = entry->config;
+            const PluginRuntime::MigrationResult migration = runtime->migrateConfig(
+                entry->configVersion, entry->config);
+            if (migration.status == PluginRuntime::MigrationStatus::Migrated) {
+                effectiveConfig = migration.config;
+                m_migrationSuggestions.insert(descriptor.id, {
+                    entry->configVersion, migration.targetVersion,
+                    migration.config, {}});
+                qDebug() << "[Plugin] config migration suggested:" << descriptor.id
+                         << entry->configVersion << "->" << migration.targetVersion;
+            } else if (migration.status == PluginRuntime::MigrationStatus::Unsupported
+                       || migration.status == PluginRuntime::MigrationStatus::Rejected) {
+                const QString migrationError = QStringLiteral(
+                    "config migration %1 -> %2 failed: %3")
+                    .arg(entry->configVersion).arg(migration.targetVersion)
+                    .arg(migration.error);
+                m_migrationSuggestions.insert(descriptor.id, {
+                    entry->configVersion, migration.targetVersion,
+                    {}, migrationError});
+                qWarning() << "[Plugin]" << descriptor.id << migrationError;
+                recordLoadError(descriptor.id, migrationError);
+                loader->unload();
+                delete loader;
+                continue;
+            }
             xuanhub::BarPluginContext ctx;
             ctx.eventBus = m_bus;
             ctx.configDir = m_configDir;
-            ctx.pluginConfig = entry->config;
+            ctx.pluginConfig = effectiveConfig;
             auto hostServices = createHostServices(
                 descriptor.id, xuanhub::HostPluginTrustLevel::TrustedInProcess,
                 descriptor.permissions,
@@ -492,6 +523,12 @@ const PluginManager::LoadedPlugin* PluginManager::loadedPlugin(const QString& id
     return nullptr;
 }
 
+const PluginManager::ConfigMigrationSuggestion*
+PluginManager::migrationSuggestion(const QString& id) const {
+    const auto it = m_migrationSuggestions.constFind(id);
+    return it == m_migrationSuggestions.cend() ? nullptr : &it.value();
+}
+
 QStringList PluginManager::dependentPluginIds(const QString& id) const {
     QStringList result;
     for (auto it = m_subPluginHostId.cbegin(); it != m_subPluginHostId.cend(); ++it) {
@@ -526,6 +563,7 @@ bool PluginManager::stopOne(const QString& id) {
         m_subPluginHostId.remove(id);
         m_loadedIds.remove(id);
         m_descriptorById.remove(id);
+        m_migrationSuggestions.remove(id);
         removeHostServices(id);
         return true;
     }
@@ -567,6 +605,7 @@ bool PluginManager::stopOne(const QString& id) {
     }
     m_loadedIds.remove(id);
     m_descriptorById.remove(id);
+    m_migrationSuggestions.remove(id);
     removeRuntime(runtime);
     if (!loader->unload()) {
         qWarning() << "[Plugin] unload one failed:" << loader->fileName()
@@ -684,6 +723,7 @@ void PluginManager::shutdownAll() {
     m_loaded.clear();
     m_loadedIds.clear();
     m_descriptorById.clear();
+    m_migrationSuggestions.clear();
     m_hostServiceScopes.clear();
 }
 

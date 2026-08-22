@@ -10,6 +10,7 @@ PluginDescriptor ClockPlugin::descriptor() const {
     value.displayName = QStringLiteral("Clock");
     value.version = QStringLiteral("0.1.0");
     value.apiVersion = 2;
+    value.configVersion = 2;
     value.minHostVersion = QStringLiteral("0.2.1");
     value.maxHostVersion = QStringLiteral("0.x");
     value.author = QStringLiteral("XuanHub");
@@ -56,6 +57,17 @@ xuanhub::PluginConfigApplyResult ClockPlugin::applyConfig(
     if (format.isEmpty()) format = QStringLiteral("HH:mm:ss");
     m_vm->setFormat(format);
     return PluginConfigApplyResult::applied();
+}
+
+xuanhub::PluginConfigMigrationResult ClockPlugin::migrateConfig(
+    int fromVersion, const QVariantMap& config) const {
+    if (fromVersion != 1)
+        return PluginConfigMigrationResult::failed(
+            QStringLiteral("unsupported clock config version: %1").arg(fromVersion));
+    QVariantMap migrated = config;
+    if (migrated.value(QStringLiteral("format")).toString().isEmpty())
+        migrated.insert(QStringLiteral("format"), QStringLiteral("HH:mm:ss"));
+    return PluginConfigMigrationResult::migrated(migrated);
 }
 
 QObject* ClockPlugin::viewModel() { return m_vm; }

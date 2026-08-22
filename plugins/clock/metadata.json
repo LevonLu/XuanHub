@@ -3,6 +3,7 @@
     "name": "Clock",
     "version": "0.1.0",
     "apiVersion": 2,
+    "configVersion": 2,
     "minHostVersion": "0.2.1",
     "maxHostVersion": "0.x",
     "author": "XuanHub",

@@ -105,6 +105,13 @@ private Q_SLOTS:
 
         QVERIFY(manager.loadedPlugin(clock.id));
         QCOMPARE(manager.loadedPlugin(clock.id)->apiVersion, 2);
+        const auto* migration = manager.migrationSuggestion(clock.id);
+        QVERIFY(migration);
+        QVERIFY(migration->ready());
+        QCOMPARE(migration->currentVersion, 1);
+        QCOMPARE(migration->targetVersion, 2);
+        QCOMPARE(migration->config.value(QStringLiteral("format")).toString(),
+                 QStringLiteral("HH:mm:ss"));
         QCOMPARE(manager.loadedPlugin(menu.id)->apiVersion, 1);
         const QObject* menuViewModel = manager.loadedPlugin(menu.id)->viewModel;
         const QObject* clockViewModel = manager.loadedPlugin(clock.id)->viewModel;
@@ -130,6 +137,25 @@ private Q_SLOTS:
         QVERIFY(manager.restartOne(pluginsDir, clock));
         QVERIFY(manager.loadedPlugin(clock.id));
         QCOMPARE(manager.loadedPlugin(menu.id)->viewModel, menuViewModel);
+        manager.shutdownAll();
+    }
+
+    void futureConfigVersionDisablesOnlyTargetPlugin() {
+        const QString pluginsDir = qEnvironmentVariable("XUANHUB_TEST_PLUGINS");
+        xuanhub::EventBus bus;
+        PluginManager manager(&bus, QDir::tempPath());
+        PluginConfigEntry futureClock = entry(QStringLiteral("clock"));
+        futureClock.configVersion = 3;
+        const PluginConfigEntry menu = entry(QStringLiteral("xuanhub_menu"));
+
+        manager.loadFrom(pluginsDir, {futureClock, menu});
+        QVERIFY(!manager.loadedPlugin(futureClock.id));
+        QVERIFY(manager.loadError(futureClock.id).contains(QStringLiteral("migration")));
+        const auto* migration = manager.migrationSuggestion(futureClock.id);
+        QVERIFY(migration);
+        QVERIFY(!migration->ready());
+        QVERIFY(!migration->error.isEmpty());
+        QVERIFY(manager.loadedPlugin(menu.id));
         manager.shutdownAll();
     }
 
