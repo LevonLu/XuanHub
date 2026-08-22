@@ -28,6 +28,10 @@ private Q_SLOTS:
                             {QStringLiteral("version"), QStringLiteral("==3.10.7")},
                             {QStringLiteral("native"), true}},
             }},
+            {QStringLiteral("environment"), QJsonObject{
+                {QStringLiteral("mode"), QStringLiteral("private")},
+                {QStringLiteral("wheels"), QStringLiteral("wheels/win_amd64")},
+            }},
         }}};
 
         PythonDependencySpec spec;
@@ -42,6 +46,8 @@ private Q_SLOTS:
         QVERIFY(!spec.packages[0].native);
         QCOMPARE(spec.packages[1].name, QStringLiteral("orjson"));
         QVERIFY(spec.packages[1].native);
+        QCOMPARE(spec.environmentMode, QStringLiteral("private"));
+        QCOMPARE(spec.wheelDirectory, QStringLiteral("wheels/win_amd64"));
     }
 
     void rejectsMalformedDeclarations() {
@@ -62,6 +68,14 @@ private Q_SLOTS:
                 {QStringLiteral("packages"), QJsonArray{QJsonObject{
                     {QStringLiteral("name"), QStringLiteral("bleak")},
                     {QStringLiteral("native"), QStringLiteral("yes")}}}}}}},
+            {{QStringLiteral("python"), QJsonObject{
+                {QStringLiteral("environment"), QJsonObject{
+                    {QStringLiteral("mode"), QStringLiteral("private")},
+                    {QStringLiteral("wheels"), QStringLiteral("../outside")}}}}}},
+            {{QStringLiteral("python"), QJsonObject{
+                {QStringLiteral("environment"), QJsonObject{
+                    {QStringLiteral("mode"), QStringLiteral("shared")},
+                    {QStringLiteral("wheels"), QStringLiteral("wheels")}}}}}},
         };
 
         for (const QJsonObject& manifest : invalid) {

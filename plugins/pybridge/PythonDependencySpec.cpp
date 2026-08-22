@@ -68,7 +68,8 @@ bool readPythonDependencySpec(const QJsonObject& manifest,
     parsed.declared = true;
     const QJsonObject python = pythonValue.toObject();
     const QSet<QString> allowedKeys{QStringLiteral("version"),
-                                    QStringLiteral("packages")};
+                                    QStringLiteral("packages"),
+                                    QStringLiteral("environment")};
     for (auto it = python.begin(); it != python.end(); ++it) {
         if (!allowedKeys.contains(it.key())) {
             setError(error, QStringLiteral("python contains unknown field: %1").arg(it.key()));
@@ -161,6 +162,62 @@ bool readPythonDependencySpec(const QJsonObject& manifest,
         }
         requirement.native = nativeValue.toBool(false);
         parsed.packages.append(requirement);
+    }
+
+    const QJsonValue environmentValue = python.value(QStringLiteral("environment"));
+    if (!environmentValue.isUndefined()) {
+        if (!environmentValue.isObject()) {
+            setError(error, QStringLiteral("python.environment must be an object"));
+            return false;
+        }
+        const QJsonObject environment = environmentValue.toObject();
+        const QSet<QString> environmentKeys{QStringLiteral("mode"),
+                                            QStringLiteral("wheels")};
+        for (auto it = environment.begin(); it != environment.end(); ++it) {
+            if (!environmentKeys.contains(it.key())) {
+                setError(error, QStringLiteral("python.environment contains unknown field: %1")
+                                    .arg(it.key()));
+                return false;
+            }
+        }
+        const QJsonValue modeValue = environment.value(QStringLiteral("mode"));
+        if (!modeValue.isUndefined() && !modeValue.isString()) {
+            setError(error, QStringLiteral("python.environment.mode must be a string"));
+            return false;
+        }
+        parsed.environmentMode = modeValue.toString(QStringLiteral("shared")).trimmed();
+        if (parsed.environmentMode != QStringLiteral("shared")
+            && parsed.environmentMode != QStringLiteral("private")) {
+            setError(error, QStringLiteral("python.environment.mode must be shared or private"));
+            return false;
+        }
+        const QJsonValue wheelsValue = environment.value(QStringLiteral("wheels"));
+        if (!wheelsValue.isUndefined() && !wheelsValue.isString()) {
+            setError(error, QStringLiteral("python.environment.wheels must be a string"));
+            return false;
+        }
+        parsed.wheelDirectory = wheelsValue.toString().trimmed();
+        if (!parsed.wheelDirectory.isEmpty()) {
+            QString normalized = parsed.wheelDirectory;
+            const bool absolute = QRegularExpression(
+                QStringLiteral(R"(^[A-Za-z]:[\\/])")).match(normalized).hasMatch()
+                || normalized.startsWith(QLatin1Char('/'))
+                || normalized.startsWith(QStringLiteral("\\\\"));
+            const QStringList segments = normalized.replace(QLatin1Char('\\'), QLatin1Char('/'))
+                                             .split(QLatin1Char('/'), Qt::SkipEmptyParts);
+            if (absolute || normalized.contains(QLatin1Char(':')) || segments.isEmpty()
+                || segments.contains(QStringLiteral(".."))
+                || segments.contains(QStringLiteral("."))) {
+                setError(error, QStringLiteral(
+                    "python.environment.wheels must be a safe relative directory"));
+                return false;
+            }
+            if (parsed.environmentMode != QStringLiteral("private")) {
+                setError(error, QStringLiteral(
+                    "python.environment.wheels requires private mode"));
+                return false;
+            }
+        }
     }
 
     if (output) *output = parsed;

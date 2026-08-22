@@ -16,6 +16,8 @@ struct PythonDependencySpec {
     bool declared = false;
     QString versionConstraint = QStringLiteral(">=3.12");
     QVector<PythonPackageRequirement> packages;
+    QString environmentMode = QStringLiteral("shared");
+    QString wheelDirectory;
 };
 
 // 约束只接受逗号连接的 ==/!=/>=/<=/>/< 比较项或单独的 *。
