@@ -181,6 +181,42 @@ def update():
         QVERIFY2(elapsed.elapsed() >= 300,
                  "The next update ran before the configured interval elapsed");
     }
+
+    void retainsLastSuccessfulValuesWhileRestarting() {
+        const QString python = qEnvironmentVariable("XUANHUB_TEST_PYTHON");
+        const QString worker = qEnvironmentVariable("XUANHUB_TEST_WORKER");
+        QVERIFY2(!python.isEmpty() && !worker.isEmpty(),
+                 "CTest must provide python executable and bridge_worker.py paths");
+
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString pluginDir = temporary.filePath(QStringLiteral("plugin"));
+        QVERIFY(QDir().mkpath(pluginDir));
+        QFile mainFile(pluginDir + QStringLiteral("/main.py"));
+        QVERIFY(mainFile.open(QIODevice::WriteOnly | QIODevice::Text));
+        QVERIFY(mainFile.write(R"PY(
+import os
+count = 0
+def update():
+    global count
+    count += 1
+    if count > 1:
+        os._exit(7)
+    return {"status": "last-good", "count": count}
+)PY"));
+        mainFile.close();
+
+        PyWorkerViewModel viewModel(QStringLiteral("py_last_value_test"), pluginDir,
+                                    {{QStringLiteral("intervalMs"), 100}},
+                                    python, worker, nullptr);
+        QVERIFY(viewModel.start());
+        QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("status")).toString(),
+                                  QStringLiteral("last-good"), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(!viewModel.running(), 3000);
+        QCOMPARE(viewModel.values().value(QStringLiteral("status")).toString(),
+                 QStringLiteral("last-good"));
+        QCOMPARE(viewModel.values().value(QStringLiteral("count")).toInt(), 1);
+    }
 };
 
 QTEST_GUILESS_MAIN(PyWorkerViewModelTest)
