@@ -137,8 +137,12 @@ inline QStringList grantedHostPermissions(HostPluginTrustLevel trustLevel,
     QStringList granted;
     const QStringList& supported = supportedIsolatedHostPermissions();
     for (const QString& permission : declaredPermissions) {
-        if (supported.contains(permission) && !granted.contains(permission))
+        const bool eventPermission = permission.startsWith(QStringLiteral("events.publish:"))
+            || permission.startsWith(QStringLiteral("events.subscribe:"));
+        if ((supported.contains(permission) || eventPermission)
+            && !granted.contains(permission)) {
             granted.append(permission);
+        }
     }
     return granted;
 }

@@ -251,7 +251,11 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                                                   loadedDependency->version);
                 }
             }
-            auto eventScope = std::make_unique<xuanhub::PluginEventScope>(m_bus);
+            auto eventScope = std::make_unique<xuanhub::PluginEventScope>(
+                m_bus, descriptor.id,
+                xuanhub::grantedHostPermissions(
+                    xuanhub::HostPluginTrustLevel::TrustedInProcess,
+                    descriptor.permissions));
             ctx.eventScope = eventScope.get();
             QElapsedTimer initTimer;
             initTimer.start();
