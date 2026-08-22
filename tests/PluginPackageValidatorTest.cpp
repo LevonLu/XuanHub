@@ -1,5 +1,6 @@
 // PluginPackageValidatorTest.cpp — .xuanplugin 离线安全边界与预检回归测试
 #include "PluginPackageValidator.h"
+#include "PluginPackageStore.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -8,6 +9,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMap>
+#include <QProcess>
 #include <QTemporaryDir>
 #include <QtCore/private/qzipwriter_p.h>
 #include <QtTest>
@@ -19,11 +21,11 @@ PluginValidationEnvironment testEnvironment() {
             QStringLiteral("dynamic")};
 }
 
-QJsonObject nativeManifest() {
+QJsonObject nativeManifest(const QString& version = QStringLiteral("1.2.0")) {
     return {
         {QStringLiteral("id"), QStringLiteral("com.example.demo")},
         {QStringLiteral("name"), QStringLiteral("Demo")},
-        {QStringLiteral("version"), QStringLiteral("1.2.0")},
+        {QStringLiteral("version"), version},
         {QStringLiteral("apiVersion"), 2},
         {QStringLiteral("minHostVersion"), QStringLiteral("0.3.0")},
         {QStringLiteral("maxHostVersion"), QStringLiteral("0.x")},
@@ -41,12 +43,14 @@ QJsonObject nativeManifest() {
     };
 }
 
-QJsonObject packageManifest(const QString& runtime = QStringLiteral("native")) {
+QJsonObject packageManifest(
+    const QString& runtime = QStringLiteral("native"),
+    const QString& version = QStringLiteral("1.2.0")) {
     return {
         {QStringLiteral("schemaVersion"), 1},
         {QStringLiteral("id"), runtime == QLatin1String("native")
             ? QStringLiteral("com.example.demo") : QStringLiteral("py_demo")},
-        {QStringLiteral("version"), QStringLiteral("1.2.0")},
+        {QStringLiteral("version"), version},
         {QStringLiteral("runtime"), runtime},
         {QStringLiteral("manifest"), runtime == QLatin1String("native")
             ? QStringLiteral("payload/metadata.json")
@@ -55,14 +59,17 @@ QJsonObject packageManifest(const QString& runtime = QStringLiteral("native")) {
     };
 }
 
-QMap<QString, QByteArray> nativeFiles() {
+QMap<QString, QByteArray> nativeFiles(
+    const QString& version = QStringLiteral("1.2.0"),
+    const QByteArray& backend = QByteArray("stub-dll")) {
     return {
         {QStringLiteral("plugin.json"),
-         QJsonDocument(packageManifest()).toJson(QJsonDocument::Compact)},
+         QJsonDocument(packageManifest(QStringLiteral("native"), version))
+             .toJson(QJsonDocument::Compact)},
         {QStringLiteral("payload/Demo.qml"), QByteArray("import QtQuick\nItem {}\n")},
-        {QStringLiteral("payload/demo.dll"), QByteArray("stub-dll")},
+        {QStringLiteral("payload/demo.dll"), backend},
         {QStringLiteral("payload/metadata.json"),
-         QJsonDocument(nativeManifest()).toJson(QJsonDocument::Compact)},
+         QJsonDocument(nativeManifest(version)).toJson(QJsonDocument::Compact)},
     };
 }
 
@@ -234,6 +241,192 @@ private Q_SLOTS:
             testEnvironment());
         QVERIFY(!result.ok);
         QVERIFY(result.error.contains(QStringLiteral("compression ratio")));
+    }
+
+    void installsIntoImmutableVersionStore() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString package = writePackage(
+            directory.path(), nativeFiles(QStringLiteral("1.0.0")));
+        const QString configDirectory = QDir(directory.path()).filePath(QStringLiteral("config"));
+        PluginPackageStore store(configDirectory);
+        const auto installed = store.install(package, {}, {}, testEnvironment());
+        QVERIFY2(installed.ok, qPrintable(installed.error));
+        QCOMPARE(installed.id, QStringLiteral("com.example.demo"));
+        QCOMPARE(installed.version, QStringLiteral("1.0.0"));
+        QVERIFY(QFileInfo(QDir(installed.payloadDirectory)
+            .filePath(QStringLiteral("demo.dll"))).isFile());
+
+        const ManagedPluginVersion current = store.current(installed.id);
+        QCOMPARE(current.version, QStringLiteral("1.0.0"));
+        QCOMPARE(current.runtime, QStringLiteral("native"));
+        QCOMPARE(current.installRecord.value(QStringLiteral("source")).toString(),
+                 QStringLiteral("local-file"));
+        QVERIFY(current.installRecord.value(QStringLiteral("packageHash"))
+                    .toString().startsWith(QStringLiteral("sha256:")));
+        QCOMPARE(store.currentVersions(QStringLiteral("native")).size(), 1);
+        QCOMPARE(PluginPackageStore::storeRootForConfigDirectory(configDirectory),
+                 QDir(configDirectory).filePath(QStringLiteral("plugin-store")));
+    }
+
+    void upgradesActivePluginAndSupportsExplicitRollback() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        PluginPackageStore store(QDir(directory.path()).filePath(QStringLiteral("config")));
+        const QString package = writePackage(
+            directory.path(), nativeFiles(QStringLiteral("1.0.0")));
+        QVERIFY(store.install(package, {}, {}, testEnvironment()).ok);
+
+        const QString upgradeDirectory = QDir(directory.path()).filePath(QStringLiteral("upgrade"));
+        QVERIFY(QDir().mkpath(upgradeDirectory));
+        const QString upgrade = writePackage(
+            upgradeDirectory, nativeFiles(QStringLiteral("2.0.0"), QByteArray("v2")));
+        QStringList lifecycle;
+        PluginPackageStore::ActivationHooks hooks;
+        hooks.isActive = [](const QString&) { return true; };
+        hooks.stop = [&lifecycle](const QString&, QString*) {
+            lifecycle.append(QStringLiteral("stop"));
+            return true;
+        };
+        hooks.start = [&lifecycle, &store](const QString& id, QString*) {
+            lifecycle.append(QStringLiteral("start:") + store.current(id).version);
+            return true;
+        };
+        const auto upgraded = store.install(upgrade, hooks, {}, testEnvironment());
+        QVERIFY2(upgraded.ok, qPrintable(upgraded.error));
+        QCOMPARE(store.current(upgraded.id).version, QStringLiteral("2.0.0"));
+        QCOMPARE(store.current(upgraded.id).previousVersion, QStringLiteral("1.0.0"));
+        QCOMPARE(lifecycle, QStringList({QStringLiteral("stop"),
+                                         QStringLiteral("start:2.0.0")}));
+
+        lifecycle.clear();
+        const auto rolledBack = store.rollback(upgraded.id, hooks);
+        QVERIFY2(rolledBack.ok, qPrintable(rolledBack.error));
+        QCOMPARE(store.current(upgraded.id).version, QStringLiteral("1.0.0"));
+        QCOMPARE(store.current(upgraded.id).previousVersion, QStringLiteral("2.0.0"));
+        QCOMPARE(lifecycle, QStringList({QStringLiteral("stop"),
+                                         QStringLiteral("start:1.0.0")}));
+    }
+
+    void restoresOldVersionWhenActivationOrTransactionFails() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        PluginPackageStore store(QDir(directory.path()).filePath(QStringLiteral("config")));
+        QVERIFY(store.install(
+            writePackage(directory.path(), nativeFiles(QStringLiteral("1.0.0"))),
+            {}, {}, testEnvironment()).ok);
+        const QString upgradeDirectory = QDir(directory.path()).filePath(QStringLiteral("upgrade"));
+        QVERIFY(QDir().mkpath(upgradeDirectory));
+        const QString upgrade = writePackage(
+            upgradeDirectory, nativeFiles(QStringLiteral("2.0.0"), QByteArray("v2")));
+
+        QStringList starts;
+        PluginPackageStore::ActivationHooks hooks;
+        hooks.isActive = [](const QString&) { return true; };
+        hooks.stop = [](const QString&, QString*) { return true; };
+        hooks.start = [&store, &starts](const QString& id, QString*) {
+            const QString version = store.current(id).version;
+            starts.append(version);
+            return version == QLatin1String("1.0.0");
+        };
+        const auto failedActivation = store.install(
+            upgrade, hooks, {}, testEnvironment());
+        QVERIFY(!failedActivation.ok);
+        QVERIFY(failedActivation.rolledBack);
+        QCOMPARE(starts, QStringList({QStringLiteral("2.0.0"),
+                                      QStringLiteral("1.0.0")}));
+        QCOMPARE(store.current(failedActivation.id).version, QStringLiteral("1.0.0"));
+        QVERIFY(!QFileInfo(QDir(store.storeRoot()).filePath(
+            QStringLiteral("com.example.demo/versions/2.0.0"))).exists());
+
+        const auto injectedFailure = store.install(
+            upgrade, hooks,
+            [](PluginPackageStore::FaultPoint point) {
+                return point == PluginPackageStore::FaultPoint::AfterStaging;
+            },
+            testEnvironment());
+        QVERIFY(!injectedFailure.ok);
+        QCOMPARE(store.current(QStringLiteral("com.example.demo")).version,
+                 QStringLiteral("1.0.0"));
+        QVERIFY(!QFileInfo(QDir(store.storeRoot()).filePath(
+            QStringLiteral("com.example.demo/versions/2.0.0"))).exists());
+    }
+
+    void rejectsImmutableVersionHashCollision() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        PluginPackageStore store(QDir(directory.path()).filePath(QStringLiteral("config")));
+        QVERIFY(store.install(
+            writePackage(directory.path(), nativeFiles(QStringLiteral("1.0.0"))),
+            {}, {}, testEnvironment()).ok);
+        const QString collisionDirectory =
+            QDir(directory.path()).filePath(QStringLiteral("collision"));
+        QVERIFY(QDir().mkpath(collisionDirectory));
+        const QString collision = writePackage(
+            collisionDirectory,
+            nativeFiles(QStringLiteral("1.0.0"), QByteArray("different")));
+        const auto result = store.install(collision, {}, {}, testEnvironment());
+        QVERIFY(!result.ok);
+        QVERIFY(result.error.contains(QStringLiteral("immutable")));
+        QCOMPARE(store.current(QStringLiteral("com.example.demo")).version,
+                 QStringLiteral("1.0.0"));
+    }
+
+    void uninstallRetainsUserDataUnlessExplicitlyDeleted() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        PluginPackageStore store(QDir(directory.path()).filePath(QStringLiteral("config")));
+        const QString package = writePackage(
+            directory.path(), nativeFiles(QStringLiteral("1.0.0")));
+        QVERIFY(store.install(package, {}, {}, testEnvironment()).ok);
+        const QString dataDirectory = QDir(store.dataRoot()).filePath(
+            QStringLiteral("com.example.demo"));
+        QVERIFY(QDir().mkpath(dataDirectory));
+        QFile data(QDir(dataDirectory).filePath(QStringLiteral("state.json")));
+        QVERIFY(data.open(QIODevice::WriteOnly));
+        data.write("{}");
+        data.close();
+
+        const auto retained = store.uninstall(
+            QStringLiteral("com.example.demo"), false);
+        QVERIFY2(retained.ok, qPrintable(retained.error));
+        QVERIFY(QFileInfo(dataDirectory).isDir());
+        QVERIFY(store.current(QStringLiteral("com.example.demo")).id.isEmpty());
+
+        QVERIFY(store.install(package, {}, {}, testEnvironment()).ok);
+        const auto removed = store.uninstall(
+            QStringLiteral("com.example.demo"), true);
+        QVERIFY2(removed.ok, qPrintable(removed.error));
+        QVERIFY(!QFileInfo(dataDirectory).exists());
+    }
+
+    void refusesToDeleteUserDataThroughJunction() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        PluginPackageStore store(QDir(directory.path()).filePath(QStringLiteral("config")));
+        QVERIFY(store.install(
+            writePackage(directory.path(), nativeFiles(QStringLiteral("1.0.0"))),
+            {}, {}, testEnvironment()).ok);
+        QVERIFY(QDir().mkpath(store.dataRoot()));
+        const QString outside = QDir(directory.path()).filePath(QStringLiteral("outside"));
+        QVERIFY(QDir().mkpath(outside));
+        QFile marker(QDir(outside).filePath(QStringLiteral("keep.txt")));
+        QVERIFY(marker.open(QIODevice::WriteOnly));
+        marker.write("keep");
+        marker.close();
+        const QString junction = QDir(store.dataRoot()).filePath(
+            QStringLiteral("com.example.demo"));
+        const int exitCode = QProcess::execute(
+            QStringLiteral("cmd.exe"),
+            {QStringLiteral("/c"), QStringLiteral("mklink"), QStringLiteral("/J"),
+             QDir::toNativeSeparators(junction), QDir::toNativeSeparators(outside)});
+        if (exitCode != 0) QSKIP("当前环境不允许创建目录联接");
+
+        const auto result = store.uninstall(
+            QStringLiteral("com.example.demo"), true);
+        QVERIFY(result.ok);
+        QVERIFY(result.cleanupPending);
+        QVERIFY(QFileInfo(QDir(outside).filePath(QStringLiteral("keep.txt"))).isFile());
     }
 };
 

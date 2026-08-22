@@ -239,6 +239,8 @@ add_executable(xuanhub_plugin_package_tests
     PluginPackageValidatorTest.cpp
     ${CMAKE_SOURCE_DIR}/app/src/PluginPackageValidator.h
     ${CMAKE_SOURCE_DIR}/app/src/PluginPackageValidator.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/PluginPackageStore.h
+    ${CMAKE_SOURCE_DIR}/app/src/PluginPackageStore.cpp
     ${CMAKE_SOURCE_DIR}/app/src/PluginManifest.h
     ${CMAKE_SOURCE_DIR}/app/src/PluginManifest.cpp
     ${CMAKE_SOURCE_DIR}/app/src/SemanticVersion.h

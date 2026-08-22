@@ -58,6 +58,8 @@ qt_add_executable(XuanHub WIN32
     src/PluginDependencyGraph.cpp
     src/PluginPackageValidator.h
     src/PluginPackageValidator.cpp
+    src/PluginPackageStore.h
+    src/PluginPackageStore.cpp
 
     src/AutoStart.h
 
