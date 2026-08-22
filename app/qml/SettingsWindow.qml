@@ -781,6 +781,7 @@ Pane {
                                         "targetConfigVersion": m.roleValue(currentRow, "targetConfigVersion"),
                                         "migrationAvailable": m.roleValue(currentRow, "migrationAvailable"),
                                         "migrationError": m.roleValue(currentRow, "migrationError"),
+                                        "layoutPreference": m.roleValue(currentRow, "layoutPreference"),
                                         "health": settingsVM.pluginHealth(pluginList.currentId)
                                     }
                                 }
@@ -1155,6 +1156,40 @@ Pane {
                                                             onValueModified: settingsVM.pluginModel.setRoleValue(
                                                                                  detailPanel.currentRow, "width", value)
                                                         }
+                                                    }
+                                                }
+                                                ColumnLayout {
+                                                    Layout.fillWidth: true
+                                                    visible: Object.keys(detailPanel.rowData.layoutPreference || {}).length > 0
+                                                    spacing: UiMetrics.space1
+                                                    Text {
+                                                        text: root.trText("空间不足时")
+                                                        color: root.c.fg
+                                                        font.pixelSize: UiMetrics.fontS
+                                                        font.weight: Font.DemiBold
+                                                    }
+                                                    Text {
+                                                        Layout.fillWidth: true
+                                                        text: {
+                                                            const layout = detailPanel.rowData.layoutPreference || {}
+                                                            if (String(layout.overflow) === "menu")
+                                                                return root.trText("先收缩，仍放不下时移入更多插件")
+                                                            if (String(layout.overflow) === "hide")
+                                                                return root.trText("先收缩，仍放不下时自动隐藏")
+                                                            return root.trText("收缩到插件允许的最小宽度后保持显示")
+                                                        }
+                                                        color: root.c.muted
+                                                        font.pixelSize: UiMetrics.fontTiny
+                                                        wrapMode: Text.Wrap
+                                                    }
+                                                    Text {
+                                                        Layout.fillWidth: true
+                                                        text: Number(detailPanel.rowData.width) > 0
+                                                              ? root.trText("当前手动宽度会覆盖此响应式策略")
+                                                              : root.trText("使用自适应宽度时由插件策略自动处理")
+                                                        color: root.c.accent
+                                                        font.pixelSize: UiMetrics.fontTiny
+                                                        wrapMode: Text.Wrap
                                                     }
                                                 }
                                             }

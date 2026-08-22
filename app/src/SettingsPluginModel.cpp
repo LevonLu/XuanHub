@@ -213,6 +213,7 @@ QVariant SettingsPluginModel::data(const QModelIndex& index, int role) const {
         case TargetConfigVersionRole:    return r.targetConfigVersion;
         case MigrationAvailableRole:     return r.migrationReady;
         case MigrationErrorRole:         return r.migrationError;
+        case LayoutPreferenceRole:       return r.layoutPreference;
     }
     return {};
 }
@@ -302,6 +303,7 @@ QHash<int, QByteArray> SettingsPluginModel::roleNames() const {
         { TargetConfigVersionRole, "targetConfigVersion" },
         { MigrationAvailableRole, "migrationAvailable" },
         { MigrationErrorRole, "migrationError" },
+        { LayoutPreferenceRole, "layoutPreference" },
     };
 }
 
@@ -360,6 +362,8 @@ void SettingsPluginModel::mergeDiscovered(const QJsonObject& meta, const QString
 
     // sidecar 声明的设置 schema 与自绘设置页（均可空）
     const QJsonArray schema = meta.value(QStringLiteral("settings")).toArray();
+    const QVariantMap layoutPreference =
+        meta.value(QStringLiteral("layout")).toObject().toVariantMap();
     const int apiVersion = meta.value(QStringLiteral("apiVersion")).toInt(1);
     const int targetConfigVersion = qMax(
         1, meta.value(QStringLiteral("configVersion")).toInt(1));
@@ -398,6 +402,7 @@ void SettingsPluginModel::mergeDiscovered(const QJsonObject& meta, const QString
             r.declaredPermissions = declaredPermissions;
             r.grantedPermissions = grantedPermissions;
             r.trustLevel = trustLevel;
+            r.layoutPreference = layoutPreference;
             return;
         }
     }
@@ -417,6 +422,7 @@ void SettingsPluginModel::mergeDiscovered(const QJsonObject& meta, const QString
     r.declaredPermissions = declaredPermissions;
     r.grantedPermissions = grantedPermissions;
     r.trustLevel = trustLevel;
+    r.layoutPreference = layoutPreference;
     m_rows.append(r);
 }
 

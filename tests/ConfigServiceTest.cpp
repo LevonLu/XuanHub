@@ -312,6 +312,10 @@ private Q_SLOTS:
             {QStringLiteral("capabilities"), QJsonArray{QStringLiteral("barItem")}},
             {QStringLiteral("permissions"),
              QJsonArray{QStringLiteral("notifications"), QStringLiteral("native.direct")}},
+            {QStringLiteral("layout"), QJsonObject{
+                {QStringLiteral("minWidth"), 48},
+                {QStringLiteral("priority"), 70},
+                {QStringLiteral("overflow"), QStringLiteral("menu")}}},
         });
         writeSidecar(QStringLiteral("plugins_py/py_perm/plugin.json"), QJsonObject{
             {QStringLiteral("id"), QStringLiteral("py_perm")},
@@ -343,6 +347,12 @@ private Q_SLOTS:
         QCOMPARE(model.data(model.index(nativeRow),
                             SettingsPluginModel::GrantedPermissionsRole).toStringList(),
                  QStringList({QStringLiteral("notifications"), QStringLiteral("native.direct")}));
+        const QVariantMap layout = model.data(
+            model.index(nativeRow), SettingsPluginModel::LayoutPreferenceRole).toMap();
+        QCOMPARE(layout.value(QStringLiteral("minWidth")).toInt(), 48);
+        QCOMPARE(layout.value(QStringLiteral("priority")).toInt(), 70);
+        QCOMPARE(layout.value(QStringLiteral("overflow")).toString(),
+                 QStringLiteral("menu"));
 
         const int pythonRow = rowForId(QStringLiteral("py_perm"));
         QVERIFY(pythonRow >= 0);

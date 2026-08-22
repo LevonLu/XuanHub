@@ -36,7 +36,8 @@ public:
         ConfigVersionRole,
         TargetConfigVersionRole,
         MigrationAvailableRole,
-        MigrationErrorRole
+        MigrationErrorRole,
+        LayoutPreferenceRole // 读：Manifest 响应式布局偏好（只展示，不写入 config）
     };
 
     explicit SettingsPluginModel(QObject* parent = nullptr);
@@ -103,6 +104,7 @@ private:
         QStringList declaredPermissions;
         QStringList grantedPermissions;
         QString trustLevel;        // trusted-in-process | isolated
+        QVariantMap layoutPreference;
     };
     // dir = 该插件 sidecar 所在目录（settingsQml 相对路径据此解析为绝对 URL）
     void mergeDiscovered(const QJsonObject& meta, const QString& kind, const QString& dir);
