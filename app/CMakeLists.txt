@@ -62,6 +62,8 @@ qt_add_executable(XuanHub WIN32
     src/PluginPackageStore.cpp
     src/PluginUpdateIndex.h
     src/PluginUpdateIndex.cpp
+    src/PluginUpdateService.h
+    src/PluginUpdateService.cpp
 
     src/AutoStart.h
 

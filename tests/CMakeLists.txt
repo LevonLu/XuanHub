@@ -301,6 +301,38 @@ add_custom_command(TARGET xuanhub_plugin_update_index_tests POST_BUILD
 add_test(NAME xuanhub_plugin_update_index_tests
     COMMAND xuanhub_plugin_update_index_tests)
 
+add_executable(xuanhub_plugin_update_service_tests
+    PluginUpdateServiceTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/PluginUpdateService.h
+    ${CMAKE_SOURCE_DIR}/app/src/PluginUpdateService.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/PluginUpdateIndex.h
+    ${CMAKE_SOURCE_DIR}/app/src/PluginUpdateIndex.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/PluginPackageValidator.h
+    ${CMAKE_SOURCE_DIR}/app/src/PluginPackageValidator.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/PluginManifest.h
+    ${CMAKE_SOURCE_DIR}/app/src/PluginManifest.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/SemanticVersion.h
+    ${CMAKE_SOURCE_DIR}/app/src/SemanticVersion.cpp
+)
+set_target_properties(xuanhub_plugin_update_service_tests PROPERTIES AUTOMOC ON)
+target_include_directories(xuanhub_plugin_update_service_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/app/src)
+target_link_libraries(xuanhub_plugin_update_service_tests PRIVATE
+    barplugin Qt6::Core Qt6::CorePrivate Qt6::Network Qt6::Test bcrypt)
+add_custom_command(TARGET xuanhub_plugin_update_service_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:barplugin>" "$<TARGET_FILE_DIR:xuanhub_plugin_update_service_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Core>" "$<TARGET_FILE_DIR:xuanhub_plugin_update_service_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Network>" "$<TARGET_FILE_DIR:xuanhub_plugin_update_service_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Test>" "$<TARGET_FILE_DIR:xuanhub_plugin_update_service_tests>"
+    VERBATIM
+)
+add_test(NAME xuanhub_plugin_update_service_tests
+    COMMAND xuanhub_plugin_update_service_tests)
+
 add_executable(xuanhub_plugin_runtime_tests
     PluginRuntimeTest.cpp
     ${CMAKE_SOURCE_DIR}/app/src/PluginRuntime.h

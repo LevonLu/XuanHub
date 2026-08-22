@@ -70,7 +70,7 @@ QVariantMap PluginUpdateCandidate::toVariantMap() const {
 PluginUpdateIndexResult PluginUpdateIndex::parse(const QByteArray& json,
                                                   const QUrl& sourceUrl) {
     PluginUpdateIndexResult result;
-    if (!safeUrl(sourceUrl, &result.error)) return result;
+    if (!validateSourceUrl(sourceUrl, &result.error)) return result;
     if (json.isEmpty() || json.size() > 4 * 1024 * 1024) {
         result.error = QStringLiteral("update index is empty or exceeds 4 MiB");
         return result;
@@ -160,7 +160,7 @@ PluginUpdateIndexResult PluginUpdateIndex::parse(const QByteArray& json,
             candidate.signerKeyId = signer.toString();
         }
         candidate.packageUrl = sourceUrl.resolved(QUrl(packageUrlText));
-        if (!safeUrl(candidate.packageUrl, &result.error)) return result;
+        if (!validateSourceUrl(candidate.packageUrl, &result.error)) return result;
         const QString duplicateKey = candidate.id + QLatin1Char('\n') + candidate.version;
         if (seen.contains(duplicateKey)) {
             result.error = QStringLiteral("update index contains duplicate plugin version");
@@ -171,6 +171,13 @@ PluginUpdateIndexResult PluginUpdateIndex::parse(const QByteArray& json,
     }
     result.ok = true;
     return result;
+}
+
+bool PluginUpdateIndex::validateSourceUrl(const QUrl& url, QString* error) {
+    QString localError;
+    const bool ok = safeUrl(url, &localError);
+    if (error) *error = localError;
+    return ok;
 }
 
 QList<PluginUpdateCandidate> PluginUpdateIndex::newerCandidates(

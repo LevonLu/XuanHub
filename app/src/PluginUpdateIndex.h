@@ -31,6 +31,7 @@ struct PluginUpdateIndexResult {
 
 class PluginUpdateIndex final {
 public:
+    static bool validateSourceUrl(const QUrl& url, QString* error = nullptr);
     static PluginUpdateIndexResult parse(const QByteArray& json,
                                          const QUrl& sourceUrl);
     static QList<PluginUpdateCandidate> newerCandidates(
