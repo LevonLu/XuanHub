@@ -47,6 +47,8 @@ SettingsViewModel::SettingsViewModel(ConfigService* config, ThemeRegistry* regis
         connect(m_barPlugins, &QAbstractItemModel::modelReset, this, [this] {
             emit pluginHealthChanged({});
         });
+        connect(m_barPlugins, &PluginListModel::loadErrorChanged,
+                this, &SettingsViewModel::pluginHealthChanged);
     }
 }
 

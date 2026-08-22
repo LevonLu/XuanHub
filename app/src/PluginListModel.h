@@ -51,6 +51,7 @@ public:
     bool replacePlugin(const PluginManager::LoadedPlugin& item);
     // position/order 变化只移动目标行；width 单独更新角色，不销毁插件实例。
     bool updateLayout(const QString& id, const QString& position, int order, int width);
+    void setLoadErrors(const QHash<QString, QString>& errors);
 
     QAbstractItemModel* leftPlugins()   const;
     QAbstractItemModel* centerPlugins() const;
@@ -64,6 +65,9 @@ public:
     Q_INVOKABLE QVariantMap health(const QString& id) const;
     Q_INVOKABLE bool restartPlugin(const QString& id);
     int contentWidth(const QString& id) const;   // 无记录返回 0
+
+Q_SIGNALS:
+    void loadErrorChanged(const QString& id);
 
 private:
     struct Item {
@@ -83,6 +87,7 @@ private:
     int rowForId(const QString& id) const;
     QVector<Item> m_items;
     QHash<QString, int> m_contentWidths;
+    QHash<QString, QString> m_loadErrors;
 
     QPointer<PluginFilterModel> m_leftModel;
     QPointer<PluginFilterModel> m_centerModel;

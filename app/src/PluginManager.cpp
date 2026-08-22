@@ -54,6 +54,8 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
         qWarning() << "[Plugin] loadFrom called without prior shutdownAll, ignored";
         return;
     }
+    if (!allowExisting) m_loadErrors.clear();
+    for (const auto& entry : enabled) m_loadErrors.remove(entry.id);
     m_shut = false;   // 复位闩锁，支持 shutdownAll() → loadFrom() 热重载周期
 
     QHash<QString, const PluginConfigEntry*> enabledMap;
@@ -62,6 +64,8 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
     QDir base(pluginsDir);
     if (!base.exists()) {
         qDebug() << "[Plugin] plugins dir not found:" << pluginsDir;
+        for (const auto& entry : enabled)
+            recordLoadError(entry.id, QStringLiteral("plugins directory does not exist"));
         return;
     }
     struct Candidate {
@@ -88,6 +92,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             if (!manifest.ok) {
                 qWarning() << "[Plugin] manifest rejected:" << path << "->"
                            << manifest.error;
+                recordLoadError(sub, manifest.error);
                 continue;
             }
             const QString manifestId = manifest.descriptor.id;
@@ -107,12 +112,16 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             if (iid != QStringLiteral("xuanhub.BarPlugin/1.0")
                 && iid != QStringLiteral("xuanhub.BarPlugin/2.0")) {
                 qWarning() << "[Plugin] skip (IID mismatch):" << path << "->" << iid;
+                recordLoadError(manifestId,
+                    QStringLiteral("unsupported plugin IID: %1").arg(iid));
                 continue;
             }
             const int iidApiVersion = iid.endsWith(QStringLiteral("/2.0")) ? 2 : 1;
             if (manifest.descriptor.apiVersion != iidApiVersion) {
                 qWarning() << "[Plugin] manifest apiVersion/IID mismatch:" << path
                            << manifest.descriptor.apiVersion << iid;
+                recordLoadError(manifestId,
+                    QStringLiteral("manifest apiVersion does not match plugin IID"));
                 continue;
             }
             descriptors.append(manifest.descriptor);
@@ -122,9 +131,11 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
 
     const PluginDependencyPlan dependencyPlan = PluginDependencyGraph::build(descriptors);
     for (auto it = dependencyPlan.errors.cbegin(); it != dependencyPlan.errors.cend(); ++it) {
-        if (enabledMap.contains(it.key()) && !m_loadedIds.contains(it.key()))
+        if (enabledMap.contains(it.key()) && !m_loadedIds.contains(it.key())) {
             qWarning() << "[Plugin] dependency precheck rejected:" << it.key() << "->"
                        << it.value();
+            recordLoadError(it.key(), it.value());
+        }
     }
     QHash<QString, int> candidateIndex;
     for (int i = 0; i < candidates.size(); ++i) {
@@ -152,6 +163,9 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             if (!available && !dependency.optional) {
                 qWarning() << "[Plugin] required dependency failed to load:"
                            << manifestId << "->" << dependency.id;
+                recordLoadError(manifestId,
+                    QStringLiteral("required dependency failed to load: %1")
+                        .arg(dependency.id));
                 dependencyUnavailable = true;
                 break;
             }
@@ -168,12 +182,15 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             if (runtimeIid != iid) {
                 qWarning() << "[Plugin] IID changed after discovery:" << path
                            << iid << "->" << runtimeIid;
+                recordLoadError(manifestId,
+                    QStringLiteral("plugin IID changed during discovery"));
                 delete loader;
                 continue;
             }
             QObject* obj = loader->instance();
             if (!obj) {
                 qWarning() << "[Plugin] instance failed:" << path << ":" << loader->errorString();
+                recordLoadError(manifestId, loader->errorString());
                 delete loader;
                 continue;
             }
@@ -183,6 +200,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             if (!runtime) {
                 qWarning() << "[Plugin] runtime adapter failed:" << path
                            << "->" << runtimeError;
+                recordLoadError(manifestId, runtimeError);
                 loader->unload();
                 delete loader;
                 continue;
@@ -194,6 +212,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                            << "manifest=" << manifestId << manifest.descriptor.version
                            << "runtime=" << descriptor.id << descriptor.version
                            << "->" << runtimeError;
+                recordLoadError(manifestId, runtimeError);
                 loader->unload();
                 delete loader;
                 continue;
@@ -201,6 +220,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             // 按 id 去重：同名插件（多目录/多 DLL 副本）只加载第一份
             if (m_loadedIds.contains(descriptor.id)) {
                 qWarning() << "[Plugin] duplicate id, skip:" << descriptor.id << "->" << path;
+                recordLoadError(descriptor.id, QStringLiteral("duplicate plugin id"));
                 loader->unload();
                 delete loader;
                 continue;
@@ -227,6 +247,9 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             if (!initialized) {
                 qWarning() << "[Plugin] init failed:" << descriptor.id
                            << "durationMs=" << initDurationMs << "->" << runtimeError;
+                recordLoadError(descriptor.id,
+                    runtimeError.isEmpty() ? QStringLiteral("plugin initialization failed")
+                                           : runtimeError);
                 loader->unload();
                 delete loader;
                 continue;
@@ -248,6 +271,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                 m_loaders.append(loader);
                 m_loadedIds.insert(descriptor.id);
                 m_descriptorById.insert(descriptor.id, descriptor);
+                m_loadErrors.remove(descriptor.id);
                 m_hosts.append(runtimePtr);
                 qDebug() << "[Plugin] loaded host:" << descriptor.id;
                 const QStringList subIds = host->subPluginIds();
@@ -280,6 +304,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                 m_loaders.append(loader);
                 m_loadedIds.insert(descriptor.id);
                 m_descriptorById.insert(descriptor.id, descriptor);
+                m_loadErrors.remove(descriptor.id);
                 m_services.append(runtimePtr);
                 qDebug() << "[Plugin] loaded background service:" << descriptor.id;
                 continue;
@@ -297,6 +322,8 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                         != QDir::cleanPath(manifest.descriptor.entry.qml))) {
                 qWarning() << "[Plugin] V2 qmlUrl differs from manifest:" << descriptor.id
                            << rel << manifest.descriptor.entry.qml;
+                recordLoadError(descriptor.id,
+                    QStringLiteral("runtime qmlUrl differs from manifest"));
                 runtime->shutdown();
                 loader->unload();
                 delete loader;
@@ -328,8 +355,15 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             m_loaded.append(lp);
             m_loadedIds.insert(descriptor.id);
             m_descriptorById.insert(descriptor.id, descriptor);
+            m_loadErrors.remove(descriptor.id);
             qDebug() << "[Plugin] loaded:" << descriptor.id
                      << "pos=" << lp.position << "qml=" << qmlUrl.toString();
+    }
+    for (const auto& entry : enabled) {
+        if (!m_loadedIds.contains(entry.id) && !m_loadErrors.contains(entry.id)) {
+            recordLoadError(entry.id,
+                QStringLiteral("enabled plugin has no valid discovered runtime"));
+        }
     }
 }
 
@@ -344,6 +378,7 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
     if (!sp.viewModel) {
         qWarning() << "[Plugin] host createSubPlugin failed:" << entry.id
                    << "durationMs=" << createDurationMs;
+        recordLoadError(entry.id, QStringLiteral("host failed to create sub-plugin"));
         return false;
     }
     LoadedPlugin lp;
@@ -365,6 +400,7 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
     descriptor.version = sp.meta.version;
     descriptor.author = sp.meta.author;
     m_descriptorById.insert(entry.id, descriptor);
+    m_loadErrors.remove(entry.id);
     m_subPluginHostId.insert(entry.id, hostId);
     qDebug() << "[Plugin] loaded:" << entry.id << "pos=" << lp.position
              << "qml=" << lp.qmlUrl.toLocalFile() << "(via host" << hostId << ")";
@@ -373,6 +409,7 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
 
 bool PluginManager::loadOne(const QString& pluginsDir, const PluginConfigEntry& entry) {
     if (entry.id.isEmpty() || m_loadedIds.contains(entry.id)) return false;
+    m_loadErrors.remove(entry.id);
     m_shut = false;
 
     // 已加载 host 优先尝试创建子插件，不扫描或重启其他运行实例。
@@ -427,7 +464,10 @@ bool PluginManager::stopOne(const QString& id) {
 
     auto* runtime = m_runtimeById.value(id);
     auto* loader = m_loaderById.value(id);
-    if (!runtime || !loader) return false;
+    if (!runtime || !loader) {
+        if (m_loadErrors.remove(id)) return true;
+        return false;
+    }
 
     // host 自身停止前先销毁全部子实例；调用方必须先从 QML 模型移除这些 id。
     for (const QString& childId : dependentPluginIds(id)) {
@@ -581,4 +621,9 @@ void PluginManager::removeRuntime(PluginRuntime* runtime) {
     const auto it = std::find_if(m_runtimes.begin(), m_runtimes.end(),
         [runtime](const auto& owned) { return owned.get() == runtime; });
     if (it != m_runtimes.end()) m_runtimes.erase(it);
+}
+
+void PluginManager::recordLoadError(const QString& id, const QString& error) {
+    if (id.isEmpty() || error.isEmpty()) return;
+    m_loadErrors.insert(id, error);
 }

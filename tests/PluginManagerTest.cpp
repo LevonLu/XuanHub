@@ -45,6 +45,7 @@ private Q_SLOTS:
         PluginManager manager(&bus, QDir::tempPath());
         manager.loadFrom(root.path(), {entry(QStringLiteral("clock"))});
         QVERIFY(!manager.loadedPlugin(QStringLiteral("clock")));
+        QVERIFY(!manager.loadError(QStringLiteral("clock")).isEmpty());
         manager.shutdownAll();
     }
 
@@ -86,6 +87,7 @@ private Q_SLOTS:
         manager.loadFrom(pluginsDir,
                          {entry(QStringLiteral("pybridge")), entry(pluginId)});
         QVERIFY(!manager.loadedPlugin(pluginId));
+        QVERIFY(!manager.loadError(pluginId).isEmpty());
         QVERIFY(!QFileInfo(QDir(pluginDirectory.path()).filePath(
                               QStringLiteral("executed"))).exists());
         manager.shutdownAll();

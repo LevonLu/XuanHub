@@ -2,6 +2,8 @@
 #include "PluginListModel.h"
 #include "PluginFilterModel.h"
 
+#include <QSet>
+
 #include <algorithm>
 
 namespace {
@@ -148,6 +150,18 @@ bool PluginListModel::updateLayout(const QString& id, const QString& position,
     return true;
 }
 
+void PluginListModel::setLoadErrors(const QHash<QString, QString>& errors) {
+    QSet<QString> changedIds;
+    for (auto it = m_loadErrors.cbegin(); it != m_loadErrors.cend(); ++it) {
+        if (errors.value(it.key()) != it.value()) changedIds.insert(it.key());
+    }
+    for (auto it = errors.cbegin(); it != errors.cend(); ++it) {
+        if (m_loadErrors.value(it.key()) != it.value()) changedIds.insert(it.key());
+    }
+    m_loadErrors = errors;
+    for (const QString& id : changedIds) Q_EMIT loadErrorChanged(id);
+}
+
 PluginListModel::Item PluginListModel::fromLoaded(
     const PluginManager::LoadedPlugin& loaded) {
     Item item;
@@ -244,6 +258,13 @@ QVariantMap PluginListModel::health(const QString& id) const {
             {QStringLiteral("consecutiveFailures"), item.health.consecutiveFailures},
             {QStringLiteral("loadDurationMs"), item.health.loadDurationMs},
             {QStringLiteral("queueDepth"), item.health.queueDepth},
+        };
+    }
+    const QString loadError = m_loadErrors.value(id);
+    if (!loadError.isEmpty()) {
+        return {
+            {QStringLiteral("state"), QStringLiteral("failed")},
+            {QStringLiteral("lastError"), loadError},
         };
     }
     return {};

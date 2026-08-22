@@ -91,6 +91,23 @@ private Q_SLOTS:
                  plugin.health.startedAt);
     }
 
+    void exposesPreloadFailureForAbsentPlugin() {
+        PluginListModel model;
+        QSignalSpy errorSpy(&model, &PluginListModel::loadErrorChanged);
+        model.setLoadErrors({{QStringLiteral("broken"),
+                              QStringLiteral("ABI mismatch")}});
+        QCOMPARE(errorSpy.count(), 1);
+        const QVariantMap health = model.health(QStringLiteral("broken"));
+        QCOMPARE(health.value(QStringLiteral("state")).toString(),
+                 QStringLiteral("failed"));
+        QCOMPARE(health.value(QStringLiteral("lastError")).toString(),
+                 QStringLiteral("ABI mismatch"));
+
+        model.setLoadErrors({});
+        QCOMPARE(errorSpy.count(), 2);
+        QVERIFY(model.health(QStringLiteral("broken")).isEmpty());
+    }
+
     void returnsHealthAndRestartsOnlyTargetPlugin() {
         RestartableViewModel firstViewModel;
         RestartableViewModel secondViewModel;

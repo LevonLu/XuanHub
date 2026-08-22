@@ -173,6 +173,7 @@ int main(int argc, char* argv[]) {
 
     PluginListModel model;
     model.setPlugins(pm.loaded());
+    model.setLoadErrors(pm.loadErrors());
 
     BarWindow window(&config, &model, &theme, &locale);
     window.create();

@@ -182,6 +182,8 @@ void ConfigHotReloader::reloadImpl(bool force) {
             for (const QString& id : std::as_const(pending))
                 qWarning() << "[Config] target plugin failed to load, peers kept running:" << id;
 
+            m_model->setLoadErrors(m_pm->loadErrors());
+
             for (const QString& id : changes.layoutChanged) {
                 const auto entryIt = nextById.constFind(id);
                 if (entryIt == nextById.cend()) continue;
@@ -208,5 +210,6 @@ void ConfigHotReloader::reloadImpl(bool force) {
     m_pm->shutdownAll();
     m_pm->loadFrom(pluginsDir, nextEntries);
     m_model->setPlugins(m_pm->loaded());
+    m_model->setLoadErrors(m_pm->loadErrors());
     m_window->setupBar();
 }

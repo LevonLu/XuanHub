@@ -52,6 +52,8 @@ public:
     ConfigApplyResult applyConfig(const PluginConfigEntry& entry);
     QStringList dependentPluginIds(const QString& id) const;
     const LoadedPlugin* loadedPlugin(const QString& id) const;
+    QString loadError(const QString& id) const { return m_loadErrors.value(id); }
+    const QHash<QString, QString>& loadErrors() const { return m_loadErrors; }
 
     const QVector<LoadedPlugin>& loaded() const { return m_loaded; }
     void shutdownAll();   // 重载周期约定：必须先 shutdownAll() 再 loadFrom()（入口有重入保护）
@@ -62,6 +64,7 @@ private:
     bool createHostedPlugin(const QString& hostId, xuanhub::IBarPluginHost* host,
                             const PluginConfigEntry& entry);
     void removeRuntime(PluginRuntime* runtime);
+    void recordLoadError(const QString& id, const QString& error);
 
     xuanhub::EventBus* m_bus;
     QString m_configDir;
@@ -80,5 +83,6 @@ private:
     QHash<QString, QString> m_subPluginHostId;               // 子插件 id → host id
     QHash<QString, xuanhub::PluginEventScope*> m_scopeById;  // 原生插件/host id → 作用域
     QSet<QString> m_loadedIds;   // 按 metadata.id 去重
+    QHash<QString, QString> m_loadErrors; // 未实例化/初始化失败也向设置页暴露原因
     bool m_shut = false;
 };
