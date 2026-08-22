@@ -363,6 +363,9 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
             {QStringLiteral("protocol"), m_protocolVersion},
             {QStringLiteral("hostCapabilities"), QJsonArray{
                 QStringLiteral("requestResponseV1"),
+                QStringLiteral("callResults"),
+                QStringLiteral("callProgress"),
+                QStringLiteral("cancelQueued"),
                 QStringLiteral("hostServicesV1"),
                 QStringLiteral("eventBusV2")}}
         }});
@@ -390,6 +393,25 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
         m_eventDeliveryInFlight.clear();
         flushEventBusEvents();
         dispatchNext();
+        return;
+    }
+    if (message.value(QStringLiteral("type")).toString()
+        == QLatin1String("call_progress")) {
+        bool progressOk = false;
+        const double progress = message.value(QStringLiteral("progress")).toVariant()
+                                    .toDouble(&progressOk);
+        if (m_inFlight.op != QLatin1String("invoke")
+            || m_inFlight.callId.isEmpty()
+            || message.value(QStringLiteral("id")).toString()
+                != QString::number(m_inFlightId)
+            || !progressOk || progress < 0.0 || progress > 1.0
+            || !message.value(QStringLiteral("details")).isObject()) {
+            failWorker(QStringLiteral("worker call progress message is invalid"), false);
+            return;
+        }
+        Q_EMIT callProgress(
+            m_inFlight.callId, progress,
+            message.value(QStringLiteral("details")).toObject().toVariantMap());
         return;
     }
 

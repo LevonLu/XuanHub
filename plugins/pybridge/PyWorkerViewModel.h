@@ -87,6 +87,8 @@ Q_SIGNALS:
     void configValidationFinished(bool valid, const QString& error);
     void callFinished(const QString& callId, bool ok, const QVariant& result,
                       const QVariantMap& error);
+    void callProgress(const QString& callId, double progress,
+                      const QVariantMap& details);
 
 private:
     friend class PyWorkerViewModelTest;

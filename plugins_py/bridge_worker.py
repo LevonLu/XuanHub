@@ -23,7 +23,10 @@ MAX_MESSAGE_BYTES = 4 * 1024 * 1024
 MAX_DEPTH = 32
 MAX_SAFE_INTEGER = (1 << 53) - 1  # Qt JSON 数字落到 double；超过此范围转字符串保真。
 PROTOCOL_VERSION = 2
-PROTOCOL_CAPABILITIES = ["requestResponseV1", "hostServicesV1", "eventBusV2"]
+PROTOCOL_CAPABILITIES = [
+    "requestResponseV1", "callResults", "callProgress", "cancelQueued",
+    "hostServicesV1", "eventBusV2",
+]
 
 
 class CallError(Exception):
@@ -38,6 +41,36 @@ class CallError(Exception):
             normalized = "plugin_error"
         self.code = normalized
         self.details = details if isinstance(details, dict) else {}
+
+
+class CallRuntime:
+    """只在 invoke 主线程有效的进度发送器，内部请求 ID 不暴露给插件。"""
+
+    def __init__(self, sock: socket.socket) -> None:
+        self._sock = sock
+        self._request_id = ""
+
+    def begin(self, request_id: str) -> None:
+        self._request_id = request_id
+
+    def end(self) -> None:
+        self._request_id = ""
+
+    def progress(self, value: float,
+                 details: dict[str, Any] | None = None) -> None:
+        if not self._request_id:
+            raise RuntimeError("report_progress() is only valid during invoke()")
+        if isinstance(value, bool) or not isinstance(value, (int, float)) \
+                or not math.isfinite(float(value)) or not 0.0 <= float(value) <= 1.0:
+            raise ValueError("progress must be a finite number from 0 to 1")
+        if details is not None and not isinstance(details, dict):
+            raise TypeError("progress details must be a dict")
+        _send(self._sock, {
+            "type": "call_progress",
+            "id": self._request_id,
+            "progress": float(value),
+            "details": _json_value(details or {}),
+        })
 
 
 class HostServices:
@@ -149,13 +182,15 @@ class EventBusServices:
                 _log("EventBus handler failed:\n" + traceback.format_exc(limit=8))
 
 
-def _install_host_module(services: HostServices, events: EventBusServices) -> None:
+def _install_host_module(services: HostServices, events: EventBusServices,
+                         calls: CallRuntime) -> None:
     module = types.ModuleType("xuanhub_host")
     module.services = services
     module.log = services.log
     module.notify = services.notify
     module.events = events
     module.CallError = CallError
+    module.report_progress = calls.progress
     sys.modules["xuanhub_host"] = module
 
 
@@ -210,7 +245,8 @@ def _recv(sock: socket.socket) -> dict[str, Any]:
 
 
 def _import_plugin(plugin_dir: Path, plugin_id: str,
-                   host_services: HostServices, event_bus: EventBusServices) -> Any:
+                   host_services: HostServices, event_bus: EventBusServices,
+                   calls: CallRuntime) -> Any:
     main_file = plugin_dir / "main.py"
     if not main_file.is_file():
         raise RuntimeError("main.py is missing")
@@ -225,7 +261,7 @@ def _import_plugin(plugin_dir: Path, plugin_id: str,
         raise RuntimeError("cannot create import specification")
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
-    _install_host_module(host_services, event_bus)
+    _install_host_module(host_services, event_bus, calls)
     spec.loader.exec_module(module)
     if hasattr(module, "set_host_services"):
         module.set_host_services(host_services)
@@ -327,6 +363,7 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
             sock.settimeout(None)
             host_services = HostServices(sock)
             event_bus = EventBusServices(sock)
+            calls = CallRuntime(sock)
             _send(sock, {
                 "type": "hello",
                 "token": token,
@@ -373,7 +410,7 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
                                 or target_version < 1:
                             raise ValueError("init targetConfigVersion must be a positive integer")
                         module = _import_plugin(plugin_dir, plugin_id,
-                                                host_services, event_bus)
+                                                host_services, event_bus, calls)
                         prepared_config = _prepare_config(
                             module, current_version, target_version, config)
                         _initialize_plugin(module, prepared_config, locale)
@@ -404,7 +441,11 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
                         args = data.get("args", [])
                         if not isinstance(name, str) or not isinstance(args, list):
                             raise ValueError("invoke requires string name and list args")
-                        result = module.invoke(name, args) if hasattr(module, "invoke") else None
+                        calls.begin(request_id)
+                        try:
+                            result = module.invoke(name, args) if hasattr(module, "invoke") else None
+                        finally:
+                            calls.end()
                     elif op == "set_locale":
                         locale = data.get("locale", "en-US")
                         if not isinstance(locale, str):

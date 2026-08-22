@@ -156,6 +156,7 @@ private Q_SLOTS:
         QVERIFY(mainFile.open(QIODevice::WriteOnly | QIODevice::Text));
         QVERIFY(mainFile.write(R"PY(
 from pathlib import Path
+from xuanhub_host import report_progress
 state = {"count": 0, "prefix": "", "stopFile": "", "locale": "unset"}
 def init(config):
     state["prefix"] = config.get("prefix", "")
@@ -172,6 +173,8 @@ def update():
 def invoke(name, args):
     if name == "bump": state["count"] += int(args[0])
     if name == "fail": raise RuntimeError("boom")
+    if name == "progress":
+        report_progress(0.4, {"phase": "work"})
     return state["count"]
 def stop():
     Path(state["stopFile"]).write_text("stopped", encoding="utf-8")
@@ -244,6 +247,17 @@ def stop():
             QCOMPARE(error.value(QStringLiteral("details")).toMap()
                          .value(QStringLiteral("exceptionType")).toString(),
                      QStringLiteral("RuntimeError"));
+            QSignalSpy callProgress(&viewModel, &PyWorkerViewModel::callProgress);
+            const QVariantMap progressCall = viewModel.call(
+                QStringLiteral("progress"), {}).toMap();
+            QTRY_COMPARE_WITH_TIMEOUT(callProgress.size(), 1, 5000);
+            QCOMPARE(callProgress.at(0).at(0).toString(),
+                     progressCall.value(QStringLiteral("id")).toString());
+            QCOMPARE(callProgress.at(0).at(1).toDouble(), 0.4);
+            QCOMPARE(callProgress.at(0).at(2).toMap()
+                         .value(QStringLiteral("phase")).toString(),
+                     QStringLiteral("work"));
+            QTRY_COMPARE_WITH_TIMEOUT(callFinished.size(), 3, 5000);
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("count")).toInt(), 3, 5000);
         }
         QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(stopFile), 3000);

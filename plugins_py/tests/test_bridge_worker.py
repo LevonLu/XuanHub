@@ -50,7 +50,7 @@ class BridgeWorkerTests(unittest.TestCase):
             "def set_config(config):\n"
             "    state['prefix'] = config.get('prefix', '')\n"
         )
-        host_import = "from xuanhub_host import CallError\n"
+        host_import = "from xuanhub_host import CallError, report_progress\n"
         host_init = ""
         migration_code = ""
         if self._testMethodName == "test_config_migration_runs_before_init":
@@ -104,6 +104,9 @@ class BridgeWorkerTests(unittest.TestCase):
             "    if name == 'request': state['request'] = events.request('plugin.py_demo.query', {'value': 2})\n"
             "    if name == 'blocked': raise CallError('business_rule', 'blocked', {'retryable': False})\n"
             "    if name == 'explode': raise RuntimeError('boom')\n"
+            "    if name == 'progress':\n"
+            "        report_progress(0.25, {'phase': 'prepare'})\n"
+            "        report_progress(0.75, {'phase': 'apply'})\n"
             "    return state['count']\n"
             + locale_callback + config_callback +
             "def stop():\n"
@@ -132,11 +135,13 @@ class BridgeWorkerTests(unittest.TestCase):
             "token": self.token,
             "protocol": 2,
             "pluginId": "py_demo",
-            "capabilities": ["requestResponseV1", "hostServicesV1", "eventBusV2"],
+            "capabilities": ["requestResponseV1", "callResults", "callProgress",
+                             "cancelQueued", "hostServicesV1", "eventBusV2"],
         })
         self.request_id = 0
         self.host_requests: list[dict] = []
         self.event_requests: list[dict] = []
+        self.call_progress: list[dict] = []
 
     def tearDown(self) -> None:
         if hasattr(self, "socket"):
@@ -182,6 +187,9 @@ class BridgeWorkerTests(unittest.TestCase):
                     "ok": True,
                     "result": result,
                 })
+                continue
+            if response.get("type") == "call_progress":
+                self.call_progress.append(response)
                 continue
             else:
                 break
@@ -235,6 +243,17 @@ class BridgeWorkerTests(unittest.TestCase):
         self.assertEqual(exploded["error"], "boom")
         self.assertEqual(exploded["details"]["exceptionType"], "RuntimeError")
         self.assertIn("RuntimeError: boom", exploded["details"]["traceback"])
+
+    def test_invoke_reports_progress_before_result(self) -> None:
+        self.assertTrue(self.request("init", {"config": {}, "locale": "en-US"})["ok"])
+        result = self.request("invoke", {"name": "progress", "args": []})
+        self.assertTrue(result["ok"])
+        self.assertEqual(self.call_progress, [
+            {"type": "call_progress", "id": "2", "progress": 0.25,
+             "details": {"phase": "prepare"}},
+            {"type": "call_progress", "id": "2", "progress": 0.75,
+             "details": {"phase": "apply"}},
+        ])
 
     def test_host_services_are_available_during_init(self) -> None:
         initialized = self.request("init", {"config": {}, "locale": "en-US"})
