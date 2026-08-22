@@ -83,6 +83,18 @@ Pane {
         if (state === "disabled") return trText("已停用")
         return trText("等待启动")
     }
+    function permissionListText(values) {
+        return values && values.length > 0 ? values.join(", ") : trText("无")
+    }
+    // HostServices.navigation.openSettings() 会调用此入口。按稳定 id 选中插件，
+    // 不依赖排序后的行号，避免启用状态变化后打开到错误详情页。
+    function selectPlugin(pluginId) {
+        pageStack.currentIndex = 1
+        if (pluginId && settingsVM.pluginModel.rowForId(pluginId) >= 0)
+            pluginList.currentId = pluginId
+        else
+            pluginList.ensureSelection()
+    }
 
     // 插件设置草稿读取：config 无该键时用 schema default 兜底（类型化表单与自绘页共用）
     function draftValue(key, def) {
@@ -745,6 +757,11 @@ Pane {
                                         "discovered": m.roleValue(currentRow, "discovered"),
                                         "schema": m.roleValue(currentRow, "schema"),
                                         "settingsQml": m.roleValue(currentRow, "settingsQml"),
+                                        "apiVersion": m.roleValue(currentRow, "apiVersion"),
+                                        "capabilities": m.roleValue(currentRow, "capabilities"),
+                                        "declaredPermissions": m.roleValue(currentRow, "declaredPermissions"),
+                                        "grantedPermissions": m.roleValue(currentRow, "grantedPermissions"),
+                                        "trustLevel": m.roleValue(currentRow, "trustLevel"),
                                         "health": settingsVM.pluginHealth(pluginList.currentId)
                                     }
                                 }
@@ -855,6 +872,70 @@ Pane {
                                             checked: detailPanel.rowData.enabled === true
                                             onToggled: settingsVM.pluginModel.setRoleValue(
                                                            detailPanel.currentRow, "enabled", checked)
+                                        }
+                                    }
+
+                                    UiCard {
+                                        Layout.fillWidth: true
+                                        title: root.trText("权限与安全")
+                                        description: root.trText("查看插件声明、实际授权和运行隔离级别")
+
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: UiMetrics.space2
+                                            Rectangle {
+                                                Layout.preferredWidth: trustTag.implicitWidth + 18
+                                                Layout.preferredHeight: 24
+                                                radius: 12
+                                                color: root.translucent(
+                                                    detailPanel.rowData.trustLevel === "isolated"
+                                                        ? root.accentColor : root.c.warning, 0.16)
+                                                Text {
+                                                    id: trustTag
+                                                    anchors.centerIn: parent
+                                                    color: detailPanel.rowData.trustLevel === "isolated"
+                                                        ? root.c.accent : root.c.warning
+                                                    font.pixelSize: UiMetrics.fontTiny
+                                                    font.weight: Font.DemiBold
+                                                    text: detailPanel.rowData.trustLevel === "isolated"
+                                                        ? root.trText("隔离插件")
+                                                        : root.trText("受信任的进程内插件")
+                                                }
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                color: root.c.muted
+                                                font.pixelSize: UiMetrics.fontS
+                                                wrapMode: Text.Wrap
+                                                text: detailPanel.rowData.trustLevel === "isolated"
+                                                    ? root.trText("Python 后端运行在独立进程中，HostServices 请求按声明权限强制校验。")
+                                                    : root.trText("原生插件与宿主在同一进程运行，权限仅作说明，不能限制其直接访问系统资源。")
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                color: root.c.fg
+                                                font.pixelSize: UiMetrics.fontS
+                                                wrapMode: Text.Wrap
+                                                text: root.trText("声明权限：%1").arg(
+                                                    root.permissionListText(detailPanel.rowData.declaredPermissions))
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                color: root.c.fg
+                                                font.pixelSize: UiMetrics.fontS
+                                                wrapMode: Text.Wrap
+                                                text: root.trText("已授予权限：%1").arg(
+                                                    root.permissionListText(detailPanel.rowData.grantedPermissions))
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                color: root.c.muted
+                                                font.pixelSize: UiMetrics.fontTiny
+                                                wrapMode: Text.Wrap
+                                                text: root.trText("宿主服务：API %1 · %2").arg(
+                                                    Number(detailPanel.rowData.apiVersion || 1)).arg(
+                                                    root.permissionListText(detailPanel.rowData.capabilities))
+                                            }
                                         }
                                     }
 

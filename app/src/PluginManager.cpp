@@ -237,7 +237,10 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             ctx.pluginConfig = entry->config;
             auto hostServices = createHostServices(
                 descriptor.id, xuanhub::HostPluginTrustLevel::TrustedInProcess,
-                descriptor.permissions, descriptor.permissions);
+                descriptor.permissions,
+                xuanhub::grantedHostPermissions(
+                    xuanhub::HostPluginTrustLevel::TrustedInProcess,
+                    descriptor.permissions));
             ctx.hostServices = hostServices.get();
             for (const auto& dependency : descriptor.dependencies) {
                 const auto loadedDependency = m_descriptorById.constFind(dependency.id);
@@ -407,7 +410,9 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
     lp.viewModel = sp.viewModel;
     auto hostServices = createHostServices(
         entry.id, xuanhub::HostPluginTrustLevel::Isolated,
-        sp.permissions, sp.permissions);
+        sp.permissions,
+        xuanhub::grantedHostPermissions(xuanhub::HostPluginTrustLevel::Isolated,
+                                        sp.permissions));
     auto* hostRuntime = m_runtimeById.value(hostId);
     auto* hostObject = hostRuntime ? hostRuntime->instance() : nullptr;
     if (auto* binder = hostObject

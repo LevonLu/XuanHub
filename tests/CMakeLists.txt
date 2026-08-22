@@ -14,6 +14,7 @@ add_executable(xuanhub_config_tests
 set_target_properties(xuanhub_config_tests PROPERTIES AUTOMOC ON)
 target_include_directories(xuanhub_config_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/app/src
+    ${CMAKE_SOURCE_DIR}/lib/barplugin/include
 )
 target_link_libraries(xuanhub_config_tests PRIVATE
     Qt6::Core

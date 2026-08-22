@@ -26,7 +26,12 @@ public:
         SettingsQmlRole,     // 读：QUrl，sidecar 的 settingsQml 绝对路径（可空 → QVariant()）
         SetConfigValueRole,  // 写：value 为 {key, value}，写 config 草稿单字段
         DiscoveredRole,
-        GroupKeyRole         // 读："enabled-left"，供设置页分组标题使用
+        GroupKeyRole,        // 读："enabled-left"，供设置页分组标题使用
+        ApiVersionRole,
+        CapabilitiesRole,
+        DeclaredPermissionsRole,
+        GrantedPermissionsRole,
+        TrustLevelRole
     };
 
     explicit SettingsPluginModel(QObject* parent = nullptr);
@@ -76,6 +81,11 @@ private:
                                    // 磁盘发现行无原始对象，为空则全新组装）
         QJsonArray schema;         // sidecar "settings"（可空）
         QUrl settingsQml;          // sidecar "settingsQml"（可空）
+        int apiVersion = 1;
+        QStringList capabilities;
+        QStringList declaredPermissions;
+        QStringList grantedPermissions;
+        QString trustLevel;        // trusted-in-process | isolated
     };
     // dir = 该插件 sidecar 所在目录（settingsQml 相对路径据此解析为绝对 URL）
     void mergeDiscovered(const QJsonObject& meta, const QString& kind, const QString& dir);

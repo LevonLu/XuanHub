@@ -5,6 +5,7 @@
 #include "SettingsPluginSortModel.h"
 
 #include <QFile>
+#include <QFileInfo>
 #include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -172,6 +173,69 @@ private Q_SLOTS:
         QVERIFY(fields.at(0).toObject().value(QStringLiteral("options")).toArray().first().isObject());
         QCOMPARE(fields.at(1).toObject().value(QStringLiteral("options")).toArray().first()
                      .toObject().value(QStringLiteral("value")).toString(), QStringLiteral("daily"));
+    }
+
+    void pluginPermissionRolesDistinguishTrustedAndIsolatedRuntimes() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        const auto writeSidecar = [&](const QString& relativePath,
+                                      const QJsonObject& object) {
+            const QString path = dir.filePath(relativePath);
+            QVERIFY(QDir().mkpath(QFileInfo(path).absolutePath()));
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            QCOMPARE(file.write(QJsonDocument(object).toJson(QJsonDocument::Compact)) >= 0,
+                     true);
+        };
+        writeSidecar(QStringLiteral("plugins/native_perm/metadata.json"), QJsonObject{
+            {QStringLiteral("id"), QStringLiteral("native_perm")},
+            {QStringLiteral("apiVersion"), 2},
+            {QStringLiteral("capabilities"), QJsonArray{QStringLiteral("barItem")}},
+            {QStringLiteral("permissions"),
+             QJsonArray{QStringLiteral("notifications"), QStringLiteral("native.direct")}},
+        });
+        writeSidecar(QStringLiteral("plugins_py/py_perm/plugin.json"), QJsonObject{
+            {QStringLiteral("id"), QStringLiteral("py_perm")},
+            {QStringLiteral("apiVersion"), 2},
+            {QStringLiteral("capabilities"),
+             QJsonArray{QStringLiteral("barItem"), QStringLiteral("popup")}},
+            {QStringLiteral("permissions"),
+             QJsonArray{QStringLiteral("storage.private"), QStringLiteral("network.any")}},
+        });
+
+        SettingsPluginModel model;
+        model.reload({}, {}, dir.path(), dir.filePath(QStringLiteral("config.json")));
+        const auto rowForId = [&](const QString& id) {
+            for (int row = 0; row < model.rowCount(); ++row) {
+                if (model.data(model.index(row), SettingsPluginModel::IdRole).toString() == id)
+                    return row;
+            }
+            return -1;
+        };
+
+        const int nativeRow = rowForId(QStringLiteral("native_perm"));
+        QVERIFY(nativeRow >= 0);
+        QCOMPARE(model.data(model.index(nativeRow), SettingsPluginModel::ApiVersionRole).toInt(), 2);
+        QCOMPARE(model.data(model.index(nativeRow), SettingsPluginModel::TrustLevelRole).toString(),
+                 QStringLiteral("trusted-in-process"));
+        QCOMPARE(model.data(model.index(nativeRow),
+                            SettingsPluginModel::DeclaredPermissionsRole).toStringList(),
+                 QStringList({QStringLiteral("notifications"), QStringLiteral("native.direct")}));
+        QCOMPARE(model.data(model.index(nativeRow),
+                            SettingsPluginModel::GrantedPermissionsRole).toStringList(),
+                 QStringList({QStringLiteral("notifications"), QStringLiteral("native.direct")}));
+
+        const int pythonRow = rowForId(QStringLiteral("py_perm"));
+        QVERIFY(pythonRow >= 0);
+        QCOMPARE(model.data(model.index(pythonRow), SettingsPluginModel::TrustLevelRole).toString(),
+                 QStringLiteral("isolated"));
+        QCOMPARE(model.data(model.index(pythonRow),
+                            SettingsPluginModel::CapabilitiesRole).toStringList(),
+                 QStringList({QStringLiteral("barItem"), QStringLiteral("popup")}));
+        QCOMPARE(model.data(model.index(pythonRow),
+                            SettingsPluginModel::GrantedPermissionsRole).toStringList(),
+                 QStringList({QStringLiteral("storage.private")}));
     }
 
     void secretReferenceHydratesOnlyForOwningPlugin() {

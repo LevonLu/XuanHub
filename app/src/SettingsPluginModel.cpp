@@ -1,6 +1,7 @@
 // SettingsPluginModel.cpp
 #include "SettingsPluginModel.h"
 #include "SecretStore.h"
+#include "barplugin/HostServices.h"
 
 #include <QColor>
 #include <QCoreApplication>
@@ -9,7 +10,6 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonDocument>
-#include <QSet>
 #include <QUuid>
 #include <QtMath>
 
@@ -263,6 +263,11 @@ QVariant SettingsPluginModel::data(const QModelIndex& index, int role) const {
         case GroupKeyRole:
             return (r.enabled ? QStringLiteral("enabled-") : QStringLiteral("disabled-"))
                    + r.position;
+        case ApiVersionRole:             return r.apiVersion;
+        case CapabilitiesRole:           return r.capabilities;
+        case DeclaredPermissionsRole:    return r.declaredPermissions;
+        case GrantedPermissionsRole:     return r.grantedPermissions;
+        case TrustLevelRole:             return r.trustLevel;
     }
     return {};
 }
@@ -334,6 +339,11 @@ QHash<int, QByteArray> SettingsPluginModel::roleNames() const {
         { SetConfigValueRole, "setConfigValue" },
         { DiscoveredRole, "discovered" },
         { GroupKeyRole, "groupKey" },
+        { ApiVersionRole, "apiVersion" },
+        { CapabilitiesRole, "capabilities" },
+        { DeclaredPermissionsRole, "declaredPermissions" },
+        { GrantedPermissionsRole, "grantedPermissions" },
+        { TrustLevelRole, "trustLevel" },
     };
 }
 
@@ -390,6 +400,22 @@ void SettingsPluginModel::mergeDiscovered(const QJsonObject& meta, const QString
 
     // sidecar 声明的设置 schema 与自绘设置页（均可空）
     const QJsonArray schema = meta.value(QStringLiteral("settings")).toArray();
+    const int apiVersion = meta.value(QStringLiteral("apiVersion")).toInt(1);
+    QStringList capabilities;
+    for (const QJsonValue& value : meta.value(QStringLiteral("capabilities")).toArray())
+        if (value.isString()) capabilities.append(value.toString());
+    if (kind == QLatin1String("python") && capabilities.isEmpty())
+        capabilities.append(QStringLiteral("barItem"));
+    QStringList declaredPermissions;
+    for (const QJsonValue& value : meta.value(QStringLiteral("permissions")).toArray())
+        if (value.isString()) declaredPermissions.append(value.toString());
+    const QString trustLevel = kind == QLatin1String("python")
+        ? QStringLiteral("isolated") : QStringLiteral("trusted-in-process");
+    const QStringList grantedPermissions = xuanhub::grantedHostPermissions(
+        trustLevel == QLatin1String("trusted-in-process")
+            ? xuanhub::HostPluginTrustLevel::TrustedInProcess
+            : xuanhub::HostPluginTrustLevel::Isolated,
+        declaredPermissions);
     QUrl settingsQml;
     const QString rel = meta.value(QStringLiteral("settingsQml")).toString();
     if (!rel.isEmpty())
@@ -404,6 +430,11 @@ void SettingsPluginModel::mergeDiscovered(const QJsonObject& meta, const QString
             r.author = meta.value(QStringLiteral("author")).toString();
             r.schema = schema;
             r.settingsQml = settingsQml;
+            r.apiVersion = apiVersion;
+            r.capabilities = capabilities;
+            r.declaredPermissions = declaredPermissions;
+            r.grantedPermissions = grantedPermissions;
+            r.trustLevel = trustLevel;
             return;
         }
     }
@@ -416,6 +447,11 @@ void SettingsPluginModel::mergeDiscovered(const QJsonObject& meta, const QString
     r.author = meta.value(QStringLiteral("author")).toString();
     r.schema = schema;
     r.settingsQml = settingsQml;
+    r.apiVersion = apiVersion;
+    r.capabilities = capabilities;
+    r.declaredPermissions = declaredPermissions;
+    r.grantedPermissions = grantedPermissions;
+    r.trustLevel = trustLevel;
     m_rows.append(r);
 }
 

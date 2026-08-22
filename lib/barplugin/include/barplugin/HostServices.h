@@ -116,4 +116,31 @@ public:
 
 inline constexpr int kHostServicesApiVersion = 1;
 
+// 隔离运行时只能通过宿主显式提供的权限访问受控能力。此清单同时供加载器、
+// 设置界面和安装器复用，避免“界面显示已授权、运行时却拒绝”的口径漂移。
+inline const QStringList& supportedIsolatedHostPermissions() {
+    static const QStringList permissions{
+        QStringLiteral("notifications"),
+        QStringLiteral("storage.private"),
+        QStringLiteral("secrets.own"),
+        QStringLiteral("shell.openUrl"),
+        QStringLiteral("shell.openFile"),
+    };
+    return permissions;
+}
+
+inline QStringList grantedHostPermissions(HostPluginTrustLevel trustLevel,
+                                          const QStringList& declaredPermissions) {
+    if (trustLevel == HostPluginTrustLevel::TrustedInProcess)
+        return declaredPermissions;
+
+    QStringList granted;
+    const QStringList& supported = supportedIsolatedHostPermissions();
+    for (const QString& permission : declaredPermissions) {
+        if (supported.contains(permission) && !granted.contains(permission))
+            granted.append(permission);
+    }
+    return granted;
+}
+
 } // namespace xuanhub
