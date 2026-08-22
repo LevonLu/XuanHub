@@ -71,6 +71,18 @@ Pane {
         return (enabled ? trText("已启用") : trText("未启用"))
                 + " · " + positionLabel(position)
     }
+    function healthLabel(state) {
+        if (state === "starting") return trText("正在启动")
+        if (state === "running") return trText("运行正常")
+        if (state === "degraded") return trText("运行异常")
+        if (state === "restarting") return trText("正在重启")
+        if (state === "failed") return trText("启动失败")
+        if (state === "circuitOpen") return trText("已熔断")
+        if (state === "stopping") return trText("正在停止")
+        if (state === "stopped") return trText("已停止")
+        if (state === "disabled") return trText("已停用")
+        return trText("等待启动")
+    }
 
     // 插件设置草稿读取：config 无该键时用 schema default 兜底（类型化表单与自绘页共用）
     function draftValue(key, def) {
@@ -732,7 +744,8 @@ Pane {
                                         "width": m.roleValue(currentRow, "width"),
                                         "discovered": m.roleValue(currentRow, "discovered"),
                                         "schema": m.roleValue(currentRow, "schema"),
-                                        "settingsQml": m.roleValue(currentRow, "settingsQml")
+                                        "settingsQml": m.roleValue(currentRow, "settingsQml"),
+                                        "health": settingsVM.pluginHealth(pluginList.currentId)
                                     }
                                 }
                                 _refreshing = false
@@ -750,6 +763,13 @@ Pane {
                                 function onModelReset() { detailPanel.refresh() }
                                 function onRowsInserted() { detailPanel.refresh() }
                                 function onRowsRemoved() { detailPanel.refresh() }
+                            }
+                            Connections {
+                                target: settingsVM
+                                function onPluginHealthChanged(id) {
+                                    if (id.length === 0 || id === pluginList.currentId)
+                                        detailPanel.refresh()
+                                }
                             }
                             // 草稿桥始终指向当前选中插件（schema 表单与自绘页都经它读写）。
                             // 注意：pluginId 的切换在 pluginList.onCurrentIdChanged 里显式
@@ -843,6 +863,70 @@ Pane {
                                         Layout.fillWidth: true
                                         spacing: 10
                                         visible: detailPanel.rowData.enabled === true
+
+                                        UiCard {
+                                            Layout.fillWidth: true
+                                            visible: Object.keys(detailPanel.rowData.health || {}).length > 0
+                                            title: root.trText("运行状态")
+                                            description: root.trText("显示插件当前健康状态和最近一次运行错误")
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                spacing: UiMetrics.space2
+                                                Rectangle {
+                                                    width: 10; height: 10; radius: 5
+                                                    property string state: String(
+                                                        (detailPanel.rowData.health || {}).state || "discovered")
+                                                    color: state === "running" ? root.c.success
+                                                         : (state === "failed" || state === "circuitOpen")
+                                                           ? root.c.danger
+                                                         : (state === "restarting" || state === "degraded")
+                                                           ? root.c.warning : root.c.muted
+                                                }
+                                                Text {
+                                                    color: root.c.fg
+                                                    font.pixelSize: UiMetrics.fontM
+                                                    font.weight: Font.DemiBold
+                                                    text: root.healthLabel(String(
+                                                        (detailPanel.rowData.health || {}).state || "discovered"))
+                                                }
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    color: root.c.muted
+                                                    font.pixelSize: UiMetrics.fontTiny
+                                                    text: root.trText("连续失败：%1 · 重启次数：%2 · 队列：%3")
+                                                        .arg(Number((detailPanel.rowData.health || {}).consecutiveFailures || 0))
+                                                        .arg(Number((detailPanel.rowData.health || {}).restartCount || 0))
+                                                        .arg(Number((detailPanel.rowData.health || {}).queueDepth || 0))
+                                                    elide: Text.ElideRight
+                                                }
+                                                UiButton {
+                                                    visible: detailPanel.rowData.kind === "python"
+                                                    variant: "outline"
+                                                    text: root.trText("重新启动插件")
+                                                    Layout.preferredWidth: Math.max(112, implicitWidth)
+                                                    onClicked: settingsVM.restartPlugin(pluginList.currentId)
+                                                }
+                                            }
+                                            ColumnLayout {
+                                                Layout.fillWidth: true
+                                                visible: String((detailPanel.rowData.health || {}).lastError || "").length > 0
+                                                spacing: UiMetrics.space1
+                                                Text {
+                                                    text: root.trText("最近错误")
+                                                    color: root.c.danger
+                                                    font.pixelSize: UiMetrics.fontS
+                                                    font.weight: Font.DemiBold
+                                                }
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: String((detailPanel.rowData.health || {}).lastError || "")
+                                                    color: root.c.muted
+                                                    font.pixelSize: UiMetrics.fontTiny
+                                                    wrapMode: Text.Wrap
+                                                }
+                                            }
+                                        }
 
                                         UiCard {
                                             Layout.fillWidth: true

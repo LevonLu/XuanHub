@@ -8,6 +8,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
 
 class QAbstractItemModel;
 class ConfigService;
@@ -74,6 +75,8 @@ public:
     // 部件在 bar 上的当前自然内容宽度（PluginSlot 实时上报）；
     // 设置页「手动」宽度的初始值。无记录（插件未加载）返回 0。
     Q_INVOKABLE int pluginContentWidth(const QString& id) const;
+    Q_INVOKABLE QVariantMap pluginHealth(const QString& id) const;
+    Q_INVOKABLE bool restartPlugin(const QString& id);
 
 signals:
     void barHeightChanged();
@@ -86,6 +89,7 @@ signals:
     void autoStartChanged();
     void languageChanged();
     void errorMessageChanged();
+    void pluginHealthChanged(const QString& id);
 
 private:
     void setErrorMessage(const QString& m);

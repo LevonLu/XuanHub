@@ -35,6 +35,19 @@ SettingsViewModel::SettingsViewModel(ConfigService* config, ThemeRegistry* regis
             setErrorMessage({});
         });
     }
+    if (m_barPlugins) {
+        connect(m_barPlugins, &QAbstractItemModel::dataChanged, this,
+                [this](const QModelIndex& first, const QModelIndex& last) {
+            for (int row = first.row(); row <= last.row(); ++row) {
+                const QString id = m_barPlugins->data(
+                    m_barPlugins->index(row), PluginListModel::IdRole).toString();
+                if (!id.isEmpty()) emit pluginHealthChanged(id);
+            }
+        });
+        connect(m_barPlugins, &QAbstractItemModel::modelReset, this, [this] {
+            emit pluginHealthChanged({});
+        });
+    }
 }
 
 QAbstractItemModel* SettingsViewModel::pluginModel() const { return m_sortModel; }
@@ -43,6 +56,14 @@ QObject* SettingsViewModel::pluginProxy() const { return m_pluginProxy; }
 
 int SettingsViewModel::pluginContentWidth(const QString& id) const {
     return m_barPlugins ? m_barPlugins->contentWidth(id) : 0;
+}
+
+QVariantMap SettingsViewModel::pluginHealth(const QString& id) const {
+    return m_barPlugins ? m_barPlugins->health(id) : QVariantMap{};
+}
+
+bool SettingsViewModel::restartPlugin(const QString& id) {
+    return m_barPlugins && m_barPlugins->restartPlugin(id);
 }
 
 QStringList SettingsViewModel::themePackNames() const {

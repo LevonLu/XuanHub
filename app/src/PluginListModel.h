@@ -54,6 +54,8 @@ public:
     Q_INVOKABLE void reportContentWidth(const QString& id, int w);
     // 插件代理或 PluginSlot 以稳定字段增量上报；未提供的指标保持原值。
     Q_INVOKABLE void reportHealth(const QString& id, const QVariantMap& update);
+    Q_INVOKABLE QVariantMap health(const QString& id) const;
+    Q_INVOKABLE bool restartPlugin(const QString& id);
     int contentWidth(const QString& id) const;   // 无记录返回 0
 
 private:

@@ -148,6 +148,35 @@ void PluginListModel::reportHealth(const QString& id, const QVariantMap& update)
     });
 }
 
+QVariantMap PluginListModel::health(const QString& id) const {
+    for (const auto& item : m_items) {
+        if (item.id != id) continue;
+        return {
+            {QStringLiteral("state"), xuanhub::pluginStateKey(item.health.state)},
+            {QStringLiteral("lastError"), item.health.lastError},
+            {QStringLiteral("lastErrorAt"), item.health.lastErrorAt},
+            {QStringLiteral("startedAt"), item.health.startedAt},
+            {QStringLiteral("lastHealthyAt"), item.health.lastHealthyAt},
+            {QStringLiteral("restartCount"), item.health.restartCount},
+            {QStringLiteral("consecutiveFailures"), item.health.consecutiveFailures},
+            {QStringLiteral("loadDurationMs"), item.health.loadDurationMs},
+            {QStringLiteral("queueDepth"), item.health.queueDepth},
+        };
+    }
+    return {};
+}
+
+bool PluginListModel::restartPlugin(const QString& id) {
+    for (const auto& item : m_items) {
+        if (item.id != id || !item.vm) continue;
+        bool result = false;
+        const bool invoked = QMetaObject::invokeMethod(
+            item.vm, "restart", Qt::DirectConnection, Q_RETURN_ARG(bool, result));
+        return invoked && result;
+    }
+    return false;
+}
+
 int PluginListModel::contentWidth(const QString& id) const {
     return m_contentWidths.value(id, 0);
 }

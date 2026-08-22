@@ -4,6 +4,16 @@
 #include <QTimeZone>
 #include <QtTest>
 
+class RestartableViewModel final : public QObject {
+    Q_OBJECT
+public:
+    Q_INVOKABLE bool restart() {
+        restarted = true;
+        return true;
+    }
+    bool restarted = false;
+};
+
 class PluginListModelTest final : public QObject {
     Q_OBJECT
 
@@ -75,6 +85,32 @@ private Q_SLOTS:
         QCOMPARE(model.data(index, PluginListModel::QueueDepthRole).toInt(), 1);
         QCOMPARE(model.data(index, PluginListModel::StartedAtRole).toDateTime(),
                  plugin.health.startedAt);
+    }
+
+    void returnsHealthAndRestartsOnlyTargetPlugin() {
+        RestartableViewModel firstViewModel;
+        RestartableViewModel secondViewModel;
+        PluginManager::LoadedPlugin first;
+        first.id = QStringLiteral("first");
+        first.viewModel = &firstViewModel;
+        first.health.state = xuanhub::PluginState::CircuitOpen;
+        first.health.lastError = QStringLiteral("worker exited");
+        PluginManager::LoadedPlugin second;
+        second.id = QStringLiteral("second");
+        second.viewModel = &secondViewModel;
+
+        PluginListModel model;
+        model.setPlugins({first, second});
+        const QVariantMap health = model.health(QStringLiteral("first"));
+        QCOMPARE(health.value(QStringLiteral("state")).toString(),
+                 QStringLiteral("circuitOpen"));
+        QCOMPARE(health.value(QStringLiteral("lastError")).toString(),
+                 QStringLiteral("worker exited"));
+
+        QVERIFY(model.restartPlugin(QStringLiteral("first")));
+        QVERIFY(firstViewModel.restarted);
+        QVERIFY(!secondViewModel.restarted);
+        QVERIFY(!model.restartPlugin(QStringLiteral("missing")));
     }
 };
 
