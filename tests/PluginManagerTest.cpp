@@ -102,6 +102,8 @@ private Q_SLOTS:
         manager.loadFrom(pluginsDir, {clock, menu});
 
         QVERIFY(manager.loadedPlugin(clock.id));
+        QCOMPARE(manager.loadedPlugin(clock.id)->apiVersion, 2);
+        QCOMPARE(manager.loadedPlugin(menu.id)->apiVersion, 1);
         const QObject* menuViewModel = manager.loadedPlugin(menu.id)->viewModel;
         const QObject* clockViewModel = manager.loadedPlugin(clock.id)->viewModel;
         QVERIFY(menuViewModel);

@@ -2,7 +2,22 @@
     "id": "clock",
     "name": "Clock",
     "version": "0.1.0",
+    "apiVersion": 2,
+    "minHostVersion": "0.2.1",
+    "maxHostVersion": "0.x",
     "author": "XuanHub",
+    "entry": {
+        "backend": "clock.dll",
+        "qml": "Clock.qml"
+    },
+    "capabilities": ["barItem", "settings", "popup"],
+    "permissions": [],
+    "compatibility": {
+        "architecture": "x64",
+        "qtVersion": "6.9.3",
+        "compiler": "msvc2022",
+        "crt": "dynamic"
+    },
     "settings": [
         { "group": "显示", "fields": [
             { "key": "format", "type": "string", "label": "时间格式", "default": "HH:mm:ss",

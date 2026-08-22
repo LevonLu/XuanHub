@@ -212,6 +212,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                 : rel;
             LoadedPlugin lp;
             lp.id = descriptor.id;
+            lp.apiVersion = descriptor.apiVersion;
             lp.position = pos;
             lp.order = entry->order;
             lp.width = entry->width;
