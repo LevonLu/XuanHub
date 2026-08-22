@@ -132,6 +132,45 @@ class CreateTemplateTest(unittest.TestCase):
             self.assertEqual(validation["plugin"]["runtime"], "native")
 
 
+class PackageCommandTest(unittest.TestCase):
+    def test_packages_valid_plugin_through_pf09_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            source.mkdir()
+            write_plugin(source)
+            output = root / "py_demo-1.2.3.xuanplugin"
+            completed = subprocess.run(
+                [sys.executable, str(CLI_PATH), "package", str(source),
+                 "--output", str(output), "--json"],
+                check=False, capture_output=True, text=True, encoding="utf-8",
+            )
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            result = json.loads(completed.stdout)
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["command"], "package")
+            self.assertEqual(result["package"]["signatureStatus"], "unsigned")
+            self.assertTrue(output.is_file())
+
+    def test_refuses_artifact_before_packaging(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            source.mkdir()
+            write_plugin(source)
+            (source / "runtime.log").write_text("secret", encoding="utf-8")
+            output = root / "rejected.xuanplugin"
+            completed = subprocess.run(
+                [sys.executable, str(CLI_PATH), "package", str(source),
+                 "--output", str(output), "--json"],
+                check=False, capture_output=True, text=True, encoding="utf-8",
+            )
+            self.assertEqual(completed.returncode, 1)
+            result = json.loads(completed.stdout)
+            self.assertFalse(result["ok"])
+            self.assertFalse(output.exists())
+
+
 class WorkerHarnessTest(unittest.TestCase):
     def test_runs_protocol_v2_lifecycle_without_qt(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

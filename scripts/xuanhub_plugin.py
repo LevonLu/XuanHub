@@ -27,6 +27,11 @@ except ImportError:
         sys.path.insert(0, scripts_directory)
     from plugin_templates import create_plugin, TemplateError
 
+try:
+    from . import package_plugin as package_builder
+except ImportError:
+    import package_plugin as package_builder
+
 
 RESULT_SCHEMA_VERSION = 1
 ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
@@ -685,6 +690,35 @@ def run_qml_smoke(args: argparse.Namespace) -> dict[str, Any]:
     return smoke
 
 
+def package_plugin_command(args: argparse.Namespace) -> dict[str, Any]:
+    validation = Validator(args.plugin_dir).validate()
+    validation["command"] = "package"
+    if validation["summary"]["errors"]:
+        return validation
+    try:
+        packaged = package_builder.package_plugin(
+            args.plugin_dir.resolve(), args.output.resolve(),
+            validation["plugin"]["runtime"], args.publisher,
+            args.signing_key.resolve() if args.signing_key else None,
+        )
+    except (OSError, package_builder.PackageError,
+            package_builder.SigningError) as error:
+        validation["ok"] = False
+        validation["summary"]["errors"] += 1
+        validation["diagnostics"].append(asdict(Diagnostic(
+            "error", "package.failed", f"插件包安全门禁失败：{error}")))
+        return validation
+    return {
+        "schemaVersion": RESULT_SCHEMA_VERSION,
+        "command": "package",
+        "ok": True,
+        "plugin": validation["plugin"],
+        "summary": validation["summary"],
+        "diagnostics": validation["diagnostics"],
+        "package": packaged,
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="xuanhub-plugin", description="XuanHub 插件开发者工具")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -718,6 +752,13 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--timeout", type=float, default=15.0)
     run.add_argument("--screenshot", type=Path,
                      help="可选输出 PNG，仅供人工视觉对比，不作为像素级门禁")
+    package = subparsers.add_parser(
+        "package", help="经 Validator 和 PF-09 安全门禁创建 .xuanplugin")
+    package.add_argument("plugin_dir", type=Path)
+    package.add_argument("--output", type=Path, required=True)
+    package.add_argument("--publisher", default="")
+    package.add_argument("--signing-key", type=Path)
+    package.add_argument("--json", action="store_true", dest="json_output")
     return parser
 
 
@@ -777,6 +818,17 @@ def main(argv: list[str] | None = None) -> int:
             print(format_text(result))
             if result.get("ok"):
                 print(f"SIZE {result.get('width')} x {result.get('height')}")
+        return 0 if result["ok"] else 1
+    if args.command == "package":
+        result = package_plugin_command(args)
+        if args.json_output:
+            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_text(result))
+            if result.get("ok"):
+                package = result["package"]
+                print(f"PACKAGE {package['path']}")
+                print(package["sha256"])
         return 0 if result["ok"] else 1
     return 2
 
