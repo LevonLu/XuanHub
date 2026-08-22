@@ -5,6 +5,7 @@
 #include "ConfigService.h"
 #include "PluginListModel.h"
 #include "PluginManager.h"
+#include "PluginChangeSet.h"
 #include "ThemeManager.h"
 #include "ThemeRegistry.h"
 #include "LocaleManager.h"
@@ -14,27 +15,6 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
-
-namespace {
-// plugins 段指纹：条目按文件序序列化为紧凑 JSON。
-// 用于判断"这次保存到底动没动插件配置"——没动就不做全量重载
-QString pluginsFingerprint(const QList<PluginConfigEntry>& entries) {
-    QJsonArray arr;
-    for (const auto& e : entries) {
-        QJsonObject o;
-        o.insert(QStringLiteral("id"), e.id);
-        o.insert(QStringLiteral("position"), e.position);
-        o.insert(QStringLiteral("order"), e.order);
-        o.insert(QStringLiteral("width"), e.width);
-        o.insert(QStringLiteral("config"), QJsonObject::fromVariantMap(e.config));
-        arr.append(o);
-    }
-    return QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
-}
-} // namespace
 
 ConfigHotReloader::ConfigHotReloader(ConfigService* config, ThemeManager* theme,
                                      ThemeRegistry* registry,
@@ -62,7 +42,7 @@ ConfigHotReloader::ConfigHotReloader(ConfigService* config, ThemeManager* theme,
     armWatcher();
     // 构造晚于 main() 的首次 loadFrom：以当前生效的插件配置为基准指纹，
     // 之后 watcher 触发的 reload 才能识别"plugins 段其实没变"
-    m_pluginsFingerprint = pluginsFingerprint(m_config->pluginEntries());
+    m_pluginsFingerprint = PluginConfigDiff::entriesFingerprint(m_config->pluginEntries());
 }
 
 void ConfigHotReloader::armWatcher() {
@@ -119,7 +99,7 @@ void ConfigHotReloader::reloadImpl(bool force) {
     // 子插件运行时）。顺序铁律：先 shutdown 删光插件对象再 load，
     // 全程在同一槽函数内完成（不经事件循环），QML 不会访问悬空 viewModel；
     // setPlugins 内部 begin/endResetModel 驱动 ListView 重建 delegate
-    const QString fp = pluginsFingerprint(m_config->pluginEntries());
+    const QString fp = PluginConfigDiff::entriesFingerprint(m_config->pluginEntries());
     if (!force && fp == m_pluginsFingerprint) {
         // 高度/边缘/模式仍可能变化：无插件重载时直接重新协商并定位。
         m_window->setupBar();

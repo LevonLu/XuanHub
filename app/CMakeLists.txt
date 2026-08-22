@@ -32,6 +32,9 @@ qt_add_executable(XuanHub WIN32
     src/ConfigHotReloader.h
     src/ConfigHotReloader.cpp
 
+    src/PluginChangeSet.h
+    src/PluginChangeSet.cpp
+
     src/AutoStart.h
 
     src/SettingsViewModel.h
