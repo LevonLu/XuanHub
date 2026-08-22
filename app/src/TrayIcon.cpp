@@ -4,6 +4,7 @@
 #include "ConfigService.h"
 #include "AutoStart.h"
 #include "LocaleManager.h"
+#include "PluginActionRegistry.h"
 #include "barplugin/EventBus.h"
 
 #include <QJsonObject>
@@ -89,6 +90,11 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
     m_reloadAction = m_menu->addAction(QString());
     connect(m_reloadAction, &QAction::triggered, this, &TrayIcon::reloadRequested);
 
+    // 插件动作使用独立子菜单，内容由 Manifest 声明和运行时状态共同决定。
+    // 未安装带 tray 动作的插件时隐藏入口，不占用原有菜单空间。
+    m_pluginActionsMenu = m_menu->addMenu(QString());
+    m_pluginActionsMenu->menuAction()->setVisible(false);
+
     m_menu->addSeparator();
     m_quitAction = m_menu->addAction(QString());
     connect(m_quitAction, &QAction::triggered, []() { QCoreApplication::quit(); });
@@ -113,11 +119,47 @@ void TrayIcon::retranslate() {
         "xuanhub.tray", "切换深色/浅色"));
     m_reloadAction->setText(QCoreApplication::translate(
         "xuanhub.tray", "重新加载配置"));
+    m_pluginActionsMenu->setTitle(QCoreApplication::translate(
+        "xuanhub.tray", "插件操作"));
     m_quitAction->setText(QCoreApplication::translate(
         "xuanhub.tray", "退出"));
 }
 
 void TrayIcon::show() { m_tray->show(); }
+
+void TrayIcon::setPluginActions(PluginActionRegistry* actions) {
+    if (m_pluginActions == actions) return;
+    if (m_pluginActions) disconnect(m_pluginActions, nullptr, this, nullptr);
+    m_pluginActions = actions;
+    if (m_pluginActions) {
+        // 动作可能在触发过程中同步改变状态；排队重建可避免删除仍在派发
+        // triggered 信号的 QAction。
+        connect(m_pluginActions, &PluginActionRegistry::actionsChanged,
+                this, &TrayIcon::rebuildPluginActions, Qt::QueuedConnection);
+    }
+    rebuildPluginActions();
+}
+
+void TrayIcon::rebuildPluginActions() {
+    if (!m_pluginActionsMenu) return;
+    m_pluginActionsMenu->clear();
+    const QVariantList actions = m_pluginActions
+        ? m_pluginActions->actions(QStringLiteral("tray")) : QVariantList{};
+    for (const QVariant& value : actions) {
+        const QVariantMap item = value.toMap();
+        auto* action = m_pluginActionsMenu->addAction(
+            item.value(QStringLiteral("label")).toString());
+        action->setEnabled(item.value(QStringLiteral("enabled"), true).toBool());
+        action->setCheckable(item.value(QStringLiteral("checkable")).toBool());
+        action->setChecked(item.value(QStringLiteral("checked")).toBool());
+        const QString pluginId = item.value(QStringLiteral("pluginId")).toString();
+        const QString actionId = item.value(QStringLiteral("actionId")).toString();
+        connect(action, &QAction::triggered, this, [this, pluginId, actionId] {
+            if (m_pluginActions) m_pluginActions->invoke(pluginId, actionId);
+        });
+    }
+    m_pluginActionsMenu->menuAction()->setVisible(!actions.isEmpty());
+}
 
 TrayIcon::~TrayIcon() {
     // m_menu 以无父方式创建（setContextMenu 不接管所有权），须显式释放

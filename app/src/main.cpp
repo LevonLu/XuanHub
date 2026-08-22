@@ -21,6 +21,7 @@
 #include "ConfigHotReloader.h"
 #include "ConfigService.h"
 #include "PluginManager.h"
+#include "PluginActionRegistry.h"
 #include "PluginListModel.h"
 #include "SettingsController.h"
 #include "ThemeManager.h"
@@ -175,12 +176,14 @@ int main(int argc, char* argv[]) {
     PluginManager pm(&bus, configDir, std::move(pluginHostEnvironment));
     pm.loadFrom(QDir(exeDir).absoluteFilePath(QStringLiteral("plugins")),
                 config.pluginEntries());
+    PluginActionRegistry pluginActions(&pm, &locale);
+    tray.setPluginActions(&pluginActions);
 
     PluginListModel model;
     model.setPlugins(pm.loaded());
     model.setLoadErrors(pm.loadErrors());
 
-    BarWindow window(&config, &model, &theme, &locale);
+    BarWindow window(&config, &model, &theme, &locale, &pluginActions);
     window.create();
     window.setupBar();
     window.show();

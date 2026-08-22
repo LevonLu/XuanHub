@@ -11,6 +11,7 @@ class TaskbarEmbed;
 class PluginListModel;
 class LocaleManager;
 class PopupService;
+class PluginActionRegistry;
 
 class ThemeManager;
 
@@ -19,6 +20,7 @@ class BarWindow : public QQuickView {
 public:
     explicit BarWindow(ConfigService* config, PluginListModel* model,
                        ThemeManager* theme, LocaleManager* locale,
+                       PluginActionRegistry* pluginActions,
                        QWindow* parent = nullptr);
     ~BarWindow() override;
 

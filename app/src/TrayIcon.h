@@ -7,6 +7,7 @@ namespace xuanhub { class EventBus; }
 class ThemeManager;
 class ConfigService;
 class LocaleManager;
+class PluginActionRegistry;
 class QSystemTrayIcon;
 class QMenu;
 class QAction;
@@ -21,6 +22,7 @@ public:
 
     void show();
     void recreate();               // Explorer 重启后重建托盘图标
+    void setPluginActions(PluginActionRegistry* actions);
 
 signals:
     void settingsRequested();    // 菜单 "设置..." 触发（M8 设置窗口）
@@ -34,6 +36,7 @@ private slots:
     void onQuickMenuCommand(QVariantMap payload);  // bar 菜单插件复用托盘动作
     void publishQuickMenuState(QVariantMap payload = {});  // 向插件回传当前勾选状态
     void retranslate();
+    void rebuildPluginActions();
 
 private:
     QSystemTrayIcon* m_tray = nullptr;
@@ -41,7 +44,9 @@ private:
     ConfigService*   m_config;
     xuanhub::EventBus* m_bus;
     LocaleManager*    m_locale;
+    PluginActionRegistry* m_pluginActions = nullptr;
     QMenu*           m_menu = nullptr;
+    QMenu*           m_pluginActionsMenu = nullptr;
     QAction*         m_autoStartAction = nullptr;
     QAction*         m_taskbarModeAction = nullptr;
     QAction*         m_settingsAction = nullptr;
