@@ -23,6 +23,37 @@ xuanhub::PluginLayoutPreference responsive(int minWidth, int preferredWidth,
 class ResponsiveLayoutEngineTest final : public QObject {
     Q_OBJECT
 private Q_SLOTS:
+    void adaptsAcrossWidthBudgets_data() {
+        QTest::addColumn<int>("availableWidth");
+        QTest::addColumn<int>("importantWidth");
+        QTest::addColumn<int>("optionalWidth");
+        QTest::addColumn<bool>("optionalVisible");
+
+        QTest::newRow("wide-1920") << 1920 << 100 << 120 << true;
+        QTest::newRow("medium-240") << 240 << 100 << 60 << true;
+        QTest::newRow("narrow-180") << 180 << 60 << 0 << false;
+    }
+
+    void adaptsAcrossWidthBudgets() {
+        QFETCH(int, availableWidth);
+        QFETCH(int, importantWidth);
+        QFETCH(int, optionalWidth);
+        QFETCH(bool, optionalVisible);
+
+        const QVector<ResponsiveLayoutEngine::Item> items{
+            {QStringLiteral("legacy"), 80, 0, {}},
+            {QStringLiteral("important"), 100, 0, responsive(60, 100, 90)},
+            {QStringLiteral("optional"), 120, 0,
+             responsive(50, 120, 10, QStringLiteral("menu"))},
+        };
+        const auto result = ResponsiveLayoutEngine::allocate(availableWidth, items);
+        QCOMPARE(result.at(0).width, 80);
+        QCOMPARE(result.at(1).width, importantWidth);
+        QCOMPARE(result.at(2).width, optionalWidth);
+        QCOMPARE(result.at(2).visible, optionalVisible);
+        QCOMPARE(result.at(2).overflowed, !optionalVisible);
+    }
+
     void preservesLegacyAndFixedWidths() {
         const QVector<ResponsiveLayoutEngine::Item> items{
             {QStringLiteral("legacy"), 80, 0, {}},
