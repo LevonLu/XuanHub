@@ -65,6 +65,31 @@ add_custom_command(TARGET xuanhub_locale_tests POST_BUILD
 )
 add_test(NAME xuanhub_locale_tests COMMAND xuanhub_locale_tests)
 
+add_executable(xuanhub_qml_smoke
+    QmlSmokeMain.cpp
+)
+set_target_properties(xuanhub_qml_smoke PROPERTIES AUTOMOC ON)
+set_target_properties(xuanhub_qml_smoke PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${XUANHUB_BIN_DIR}")
+target_link_libraries(xuanhub_qml_smoke PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
+)
+add_dependencies(xuanhub_qml_smoke XuanHub)
+if(TARGET Qt6::QOffscreenIntegrationPlugin)
+    add_custom_command(TARGET xuanhub_qml_smoke POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:Qt6::QOffscreenIntegrationPlugin>"
+            "${XUANHUB_BIN_DIR}/platforms/$<TARGET_FILE_NAME:Qt6::QOffscreenIntegrationPlugin>"
+        VERBATIM)
+endif()
+add_test(NAME xuanhub_qml_smoke_hello
+    COMMAND xuanhub_qml_smoke
+        "${CMAKE_SOURCE_DIR}/plugins_py/hello/Hello.qml"
+        "${CMAKE_SOURCE_DIR}/app/qml/PluginPopup.qml")
+set_tests_properties(xuanhub_qml_smoke_hello PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORM_PLUGIN_PATH=${XUANHUB_BIN_DIR}/platforms;QT_QPA_FONTDIR=$ENV{WINDIR}/Fonts"
+    TIMEOUT 15)
+
 add_executable(xuanhub_popup_service_tests
     PopupServiceTest.cpp
     ${CMAKE_SOURCE_DIR}/app/src/PopupService.h

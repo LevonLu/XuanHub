@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import secrets
 import socket
 import struct
@@ -613,6 +614,70 @@ def test_plugin(args: argparse.Namespace) -> dict[str, Any]:
     return result
 
 
+def run_qml_smoke(args: argparse.Namespace) -> dict[str, Any]:
+    validator = Validator(args.plugin_dir)
+    validation = validator.validate()
+    if validation["summary"]["errors"]:
+        validation["command"] = "run"
+        return validation
+    qml_paths = list(validator._qml_paths())
+    if not qml_paths:
+        validation["ok"] = False
+        validation["command"] = "run"
+        validation["summary"]["errors"] += 1
+        validation["diagnostics"].append(asdict(Diagnostic(
+            "error", "run.qml_missing", "未找到插件主 QML")))
+        return validation
+
+    repository = Path(__file__).resolve().parents[1]
+    runner_candidates = [
+        args.smoke_runner,
+        repository / "build" / "default" / "dist" / "Release" / "xuanhub_qml_smoke.exe",
+        Path(sys.executable).resolve().parent / "xuanhub_qml_smoke.exe",
+    ]
+    runner = next((path for path in runner_candidates if path and path.is_file()), None)
+    popup = args.plugin_popup or repository / "app" / "qml" / "PluginPopup.qml"
+    if runner is None or not popup.is_file():
+        validation["ok"] = False
+        validation["command"] = "run"
+        validation["summary"]["errors"] += 1
+        validation["diagnostics"].append(asdict(Diagnostic(
+            "error", "run.smoke_runner_missing",
+            "缺少已构建的 xuanhub_qml_smoke.exe 或 PluginPopup.qml")))
+        return validation
+
+    environment = dict(os.environ)
+    environment["QT_QPA_PLATFORM"] = "offscreen"
+    environment["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(runner.parent / "platforms")
+    environment["QT_QUICK_BACKEND"] = "software"
+    if environment.get("WINDIR"):
+        environment["QT_QPA_FONTDIR"] = str(Path(environment["WINDIR"]) / "Fonts")
+    try:
+        command = [str(runner), str(qml_paths[0]), str(popup)]
+        if args.screenshot:
+            command.append(str(args.screenshot.resolve()))
+        completed = subprocess.run(
+            command, check=False,
+            capture_output=True, text=True, encoding="utf-8", timeout=args.timeout,
+            env=environment,
+        )
+        smoke = json.loads(completed.stdout)
+        if not isinstance(smoke, dict):
+            raise ValueError("smoke output root is not an object")
+    except (OSError, subprocess.TimeoutExpired, UnicodeError,
+            json.JSONDecodeError, ValueError) as error:
+        validation["ok"] = False
+        validation["command"] = "run"
+        validation["summary"]["errors"] += 1
+        validation["diagnostics"].append(asdict(Diagnostic(
+            "error", "run.smoke_failed", f"QML Smoke Test 无法完成：{error}")))
+        return validation
+    smoke["command"] = "run"
+    smoke["plugin"] = validation["plugin"]
+    smoke["staticValidation"] = validation["summary"]
+    return smoke
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="xuanhub-plugin", description="XuanHub 插件开发者工具")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -631,6 +696,14 @@ def build_parser() -> argparse.ArgumentParser:
     test.add_argument("--locale-switch", default="zh-CN")
     test.add_argument("--invoke", help="显式测试的动作名称；默认不调用动作")
     test.add_argument("--invoke-args", default="[]", help="动作参数 JSON 数组")
+    run = subparsers.add_parser("run", help="在最小 Qt 宿主上下文中执行 QML Smoke Test")
+    run.add_argument("plugin_dir", type=Path)
+    run.add_argument("--json", action="store_true", dest="json_output", help="输出稳定 JSON")
+    run.add_argument("--smoke-runner", type=Path, help="显式指定 xuanhub_qml_smoke.exe")
+    run.add_argument("--plugin-popup", type=Path, help="显式指定宿主 PluginPopup.qml")
+    run.add_argument("--timeout", type=float, default=15.0)
+    run.add_argument("--screenshot", type=Path,
+                     help="可选输出 PNG，仅供人工视觉对比，不作为像素级门禁")
     return parser
 
 
@@ -651,6 +724,15 @@ def main(argv: list[str] | None = None) -> int:
             print(format_text(result))
             for step in result["steps"]:
                 print(f"STEP {step['name']}: {'PASS' if step['ok'] else 'FAIL'}")
+        return 0 if result["ok"] else 1
+    if args.command == "run":
+        result = run_qml_smoke(args)
+        if args.json_output:
+            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_text(result))
+            if result.get("ok"):
+                print(f"SIZE {result.get('width')} x {result.get('height')}")
         return 0 if result["ok"] else 1
     return 2
 
