@@ -92,7 +92,7 @@
 | PF-02 | 插件级增量生命周期与热重载 | P0 | 0.2.2 | 已完成 | PF-01 |
 | PF-03 | SDK V2、Manifest 与兼容性协商 | P1 | 0.3.0 | 已完成 | PF-01 |
 | PF-04 | HostServices、权限与安全边界 | P1 | 0.3.0 | 已完成 | PF-03 |
-| PF-05 | EventBus 2.0 与跨运行时通信 | P1 | 0.3.0 | 待评审 | PF-03、PF-04 |
+| PF-05 | EventBus 2.0 与跨运行时通信 | P1 | 0.3.0 | 已完成 | PF-03、PF-04 |
 | PF-06 | 配置 Schema、迁移、校验与通用密钥 | P1 | 0.3.0 | 待评审 | PF-03、PF-04 |
 | PF-07 | 标准弹窗、动作扩展与响应式布局 | P1 | 0.4.0 | 待评审 | PF-04 |
 | PF-08 | Python Bridge Protocol V2 | P1 | 0.4.0 | 待评审 | PF-01、PF-05 |
@@ -679,14 +679,14 @@ theme.currentPalette
 
 **优先级：** P1
 **目标版本：** 0.3.0
-**状态：** 待评审
+**状态：** 已完成
 
 ### 目标
 
 在保留松耦合 Topic 模型的前提下，增加作用域订阅、请求响应、状态保留、Payload 版本和
 Python 接入，使 EventBus 成为 C++、Python、宿主服务之间统一且可观测的通信层。
 
-### 当前问题
+### 实施前问题
 
 - V1 只有 `publish/subscribe/unsubscribe`。
 - 同线程订阅者可能同步阻塞发布者。
@@ -748,28 +748,28 @@ void setState(topic, payload)
 
 #### 阶段 A：V1 安全层
 
-- [ ] 完成 PF-01 的作用域订阅。
-- [ ] 记录发布来源、订阅数量和槽耗时。
-- [ ] 慢槽只告警，不自动切线程。
+- [x] 完成 PF-01 的作用域订阅。
+- [x] 记录发布来源、订阅数量和槽耗时。
+- [x] 慢槽只告警，不自动切线程。
 
 #### 阶段 B：Retained State
 
-- [ ] 用 state 替代 locale/theme 的 request/changed 双 Topic 模式。
-- [ ] 新订阅者可选择立即收到当前状态。
-- [ ] 状态有所有者，所有者卸载后按策略保留或清除。
+- [x] 用 state 替代 locale/theme 的 request/changed 双 Topic 模式。
+- [x] 新订阅者可选择立即收到当前状态。
+- [x] 状态有所有者，所有者卸载后按策略保留或清除。
 
 #### 阶段 C：请求响应
 
-- [ ] 加入相关 ID、超时、取消和错误码。
-- [ ] 同一请求只接受一个响应或明确的聚合策略。
-- [ ] 响应者卸载时自动结束未完成请求。
+- [x] 加入相关 ID、超时、取消和错误码。
+- [x] 同一请求只接受一个响应或明确的聚合策略。
+- [x] 响应者卸载时自动结束未完成请求。
 
 #### 阶段 D：Python 接入
 
-- [ ] Worker 握手声明 EventBus V2 能力。
-- [ ] Python API 支持 publish/subscribe/request/respond。
-- [ ] IPC 对事件做队列上限和背压。
-- [ ] 插件停止时自动清除所有订阅和未完成请求。
+- [x] Worker 握手声明 EventBus V2 能力。
+- [x] Python API 支持 publish/subscribe/request/respond。
+- [x] IPC 对事件做队列上限和背压。
+- [x] 插件停止时自动清除所有订阅和未完成请求。
 
 ### 测试与验收
 
@@ -788,10 +788,19 @@ void setState(topic, payload)
 
 ### 完成定义
 
-- [ ] V1/V2 并存测试通过。
-- [ ] C++/Python 跨运行时示例通过。
-- [ ] state 和 request/response 有完整超时及卸载测试。
-- [ ] Topic 命名和权限规则写入 SDK 文档。
+- [x] V1/V2 并存测试通过。
+- [x] C++/Python 跨运行时示例通过。
+- [x] state 和 request/response 有完整超时及卸载测试。
+- [x] Topic 命名和权限规则写入 SDK 文档。
+
+### 验收记录
+
+- 2026-08-22：Release 全量构建与 CTest 14/14 通过；覆盖 V1/V2 并存、locale/theme
+  retained state、请求成功/超时/取消/响应者卸载，以及真实 Python Worker 与 C++ 间双向通信。
+- 2026-08-22：事件风暴测试验证每订阅者 256 条上限，300 条事件稳定投递 256 条并丢弃
+  44 条；诊断只记录 Topic、来源、订阅数和耗时，不记录 Payload。
+- 2026-08-22：Python worker 契约测试 9/9 通过，握手、publish/subscribe/request、串行
+  ack 与停止清理均已接入；SDK 与 `plugins_py/README.md` 已记录权限和通配规则。
 
 ---
 
