@@ -1,8 +1,7 @@
 # xuanhub_plugin.py — 无 Qt 依赖的 XuanHub 插件开发者命令行入口
 """XuanHub 插件开发者 CLI。
 
-当前先提供只读 ``validate``。输出协议刻意保持简单稳定，后续 create/test/doctor/package
-都复用相同的诊断结构；宿主权威校验入口接入后会作为额外检查层，而不是改变 JSON 形状。
+所有命令复用稳定 JSON 外壳；宿主权威校验入口接入后会作为额外检查层，而不是改变形状。
 """
 
 from __future__ import annotations
@@ -19,6 +18,14 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
+
+try:
+    from .plugin_templates import create_plugin, TemplateError
+except ImportError:
+    scripts_directory = str(Path(__file__).resolve().parent)
+    if scripts_directory not in sys.path:
+        sys.path.insert(0, scripts_directory)
+    from plugin_templates import create_plugin, TemplateError
 
 
 RESULT_SCHEMA_VERSION = 1
@@ -681,6 +688,13 @@ def run_qml_smoke(args: argparse.Namespace) -> dict[str, Any]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="xuanhub-plugin", description="XuanHub 插件开发者工具")
     subparsers = parser.add_subparsers(dest="command", required=True)
+    create = subparsers.add_parser("create", help="生成可直接校验的 C++/Python 插件模板")
+    create.add_argument("destination", type=Path)
+    create.add_argument("--runtime", choices=("native", "python"), required=True)
+    create.add_argument("--id", required=True, dest="plugin_id")
+    create.add_argument("--name", required=True)
+    create.add_argument("--author", default="XuanHub Developer")
+    create.add_argument("--json", action="store_true", dest="json_output")
     validate = subparsers.add_parser("validate", help="只读校验插件目录")
     validate.add_argument("plugin_dir", type=Path)
     validate.add_argument("--json", action="store_true", dest="json_output", help="输出稳定 JSON")
@@ -708,7 +722,37 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Windows 管道默认可能继承 GBK；CLI 的机器可读协议固定 UTF-8，避免调用方
+    # capture_output 按 UTF-8 解码时在后台 reader 线程失败。
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     args = build_parser().parse_args(argv)
+    if args.command == "create":
+        try:
+            created = create_plugin(
+                args.destination, args.runtime, args.plugin_id, args.name, args.author)
+            result = {
+                "schemaVersion": RESULT_SCHEMA_VERSION,
+                "command": "create",
+                **created,
+                "plugin": {"id": created["id"], "runtime": created["runtime"],
+                           "path": created["path"]},
+                "summary": {"errors": 0, "warnings": 0},
+                "diagnostics": [],
+            }
+        except (OSError, TemplateError) as error:
+            result = {
+                "schemaVersion": RESULT_SCHEMA_VERSION,
+                "command": "create", "ok": False,
+                "plugin": {"id": args.plugin_id, "runtime": args.runtime,
+                           "path": str(args.destination.resolve())},
+                "summary": {"errors": 1, "warnings": 0},
+                "diagnostics": [asdict(Diagnostic(
+                    "error", "create.failed", f"无法创建插件模板：{error}"))],
+            }
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True)
+              if args.json_output else format_text(result))
+        return 0 if result["ok"] else 1
     if args.command == "validate":
         result = Validator(args.plugin_dir).validate()
         if args.json_output:

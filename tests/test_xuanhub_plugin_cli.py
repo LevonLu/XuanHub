@@ -100,6 +100,38 @@ class ValidatorTest(unittest.TestCase):
             self.assertIn("tree.user_absolute_path", codes)
 
 
+class CreateTemplateTest(unittest.TestCase):
+    def test_creates_python_template_that_passes_validator(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / "py_created"
+            completed = subprocess.run(
+                [sys.executable, str(CLI_PATH), "create", str(destination),
+                 "--runtime", "python", "--id", "py_created",
+                 "--name", "Created", "--json"],
+                check=False, capture_output=True, text=True, encoding="utf-8",
+            )
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            result = json.loads(completed.stdout)
+            self.assertEqual(result["command"], "create")
+            self.assertTrue(CLI.Validator(destination).validate()["ok"])
+            refused = subprocess.run(
+                [sys.executable, str(CLI_PATH), "create", str(destination),
+                 "--runtime", "python", "--id", "py_created", "--name", "Created"],
+                check=False, capture_output=True, text=True, encoding="utf-8",
+            )
+            self.assertEqual(refused.returncode, 1)
+
+    def test_creates_native_template_that_passes_source_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / "native_created"
+            created = CLI.create_plugin(
+                destination, "native", "native_created", "Native Created", "Tests")
+            self.assertTrue(created["ok"])
+            validation = CLI.Validator(destination).validate()
+            self.assertTrue(validation["ok"], validation["diagnostics"])
+            self.assertEqual(validation["plugin"]["runtime"], "native")
+
+
 class WorkerHarnessTest(unittest.TestCase):
     def test_runs_protocol_v2_lifecycle_without_qt(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
