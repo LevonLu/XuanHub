@@ -389,6 +389,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             lp.id = descriptor.id;
             lp.apiVersion = descriptor.apiVersion;
             lp.capabilities = descriptor.capabilities;
+            lp.actions = descriptor.actions;
             lp.position = pos;
             lp.order = entry->order;
             lp.width = entry->width;
@@ -495,6 +496,7 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
         m_hostEnvironment.themeNotifier);
     lp.pluginContext = qmlContext.get();
     lp.capabilities = sp.capabilities;
+    lp.actions = sp.actions;
     lp.qmlUrl = QUrl::fromLocalFile(QDir(sp.dirPath).absoluteFilePath(sp.qmlFilePath));
     lp.health.state = xuanhub::PluginState::Running;
     lp.health.startedAt = QDateTime::currentDateTimeUtc();
@@ -507,6 +509,7 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
     descriptor.displayName = sp.meta.displayName;
     descriptor.version = sp.meta.version;
     descriptor.author = sp.meta.author;
+    descriptor.actions = sp.actions;
     m_descriptorById.insert(entry.id, descriptor);
     m_loadErrors.remove(entry.id);
     m_subPluginHostId.insert(entry.id, hostId);

@@ -236,6 +236,11 @@ private Q_SLOTS:
             {QStringLiteral("apiVersion"), 2},
             {QStringLiteral("configVersion"), 2},
             {QStringLiteral("qml"), QStringLiteral("Migration.qml")},
+            {QStringLiteral("actions"), QJsonArray{QJsonObject{
+                {QStringLiteral("id"), QStringLiteral("refresh")},
+                {QStringLiteral("label"), QStringLiteral("立即刷新")},
+                {QStringLiteral("placements"),
+                 QJsonArray{QStringLiteral("quickMenu"), QStringLiteral("tray")}}}}},
         }).toJson(QJsonDocument::Compact)) > 0);
         manifest.close();
 
@@ -247,6 +252,9 @@ private Q_SLOTS:
         manager.loadFrom(pluginsDir,
                          {entry(QStringLiteral("pybridge")), child});
         QVERIFY(manager.loadedPlugin(pluginId));
+        QCOMPARE(manager.loadedPlugin(pluginId)->actions.size(), 1);
+        QCOMPARE(manager.loadedPlugin(pluginId)->actions.first().id,
+                 QStringLiteral("refresh"));
         QTRY_VERIFY_WITH_TIMEOUT(manager.migrationSuggestion(pluginId), 5000);
         const auto* suggestion = manager.migrationSuggestion(pluginId);
         QVERIFY(suggestion->ready());

@@ -136,6 +136,74 @@ struct PythonManifestResult {
     QString error;
 };
 
+bool readPythonActions(const QJsonObject& object,
+                       QVector<xuanhub::PluginAction>* output,
+                       QString* error) {
+    const QJsonValue actionsValue = object.value(QStringLiteral("actions"));
+    if (actionsValue.isUndefined()) return true;
+    if (!actionsValue.isArray()) {
+        *error = QStringLiteral("actions must be an array");
+        return false;
+    }
+    const QRegularExpression idPattern(QStringLiteral(R"(^[A-Za-z0-9._-]{1,128}$)"));
+    const QSet<QString> allowedPlacements = {
+        QStringLiteral("quickMenu"), QStringLiteral("tray"),
+        QStringLiteral("pluginMenu")};
+    QSet<QString> ids;
+    for (const QJsonValue& value : actionsValue.toArray()) {
+        if (!value.isObject()) {
+            *error = QStringLiteral("action must be an object");
+            return false;
+        }
+        const QJsonObject actionObject = value.toObject();
+        xuanhub::PluginAction action;
+        action.id = actionObject.value(QStringLiteral("id")).toString().trimmed();
+        action.label = actionObject.value(QStringLiteral("label")).toString().trimmed();
+        if (!idPattern.match(action.id).hasMatch() || action.label.isEmpty()
+            || ids.contains(action.id)) {
+            *error = QStringLiteral("action has invalid or duplicate id/label");
+            return false;
+        }
+        ids.insert(action.id);
+        const QJsonValue placements = actionObject.value(QStringLiteral("placements"));
+        if (!placements.isArray() || placements.toArray().isEmpty()) {
+            *error = QStringLiteral("action '%1' requires placements").arg(action.id);
+            return false;
+        }
+        QSet<QString> seenPlacements;
+        for (const QJsonValue& placementValue : placements.toArray()) {
+            const QString placement = placementValue.toString();
+            if (!placementValue.isString() || !allowedPlacements.contains(placement)
+                || seenPlacements.contains(placement)) {
+                *error = QStringLiteral("action '%1' has invalid placement").arg(action.id);
+                return false;
+            }
+            seenPlacements.insert(placement);
+            action.placements.append(placement);
+        }
+        for (const QString& key : {QStringLiteral("icon"),
+                                   QStringLiteral("defaultShortcut")}) {
+            const QJsonValue field = actionObject.value(key);
+            if (!field.isUndefined() && !field.isString()) {
+                *error = QStringLiteral("action '%1' field '%2' must be a string")
+                             .arg(action.id, key);
+                return false;
+            }
+        }
+        action.icon = actionObject.value(QStringLiteral("icon")).toString().trimmed();
+        action.defaultShortcut = actionObject.value(
+            QStringLiteral("defaultShortcut")).toString().trimmed();
+        const QJsonValue checkable = actionObject.value(QStringLiteral("checkable"));
+        if (!checkable.isUndefined() && !checkable.isBool()) {
+            *error = QStringLiteral("action '%1' checkable must be boolean").arg(action.id);
+            return false;
+        }
+        action.checkable = checkable.toBool(false);
+        output->append(action);
+    }
+    return true;
+}
+
 PythonManifestResult readPluginJson(const QDir& directory) {
     PythonManifestResult result;
     QFile file(directory.absoluteFilePath(QStringLiteral("plugin.json")));
@@ -229,6 +297,8 @@ PythonManifestResult readPluginJson(const QDir& directory) {
             seen.insert(item);
         }
     }
+    QVector<xuanhub::PluginAction> actions;
+    if (!readPythonActions(result.object, &actions, &result.error)) return result;
 
     QString pathError;
     if (!xuanhub::validatePluginFilePath(directory.absolutePath(),
@@ -408,6 +478,14 @@ xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const 
         if (value.isString()) info.capabilities.append(value.toString());
     for (const QJsonValue& value : object.value(QStringLiteral("permissions")).toArray())
         if (value.isString()) info.permissions.append(value.toString());
+    QString actionError;
+    if (!readPythonActions(object, &info.actions, &actionError)) {
+        qWarning() << "[PyBridge] action manifest changed before start:" << id
+                   << "->" << actionError;
+        delete viewModel;
+        m_vms.remove(id);
+        return {};
+    }
     return info;
 }
 

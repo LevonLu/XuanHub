@@ -8,6 +8,14 @@
     "capabilities": ["barItem", "settings", "popup"],
     "permissions": [],
     "qml": "Todo.qml",
+    "actions": [
+        {
+            "id": "clear_done",
+            "label": "清空已完成",
+            "placements": ["quickMenu", "tray", "pluginMenu"],
+            "icon": "clear"
+        }
+    ],
     "settings": [
         { "group": "通用", "fields": [
             { "key": "intervalMs", "type": "int", "label": "刷新间隔 (ms)", "default": 1000, "min": 200, "max": 60000, "step": 100 },
