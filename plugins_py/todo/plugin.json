@@ -16,6 +16,11 @@
             "icon": "clear"
         }
     ],
+    "layout": {
+        "minWidth": 56,
+        "priority": 40,
+        "overflow": "menu"
+    },
     "settings": [
         { "group": "通用", "fields": [
             { "key": "intervalMs", "type": "int", "label": "刷新间隔 (ms)", "default": 1000, "min": 200, "max": 60000, "step": 100 },

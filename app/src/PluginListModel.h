@@ -19,6 +19,7 @@ class PluginListModel : public QAbstractListModel {
     Q_PROPERTY(QAbstractItemModel* leftPlugins   READ leftPlugins   CONSTANT)
     Q_PROPERTY(QAbstractItemModel* centerPlugins READ centerPlugins CONSTANT)
     Q_PROPERTY(QAbstractItemModel* rightPlugins  READ rightPlugins  CONSTANT)
+    Q_PROPERTY(QAbstractItemModel* overflowPluginModel READ overflowPluginModel CONSTANT)
     Q_PROPERTY(QVariantList overflowPlugins READ overflowPlugins
                NOTIFY responsiveLayoutChanged)
     Q_PROPERTY(int layoutRevision READ layoutRevision NOTIFY responsiveLayoutChanged)
@@ -71,6 +72,7 @@ public:
     QAbstractItemModel* leftPlugins()   const;
     QAbstractItemModel* centerPlugins() const;
     QAbstractItemModel* rightPlugins()  const;
+    QAbstractItemModel* overflowPluginModel() const;
 
     // 插件槽（PluginSlot.qml）上报的自然内容宽度（逻辑像素）；
     // 设置窗口切「手动」宽度时以此作初始值。与 WidthRole（config 定宽）无关。
@@ -120,4 +122,5 @@ private:
     QPointer<PluginFilterModel> m_leftModel;
     QPointer<PluginFilterModel> m_centerModel;
     QPointer<PluginFilterModel> m_rightModel;
+    QPointer<PluginFilterModel> m_overflowModel;
 };

@@ -138,6 +138,9 @@
     "xuanhub.pluginSlot": {
       "无法加载插件界面：%1": "无法加载插件界面：%1"
     },
+    "xuanhub.bar": {
+      "更多插件": "更多插件"
+    },
     "xuanhub.tray": {
       "玄枢 XuanHub": "玄枢 XuanHub",
       "设置...": "设置...",

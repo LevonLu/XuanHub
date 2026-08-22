@@ -19,9 +19,11 @@ PluginListModel::PluginListModel(QObject* parent) : QAbstractListModel(parent) {
     m_leftModel   = new PluginFilterModel(QStringLiteral("left"),   this);
     m_centerModel = new PluginFilterModel(QStringLiteral("center"), this);
     m_rightModel  = new PluginFilterModel(QStringLiteral("right"),  this);
+    m_overflowModel = new PluginFilterModel({}, this, true);
     m_leftModel->setSourceModel(this);
     m_centerModel->setSourceModel(this);
     m_rightModel->setSourceModel(this);
+    m_overflowModel->setSourceModel(this);
 }
 
 int PluginListModel::rowCount(const QModelIndex& parent) const {
@@ -229,6 +231,9 @@ int PluginListModel::rowForId(const QString& id) const {
 QAbstractItemModel* PluginListModel::leftPlugins()   const { return m_leftModel; }
 QAbstractItemModel* PluginListModel::centerPlugins() const { return m_centerModel; }
 QAbstractItemModel* PluginListModel::rightPlugins()  const { return m_rightModel; }
+QAbstractItemModel* PluginListModel::overflowPluginModel() const {
+    return m_overflowModel;
+}
 
 void PluginListModel::reportContentWidth(const QString& id, int w) {
     if (w <= 0) return;

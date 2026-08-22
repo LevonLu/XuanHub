@@ -11,5 +11,10 @@
             "icon": "refresh"
         }
     ],
+    "layout": {
+        "minWidth": 80,
+        "priority": 30,
+        "overflow": "menu"
+    },
     "settingsQml": "SysInfoSettings.qml"
 }

@@ -6,6 +6,7 @@ import XuanHub
 
 Item {
     id: wrapper
+    property bool overflowHost: false
     property double qmlLoadStartedAt: Date.now()
     property int backendLoadDurationMs: 0
 
@@ -63,7 +64,7 @@ Item {
     }
     // 高度跟随所属 ListView（即 bar 实际高度），与 config.barHeight 联动；
     // 脱离 ListView 使用时的回退值 40
-    height: ListView.view ? ListView.view.height : 40
+    height: overflowHost ? 40 : (ListView.view ? ListView.view.height : 40)
     // 裁剪是框架级硬保证：任何插件（固定宽内容溢出、或根 Item 宽度小于实际
     // 内容）都不允许画出槽位边界——ListView 只裁剪整列不裁剪单个 delegate，
     // 不裁剪溢出内容会直接画到相邻插件上（实测 usage_hub 固定宽 260 溢出
@@ -74,9 +75,12 @@ Item {
     // 注意：固定宽模式下 Loader 内容会被裁剪/留白，由插件 QML 自行处理对齐。
     // slot.item.width 用 Math.max(0, ...) 防御：插件忘声明 width 时为 0，
     // 负值会扰乱 ListView contentWidth（零宽不可见的情形由 onLoaded 告警提示）
-    width: model.width > 0 ? model.width
-                           : (slot.item ? Math.max(0, slot.item.width)
-                                        : (slot.status === Loader.Error ? errorBadge.width : 0))
+    readonly property real naturalSlotWidth: model.width > 0 ? model.width
+        : (slot.item ? Math.max(0, slot.item.width)
+                     : (slot.status === Loader.Error ? errorBadge.width : 0))
+    width: overflowHost ? naturalSlotWidth
+                        : (Number(model.effectiveWidth || 0) > 0
+                           ? Number(model.effectiveWidth) : naturalSlotWidth)
 
     // 自然内容宽度上报：设置窗口「手动」宽度的初始值取它。
     // 手动定宽时 slot.item.width 仍是内容自然宽度（Loader 不改 item 宽度），

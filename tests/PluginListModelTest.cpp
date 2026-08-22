@@ -217,6 +217,8 @@ private Q_SLOTS:
         QCOMPARE(model.data(model.index(0), PluginListModel::EffectiveWidthRole).toInt(), 120);
         QVERIFY(!model.data(model.index(1), PluginListModel::LayoutVisibleRole).toBool());
         QVERIFY(model.data(model.index(1), PluginListModel::OverflowedRole).toBool());
+        QCOMPARE(model.rightPlugins()->rowCount(), 0);
+        QCOMPARE(model.overflowPluginModel()->rowCount(), 1);
         QCOMPARE(model.overflowPlugins().size(), 1);
         QCOMPARE(model.overflowPlugins().first().toMap().value(QStringLiteral("id")).toString(),
                  QStringLiteral("adaptive"));
@@ -225,6 +227,8 @@ private Q_SLOTS:
         model.setAvailableWidth(0);
         QCOMPARE(model.data(model.index(0), PluginListModel::EffectiveWidthRole).toInt(), 0);
         QVERIFY(model.data(model.index(1), PluginListModel::LayoutVisibleRole).toBool());
+        QCOMPARE(model.rightPlugins()->rowCount(), 1);
+        QCOMPARE(model.overflowPluginModel()->rowCount(), 0);
         QVERIFY(model.overflowPlugins().isEmpty());
     }
 };

@@ -138,6 +138,9 @@
     "xuanhub.pluginSlot": {
       "无法加载插件界面：%1": "Could not load the plugin interface: %1"
     },
+    "xuanhub.bar": {
+      "更多插件": "More plugins"
+    },
     "xuanhub.tray": {
       "玄枢 XuanHub": "XuanHub",
       "设置...": "Settings...",
