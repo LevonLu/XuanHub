@@ -23,6 +23,11 @@ struct PluginManifestResult {
 
 class PluginManifest final {
 public:
+    static bool validateHostCompatibility(
+        const xuanhub::PluginDescriptor& descriptor,
+        const QString& hostVersion,
+        QString* error = nullptr);
+
     static PluginManifestResult load(
         const QString& pluginDir,
         const QString& discoveredBackend,

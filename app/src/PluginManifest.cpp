@@ -95,8 +95,8 @@ bool sameCompatibilityValue(const QString& expected, const QString& actual) {
         || expected.compare(actual, Qt::CaseInsensitive) == 0;
 }
 
-bool validateHostRange(const xuanhub::PluginDescriptor& descriptor,
-                       const QString& hostVersion, QString* error) {
+bool validateHostCompatibilityImpl(const xuanhub::PluginDescriptor& descriptor,
+                                   const QString& hostVersion, QString* error) {
     SemanticVersion host;
     if (!SemanticVersion::parse(hostVersion, &host, error)) {
         *error = QStringLiteral("host version is invalid: %1").arg(*error);
@@ -344,6 +344,15 @@ PluginValidationEnvironment PluginValidationEnvironment::current() {
     return environment;
 }
 
+bool PluginManifest::validateHostCompatibility(
+    const xuanhub::PluginDescriptor& descriptor,
+    const QString& hostVersion,
+    QString* error) {
+    QString localError;
+    QString* targetError = error ? error : &localError;
+    return validateHostCompatibilityImpl(descriptor, hostVersion, targetError);
+}
+
 PluginManifestResult PluginManifest::load(
     const QString& pluginDir, const QString& discoveredBackend,
     const PluginValidationEnvironment& environment) {
@@ -399,7 +408,7 @@ PluginManifestResult PluginManifest::load(
         || !optionalString(object, QStringLiteral("author"), &descriptor.author, &error)) {
         return failed(error);
     }
-    if (!validateHostRange(descriptor, environment.hostVersion, &error))
+    if (!validateHostCompatibility(descriptor, environment.hostVersion, &error))
         return failed(error);
     if (!stringArray(object, QStringLiteral("capabilities"),
                      &descriptor.capabilities, &error)

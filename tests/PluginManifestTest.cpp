@@ -58,6 +58,20 @@ class PluginManifestTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void exposesReusableHostCompatibilityCheck() {
+        xuanhub::PluginDescriptor descriptor;
+        descriptor.minHostVersion = QStringLiteral("0.3.0");
+        descriptor.maxHostVersion = QStringLiteral("0.x");
+        QString error;
+        QVERIFY(PluginManifest::validateHostCompatibility(
+            descriptor, QStringLiteral("0.3.5"), &error));
+        QVERIFY(error.isEmpty());
+
+        QVERIFY(!PluginManifest::validateHostCompatibility(
+            descriptor, QStringLiteral("1.0.0"), &error));
+        QVERIFY(error.contains(QStringLiteral("outside maximum range")));
+    }
+
     void acceptsLegacyAndV2Manifests() {
         QTemporaryDir legacyDir;
         QVERIFY(legacyDir.isValid());
