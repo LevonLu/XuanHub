@@ -1,0 +1,22 @@
+{
+    "id": "example.v2_demo",
+    "name": "V2 Demo",
+    "version": "1.0.0",
+    "apiVersion": 2,
+    "minHostVersion": "0.2.1",
+    "maxHostVersion": "0.x",
+    "author": "Example",
+    "entry": {
+        "backend": "v2_demo.dll",
+        "qml": "Demo.qml"
+    },
+    "capabilities": ["barItem"],
+    "permissions": [],
+    "dependencies": [],
+    "compatibility": {
+        "architecture": "x64",
+        "qtVersion": "6.9.3",
+        "compiler": "msvc2022",
+        "crt": "dynamic"
+    }
+}

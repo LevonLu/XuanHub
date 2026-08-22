@@ -30,7 +30,15 @@ set_target_properties(barplugin PROPERTIES
 target_compile_definitions(barplugin PRIVATE BARPLUGIN_LIBRARY)
 
 target_include_directories(barplugin PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
 )
 
 target_link_libraries(barplugin PUBLIC Qt6::Core)
+
+install(TARGETS barplugin EXPORT XuanHubPluginTargets
+    RUNTIME DESTINATION bin
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+)
+install(DIRECTORY include/barplugin DESTINATION include)

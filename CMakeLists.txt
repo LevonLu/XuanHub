@@ -6,6 +6,7 @@ project(XuanHub
     LANGUAGES CXX)
 
 include(CTest)
+include(CMakePackageConfigHelpers)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -34,6 +35,30 @@ add_subdirectory(plugins/sysinfo)
 # 因而构建机无需 Python 开发包。运行时找不到 Python 3.12+
 # 时插件自行降级，不影响宿主与其他插件。
 add_subdirectory(plugins/pybridge)
+
+# 第三方原生插件 SDK：安装 barplugin 导入目标、公共头和版本化 CMake 包。
+set(XUANHUB_SDK_QT_VERSION "6.9.3")
+configure_package_config_file(
+    "${CMAKE_SOURCE_DIR}/sdk/cmake/XuanHubPluginConfig.cmake.in"
+    "${CMAKE_BINARY_DIR}/XuanHubPluginConfig.cmake"
+    INSTALL_DESTINATION "lib/cmake/XuanHubPlugin"
+)
+write_basic_package_version_file(
+    "${CMAKE_BINARY_DIR}/XuanHubPluginConfigVersion.cmake"
+    VERSION "${PROJECT_VERSION}"
+    COMPATIBILITY SameMajorVersion
+)
+install(EXPORT XuanHubPluginTargets
+    FILE XuanHubPluginTargets.cmake
+    NAMESPACE XuanHub::
+    DESTINATION lib/cmake/XuanHubPlugin
+)
+install(FILES
+    "${CMAKE_BINARY_DIR}/XuanHubPluginConfig.cmake"
+    "${CMAKE_BINARY_DIR}/XuanHubPluginConfigVersion.cmake"
+    DESTINATION lib/cmake/XuanHubPlugin
+)
+install(FILES LICENSE DESTINATION share/XuanHubPlugin)
 
 if(BUILD_TESTING)
     add_subdirectory(tests)

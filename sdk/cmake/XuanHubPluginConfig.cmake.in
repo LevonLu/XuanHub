@@ -1,0 +1,14 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Qt6 @XUANHUB_SDK_QT_VERSION@ EXACT COMPONENTS Core)
+
+include("${CMAKE_CURRENT_LIST_DIR}/XuanHubPluginTargets.cmake")
+
+set(XuanHubPlugin_API_VERSION 2)
+set(XuanHubPlugin_QT_VERSION "@XUANHUB_SDK_QT_VERSION@")
+set(XuanHubPlugin_COMPILER "msvc2022")
+set(XuanHubPlugin_ARCHITECTURE "x64")
+set(XuanHubPlugin_CRT "dynamic")
+
+check_required_components(XuanHubPlugin)
