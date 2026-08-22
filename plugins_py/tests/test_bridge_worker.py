@@ -11,6 +11,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from plugins_py.bridge_worker import MAX_QUEUED_PLUGIN_EVENTS, PushRuntime
+
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKER = ROOT / "bridge_worker.py"
@@ -36,6 +38,17 @@ def recv_frame(sock: socket.socket) -> dict:
     return json.loads(recv_exact(sock, size).decode("utf-8"))
 
 
+class PushRuntimeTests(unittest.TestCase):
+    def test_event_queue_drops_newest_at_fixed_limit(self) -> None:
+        runtime = PushRuntime()
+        for index in range(MAX_QUEUED_PLUGIN_EVENTS):
+            self.assertGreater(runtime.emit_event("sample", {"index": index}), 0)
+        self.assertEqual(runtime.emit_event("overflow", {}), 0)
+        messages, dropped = runtime.drain()
+        self.assertEqual(len(messages), MAX_QUEUED_PLUGIN_EVENTS)
+        self.assertEqual(dropped, 1)
+
+
 class BridgeWorkerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -50,7 +63,10 @@ class BridgeWorkerTests(unittest.TestCase):
             "def set_config(config):\n"
             "    state['prefix'] = config.get('prefix', '')\n"
         )
-        host_import = "from xuanhub_host import CallError, report_progress\n"
+        host_import = (
+            "from xuanhub_host import CallError, report_progress, emit_values, emit_event\n"
+            "import threading\n"
+        )
         host_init = ""
         migration_code = ""
         if self._testMethodName == "test_config_migration_runs_before_init":
@@ -107,6 +123,16 @@ class BridgeWorkerTests(unittest.TestCase):
             "    if name == 'progress':\n"
             "        report_progress(0.25, {'phase': 'prepare'})\n"
             "        report_progress(0.75, {'phase': 'apply'})\n"
+            "    if name == 'push':\n"
+            "        emit_values({'first': 1})\n"
+            "        emit_values({'second': 2})\n"
+            "        emit_event('demo', {'value': 9})\n"
+            "    if name == 'thread_push':\n"
+            "        def produce():\n"
+            "            for value in range(100): emit_values({'sample': value})\n"
+            "        thread = threading.Thread(target=produce)\n"
+            "        thread.start()\n"
+            "        thread.join()\n"
             "    return state['count']\n"
             + locale_callback + config_callback +
             "def stop():\n"
@@ -136,7 +162,8 @@ class BridgeWorkerTests(unittest.TestCase):
             "protocol": 2,
             "pluginId": "py_demo",
             "capabilities": ["requestResponseV1", "callResults", "callProgress",
-                             "cancelQueued", "hostServicesV1", "eventBusV2"],
+                             "cancelQueued", "pushValues", "pushEvents",
+                             "hostServicesV1", "eventBusV2"],
         })
         self.request_id = 0
         self.host_requests: list[dict] = []
@@ -254,6 +281,26 @@ class BridgeWorkerTests(unittest.TestCase):
             {"type": "call_progress", "id": "2", "progress": 0.75,
              "details": {"phase": "apply"}},
         ])
+
+    def test_background_pushes_are_coalesced_and_ordered(self) -> None:
+        self.assertTrue(self.request("init", {"config": {}, "locale": "en-US"})["ok"])
+        self.assertTrue(self.request("invoke", {"name": "push", "args": []})["ok"])
+        values = recv_frame(self.socket)
+        event = recv_frame(self.socket)
+        self.assertEqual(values, {
+            "type": "values_patch", "sequence": 2,
+            "patch": {"first": 1, "second": 2},
+        })
+        self.assertEqual(event, {
+            "type": "plugin_event", "sequence": 3,
+            "event": "demo", "data": {"value": 9},
+        })
+
+        self.assertTrue(self.request("invoke", {"name": "thread_push", "args": []})["ok"])
+        threaded = recv_frame(self.socket)
+        self.assertEqual(threaded["type"], "values_patch")
+        self.assertEqual(threaded["patch"], {"sample": 99})
+        self.assertEqual(threaded["sequence"], 103)
 
     def test_host_services_are_available_during_init(self) -> None:
         initialized = self.request("init", {"config": {}, "locale": "en-US"})

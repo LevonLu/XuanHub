@@ -10,11 +10,14 @@ import argparse
 import importlib.util
 import json
 import math
+import select
 import socket
 import struct
 import sys
+import threading
 import traceback
 import types
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -25,8 +28,9 @@ MAX_SAFE_INTEGER = (1 << 53) - 1  # Qt JSON 数字落到 double；超过此范�
 PROTOCOL_VERSION = 2
 PROTOCOL_CAPABILITIES = [
     "requestResponseV1", "callResults", "callProgress", "cancelQueued",
-    "hostServicesV1", "eventBusV2",
+    "pushValues", "pushEvents", "hostServicesV1", "eventBusV2",
 ]
+MAX_QUEUED_PLUGIN_EVENTS = 128
 
 
 class CallError(Exception):
@@ -71,6 +75,78 @@ class CallRuntime:
             "progress": float(value),
             "details": _json_value(details or {}),
         })
+
+
+class PushRuntime:
+    """后台线程只写此队列；socket 发送统一由 Worker 主循环执行。"""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._next_sequence = 1
+        self._values_sequence = 0
+        self._values_patch: dict[str, Any] = {}
+        self._events: deque[dict[str, Any]] = deque()
+        self._dropped_events = 0
+
+    def _sequence(self) -> int:
+        sequence = self._next_sequence
+        self._next_sequence += 1
+        return sequence
+
+    def emit_values(self, patch: dict[str, Any]) -> int:
+        if not isinstance(patch, dict):
+            raise TypeError("emit_values() patch must be a dict")
+        safe_patch = _json_value(patch)
+        with self._lock:
+            merged = dict(self._values_patch)
+            merged.update(safe_patch)
+            # 合并后的单帧也必须在协议上限内，不能靠发送失败才发现。
+            probe = {"type": "values_patch", "sequence": self._next_sequence,
+                     "patch": merged}
+            payload_size = len(json.dumps(
+                probe, ensure_ascii=False, separators=(",", ":"),
+                allow_nan=False).encode("utf-8"))
+            if payload_size > MAX_MESSAGE_BYTES:
+                raise ValueError("merged values patch exceeds IPC message limit")
+            self._values_sequence = self._sequence()
+            self._values_patch = merged
+            return self._values_sequence
+
+    def emit_event(self, event: str, data: dict[str, Any] | None = None) -> int:
+        event = str(event)
+        if not event or len(event) > 128:
+            raise ValueError("plugin event name must contain 1-128 characters")
+        if data is not None and not isinstance(data, dict):
+            raise TypeError("plugin event data must be a dict")
+        safe_data = _json_value(data or {})
+        with self._lock:
+            if len(self._events) >= MAX_QUEUED_PLUGIN_EVENTS:
+                self._dropped_events += 1
+                return 0
+            sequence = self._sequence()
+            self._events.append({
+                "type": "plugin_event", "sequence": sequence,
+                "event": event, "data": safe_data,
+            })
+            return sequence
+
+    def drain(self) -> tuple[list[dict[str, Any]], int]:
+        with self._lock:
+            messages: list[dict[str, Any]] = []
+            if self._values_patch:
+                messages.append({
+                    "type": "values_patch",
+                    "sequence": self._values_sequence,
+                    "patch": self._values_patch,
+                })
+                self._values_patch = {}
+                self._values_sequence = 0
+            messages.extend(self._events)
+            self._events.clear()
+            dropped = self._dropped_events
+            self._dropped_events = 0
+            messages.sort(key=lambda item: int(item["sequence"]))
+            return messages, dropped
 
 
 class HostServices:
@@ -183,7 +259,7 @@ class EventBusServices:
 
 
 def _install_host_module(services: HostServices, events: EventBusServices,
-                         calls: CallRuntime) -> None:
+                         calls: CallRuntime, pushes: PushRuntime) -> None:
     module = types.ModuleType("xuanhub_host")
     module.services = services
     module.log = services.log
@@ -191,6 +267,8 @@ def _install_host_module(services: HostServices, events: EventBusServices,
     module.events = events
     module.CallError = CallError
     module.report_progress = calls.progress
+    module.emit_values = pushes.emit_values
+    module.emit_event = pushes.emit_event
     sys.modules["xuanhub_host"] = module
 
 
@@ -246,7 +324,7 @@ def _recv(sock: socket.socket) -> dict[str, Any]:
 
 def _import_plugin(plugin_dir: Path, plugin_id: str,
                    host_services: HostServices, event_bus: EventBusServices,
-                   calls: CallRuntime) -> Any:
+                   calls: CallRuntime, pushes: PushRuntime) -> Any:
     main_file = plugin_dir / "main.py"
     if not main_file.is_file():
         raise RuntimeError("main.py is missing")
@@ -261,7 +339,7 @@ def _import_plugin(plugin_dir: Path, plugin_id: str,
         raise RuntimeError("cannot create import specification")
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
-    _install_host_module(host_services, event_bus, calls)
+    _install_host_module(host_services, event_bus, calls, pushes)
     spec.loader.exec_module(module)
     if hasattr(module, "set_host_services"):
         module.set_host_services(host_services)
@@ -364,6 +442,7 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
             host_services = HostServices(sock)
             event_bus = EventBusServices(sock)
             calls = CallRuntime(sock)
+            pushes = PushRuntime()
             _send(sock, {
                 "type": "hello",
                 "token": token,
@@ -372,6 +451,14 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
                 "capabilities": PROTOCOL_CAPABILITIES,
             })
             while True:
+                outbound, dropped = pushes.drain()
+                if dropped:
+                    _log(f"plugin event queue full; dropped {dropped} newest event(s)")
+                for outbound_message in outbound:
+                    _send(sock, outbound_message)
+                readable, _, _ = select.select([sock], [], [], 0.02)
+                if not readable:
+                    continue
                 request = _recv(sock)
                 if request.get("type") == "event_bus_event":
                     delivery_id = str(request.get("id", ""))
@@ -410,7 +497,7 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
                                 or target_version < 1:
                             raise ValueError("init targetConfigVersion must be a positive integer")
                         module = _import_plugin(plugin_dir, plugin_id,
-                                                host_services, event_bus, calls)
+                                                host_services, event_bus, calls, pushes)
                         prepared_config = _prepare_config(
                             module, current_version, target_version, config)
                         _initialize_plugin(module, prepared_config, locale)
