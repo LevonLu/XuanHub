@@ -16,7 +16,7 @@ using namespace xuanhub;
 static const PluginMetadata kMeta = {
     QStringLiteral("sysinfo"),
     QStringLiteral("System Info"),
-    QStringLiteral("0.2.0"),
+    QStringLiteral("0.2.1"),
     QStringLiteral("XuanHub"),
 };
 

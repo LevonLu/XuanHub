@@ -8,8 +8,11 @@
         { "group": "通用", "fields": [
             { "key": "intervalMs", "type": "int", "label": "刷新间隔 (ms)", "default": 1000, "min": 200, "max": 60000, "step": 100 },
             { "key": "prefix", "type": "string", "label": "栏上前缀", "default": "📝" },
-            { "key": "barMode", "type": "enum", "label": "栏上显示", "default": "数量",
-              "options": ["数量", "最近一项"],
+            { "key": "barMode", "type": "enum", "label": "栏上显示", "default": "count",
+              "options": [
+                { "value": "count", "label": "数量" },
+                { "value": "latest", "label": "最近一项" }
+              ],
               "description": "数量=显示未完成数；最近一项=显示最近一条未完成项" }
         ]}
     ]

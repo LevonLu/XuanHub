@@ -13,10 +13,10 @@
                     "key": "mode",
                     "type": "enum",
                     "label": "目标模式",
-                    "default": "每日重复",
+                    "default": "daily",
                     "options": [
-                        "每日重复",
-                        "指定日期"
+                        { "value": "daily", "label": "每日重复" },
+                        { "value": "date", "label": "指定日期" }
                     ],
                     "description": "每日重复=每天到点归零；指定日期=倒数到某个一次性时刻"
                 },

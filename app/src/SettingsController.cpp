@@ -2,6 +2,7 @@
 #include "SettingsController.h"
 #include "SettingsViewModel.h"
 #include "ThemeManager.h"
+#include "LocaleManager.h"
 
 #include <QCoreApplication>
 #include <QCursor>
@@ -17,10 +18,11 @@
 
 SettingsController::SettingsController(ConfigService* config, ThemeManager* theme,
                                        ThemeRegistry* registry,
-                                       const QString& exeDir, PluginListModel* barPlugins,
+                                       LocaleManager* locale, const QString& exeDir,
+                                       PluginListModel* barPlugins,
                                        QObject* parent)
     : QObject(parent), m_config(config), m_theme(theme), m_registry(registry),
-      m_exeDir(exeDir), m_barPlugins(barPlugins),
+      m_locale(locale), m_exeDir(exeDir), m_barPlugins(barPlugins),
       m_uitest(QCoreApplication::arguments().contains(QStringLiteral("--uitest"))) {}
 
 SettingsController::~SettingsController() {
@@ -32,9 +34,14 @@ void SettingsController::open() {
         // Basic 样式已在 main() 创建任何 QML 引擎前设置；此处重复调用不仅无效，
         // 还会在每次首次打开设置窗口时产生“必须在加载 QML 前调用”的误导性警告。
 
-        m_vm = new SettingsViewModel(m_config, m_registry, m_theme, m_exeDir, m_barPlugins, this);
+        m_vm = new SettingsViewModel(m_config, m_registry, m_theme, m_locale,
+                                     m_exeDir, m_barPlugins, this);
         auto* w = new QQuickView();
-        w->setTitle(QStringLiteral("玄枢设置 XuanHub Settings"));
+        w->setTitle(QCoreApplication::translate(
+            "xuanhub.settings", "玄枢设置 XuanHub Settings"));
+        // 设置窗口是独立创建的 QQuickView。Windows 对无边框窗口不会始终可靠地
+        // 继承 QApplication 的默认图标，因此在创建原生 HWND 前显式设置一次。
+        w->setIcon(QGuiApplication::windowIcon());
         // 无边框：去掉系统标题栏，改由 QML 自绘标题栏（配色跟随主题）。
         // 系统 Windows 标题栏不受 Qt 主题控制，无法改色，故用 Frameless + 自绘方案。
         w->setFlag(Qt::FramelessWindowHint);
@@ -49,6 +56,14 @@ void SettingsController::open() {
         w->rootContext()->setContextProperty(QStringLiteral("settingsVM"), m_vm);
         w->rootContext()->setContextProperty(QStringLiteral("themeManager"), m_theme);
         w->rootContext()->setContextProperty(QStringLiteral("settingsCtl"), this);
+        if (m_locale) {
+            w->rootContext()->setContextProperty(QStringLiteral("i18n"), m_locale);
+            m_locale->registerEngine(w->engine());
+            connect(m_locale, &LocaleManager::localeChanged, w, [w] {
+                w->setTitle(QCoreApplication::translate(
+                    "xuanhub.settings", "玄枢设置 XuanHub Settings"));
+            });
+        }
         // --uitest：从 <exeDir>/uitest.txt 读验收脚本（每行一条：click:x,y / kp:文本，
         // 空行与 # 开头忽略），注入 context property 由 QML Timer 逐条回放
         if (m_uitest) {

@@ -134,6 +134,7 @@ Item {
     // ── 日历气泡窗口 ──────────────────────────────────────────
     Window {
         id: calendarWin
+        transientParent: null
         // 当前显示月/年（int，MonthGrid.month/year 直接绑定）
         property int viewMonth: 0
         property int viewYear: 0
@@ -166,8 +167,8 @@ Item {
             onActivated: calendarWin.hide()
         }
 
-        // 中文 locale；系统无 zh_CN 时 Qt 自动回退，不报错
-        readonly property var loc: Qt.locale("zh_CN")
+        // 统一使用宿主解析后的活动语言；system 已由 LocaleManager 归一为中/英文。
+        readonly property var loc: Qt.locale(i18n ? i18n.activeLocale : "zh-CN")
 
         ColumnLayout {
             anchors.fill: parent
@@ -210,7 +211,7 @@ Item {
                     }
                     ToolTip.visible: prevMa.containsMouse
                     ToolTip.delay: 500
-                    ToolTip.text: "上一月"
+                    ToolTip.text: qsTranslate("plugin.clock.calendar", "上一月")
                 }
                 Text {
                     Layout.minimumWidth: 130
@@ -218,8 +219,9 @@ Item {
                     color: root.colors.fg
                     font.pixelSize: 15
                     font.bold: true
-                    text: calendarWin.viewYear + " 年 "
-                          + (calendarWin.viewMonth + 1) + " 月"
+                    text: qsTranslate("plugin.clock.calendar", "%1 年 %2 月")
+                              .arg(calendarWin.viewYear)
+                              .arg(calendarWin.viewMonth + 1)
                 }
                 // 下一月（自绘按钮）
                 Item {
@@ -250,7 +252,7 @@ Item {
                     }
                     ToolTip.visible: nextMa.containsMouse
                     ToolTip.delay: 500
-                    ToolTip.text: "下一月"
+                    ToolTip.text: qsTranslate("plugin.clock.calendar", "下一月")
                 }
 
                 Item { Layout.fillWidth: true }  // 右弹簧
@@ -272,7 +274,7 @@ Item {
                 Text {
                     id: todayRow
                     anchors.centerIn: parent
-                    text: "回到今天"
+                    text: qsTranslate("plugin.clock.calendar", "回到今天")
                     color: root.colors.accent
                     font.pixelSize: 12
                 }

@@ -1,0 +1,11 @@
+{
+  "locale": "zh-CN",
+  "contexts": {
+    "plugin.pybridge.metadata": {
+      "PyBridge": "Python 插件桥"
+    },
+    "plugin.pybridge.notifications": {
+      "未找到可用的 Python 3.12+ 运行时，Python 插件已停用。请安装 Python，或使用 Bundle 便携包。": "未找到可用的 Python 3.12+ 运行时，Python 插件已停用。请安装 Python，或使用 Bundle 便携包。"
+    }
+  }
+}

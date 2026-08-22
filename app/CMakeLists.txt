@@ -2,6 +2,9 @@
 qt_add_executable(XuanHub WIN32
     src/main.cpp
 
+    # Windows Shell 从 PE 资源读取的多尺寸应用图标
+    resources/xuanhub.rc
+
     src/BarWindow.h
     src/BarWindow.cpp
 
@@ -16,6 +19,12 @@ qt_add_executable(XuanHub WIN32
 
     src/ConfigService.h
     src/ConfigService.cpp
+
+    src/JsonTranslator.h
+    src/JsonTranslator.cpp
+
+    src/LocaleManager.h
+    src/LocaleManager.cpp
 
     src/SecretStore.h
     src/SecretStore.cpp
@@ -84,6 +93,11 @@ qt_add_qml_module(XuanHub
         qml/UiCard.qml
     RESOURCES
         resources/default_config.json
+        i18n/zh-CN.json
+        i18n/en-US.json
+        # 窗口使用完整品牌图标；托盘另用针对 16–24 px 简化的紧凑 X 图标
+        resources/xuanhub-icon-256.png
+        resources/xuanhub-tray-icon-64.png
 )
 
 target_link_libraries(XuanHub PRIVATE
@@ -100,6 +114,7 @@ target_link_libraries(XuanHub PRIVATE
 )
 
 target_compile_definitions(XuanHub PRIVATE
+    XUANHUB_VERSION="${PROJECT_VERSION}"
     QT_DISABLE_DEPRECATED_BEFORE=0x060000
     WIN32_LEAN_AND_MEAN
     NOMINMAX

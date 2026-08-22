@@ -50,11 +50,11 @@ ComboBox {
         // item.palette 会回落到系统 palette（深色模式下是深文字配深背景，
         // 实测几乎不可见）——弹出项一律用主窗口内 control 的 palette
         contentItem: Text {
-            // 本窗口模型均为字符串列表（JS 数组 / QStringList），modelData 即显示文本；
-            // textRole 分支仅作完整性兜底
-            text: control.textRole
-                  ? (Array.isArray(control.model) ? modelData[control.textRole] : model[control.textRole])
-                  : modelData
+            // textAt() 由 ComboBox 按 textRole 统一解析 JS 对象数组、QVariantList、
+            // QStringList 等模型。直接判断 Array.isArray(control.model) 不可靠：
+            // QML 会把 JS 数组包装成模型访问器，导致对象模型分支读到 undefined，
+            // 弹层只剩高亮背景而没有文字。
+            text: control.textAt(index)
             font: control.font
             color: control.palette.buttonText
             elide: Text.ElideRight

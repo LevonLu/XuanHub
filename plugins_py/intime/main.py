@@ -23,7 +23,7 @@ _mask_type = "default"        # "default"(跟随主题) | "color" | "image"，�
 _mask_color = "#1e1e2e"
 _mask_image = ""
 _mask_opacity = 0.92
-_mask_text = "休息一下"
+_mask_text = ""
 _text_size = 24
 _progress_style = "none"      # 锁屏进度条："none" | "bar" | "ring"
 _enter_duration_ms = 400      # 遮罩进入动画时长（0=瞬变）
@@ -53,7 +53,7 @@ def init(config: dict):
         _mask_color = str(config.get("maskColor", "#1e1e2e"))
         _mask_image = str(config.get("maskImage", ""))
         _mask_opacity = max(0.1, min(1.0, float(config.get("maskOpacity", 0.92))))
-        _mask_text = str(config.get("maskText", "休息一下"))
+        _mask_text = str(config.get("maskText", ""))
         _text_size = max(12, min(72, int(config.get("textSize", 24))))
         ps = str(config.get("progressStyle", "none"))
         _progress_style = ps if ps in ("none", "bar", "ring") else "none"
@@ -82,14 +82,11 @@ def update():
             _overlay_active = True
             remaining = _rest_seconds
             total = _rest_seconds
-            label = "休息"
         else:
             total = _work_seconds
-            label = "工作中"
     else:  # resting
         remaining = max(0, _rest_seconds - elapsed)
         total = _rest_seconds
-        label = "休息"
         if remaining <= 0:
             # 休息结束 → 回到工作
             _status = "working"
@@ -97,11 +94,9 @@ def update():
             _overlay_active = False
             remaining = _work_seconds
             total = _work_seconds
-            label = "工作中"
 
     return {
         "status": _status,
-        "label": label,
         "remaining": remaining,
         "total": total,
         "timeStr": _fmt_time(remaining),

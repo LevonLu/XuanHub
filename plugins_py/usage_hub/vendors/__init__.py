@@ -34,7 +34,8 @@ class VendorBase(ABC):
 
         # 运行时状态（由调用方在锁内访问）
         self.status: str = "pending"  # "pending" | "ok" | "error"
-        self.error_message: str = ""
+        self.error_code: str = ""
+        self.error_detail: str = ""
         self.last_update_ts: float = 0.0
         # 展示数据（query() 返回值）。必须在基类初始化——子类（如 GLM）只在
         # load_state() 里赋值时，全新机器（无状态文件）上访问会 AttributeError，
@@ -75,7 +76,7 @@ class VendorBase(ABC):
     def last_update_str(self) -> str:
         """人类可读的上次更新时间字符串。"""
         if self.last_update_ts <= 0:
-            return "从未"
+            return ""
         dt = datetime.fromtimestamp(self.last_update_ts)
         if dt.date() == datetime.now().date():
             return dt.strftime("%H:%M:%S")

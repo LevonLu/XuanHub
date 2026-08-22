@@ -14,12 +14,15 @@ import XuanHub   // UiComboBox：裸 ComboBox 的 popup 是独立顶层窗口，
 Item {
     id: root
     property var plugin
+    function trText(source) { return qsTranslate("plugin.sysinfo.settingsPage", source) }
 
     implicitHeight: col.implicitHeight
 
     // 可选指标（metric id → 显示名）；"none"=该项临时不显示（config 行保留，改回即恢复）
     readonly property var metricOptions: ["none", "cpu", "mem", "gpu", "netDown", "netUp"]
-    readonly property var metricLabels: ["不显示", "CPU", "内存", "GPU", "下行", "上行"]
+    readonly property var metricLabels: [
+        trText("不显示"), "CPU", trText("内存"), "GPU", trText("下行"), trText("上行")
+    ]
 
     // items 工作副本：[{metric, prefix, color}]
     property var items: []
@@ -84,8 +87,8 @@ Item {
 
         UiCard {
             Layout.fillWidth: true
-            title: "布局"
-            description: "控制指标在状态栏中如何分列排列"
+            title: root.trText("布局")
+            description: root.trText("控制指标在状态栏中如何分列排列")
 
             RowLayout {
                 Layout.fillWidth: true
@@ -93,13 +96,13 @@ Item {
                     Layout.fillWidth: true
                     spacing: UiMetrics.space1
                     Text {
-                        text: "每列显示项数"
+                        text: root.trText("每列显示项数")
                         color: palette.windowText
                         font.pixelSize: UiMetrics.fontS
                         font.weight: Font.DemiBold
                     }
                     Text {
-                        text: "超出后会从右侧开始新的一列"
+                        text: root.trText("超出后会从右侧开始新的一列")
                         color: palette.placeholderText
                         font.pixelSize: UiMetrics.fontTiny
                     }
@@ -116,8 +119,8 @@ Item {
 
         UiCard {
             Layout.fillWidth: true
-            title: "显示项"
-            description: "拖动手柄表示顺序；也可以用上下按钮微调。留空颜色将跟随主题。"
+            title: root.trText("显示项")
+            description: root.trText("拖动手柄表示顺序；也可以用上下按钮微调。留空颜色将跟随主题。")
 
             Repeater {
                 model: root.items
@@ -161,14 +164,14 @@ Item {
                             Layout.fillWidth: false
                             Layout.preferredWidth: 78
                             text: modelData.prefix
-                            placeholderText: "前缀"
+                            placeholderText: root.trText("前缀")
                             onTextChanged: root.updateRow(index, "prefix", text)
                         }
                         UiTextField {
                             Layout.fillWidth: false
                             Layout.preferredWidth: 116
                             text: modelData.color
-                            placeholderText: "颜色"
+                            placeholderText: root.trText("颜色")
                             onTextChanged: root.updateRow(index, "color", text)
                         }
                         Rectangle {
@@ -210,13 +213,13 @@ Item {
 
             UiButton {
                 variant: "outline"
-                text: "＋ 添加显示项"
+                text: "＋ " + root.trText("添加显示项")
                 onClicked: root.addRow()
             }
 
             Text {
                 visible: root.items.length === 0
-                text: "至少添加一个显示项，否则状态栏不显示任何内容"
+                text: root.trText("至少添加一个显示项，否则状态栏不显示任何内容")
                 color: palette.placeholderText
                 font.pixelSize: UiMetrics.fontTiny
                 wrapMode: Text.Wrap

@@ -17,6 +17,7 @@ class SettingsPluginModel;
 class SettingsPluginSortModel;
 class SettingsPluginProxy;
 class PluginListModel;
+class LocaleManager;
 
 class SettingsViewModel : public QObject {
     Q_OBJECT
@@ -29,13 +30,14 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(QStringList themePackNames READ themePackNames NOTIFY themePacksReloaded)
     Q_PROPERTY(QStringList themePackIds READ themePackIds NOTIFY themePacksReloaded)
     Q_PROPERTY(bool autoStart READ autoStart WRITE setAutoStart NOTIFY autoStartChanged)
+    Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     Q_PROPERTY(QAbstractItemModel* pluginModel READ pluginModel CONSTANT)
     Q_PROPERTY(QObject* pluginProxy READ pluginProxy CONSTANT)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
 
 public:
     SettingsViewModel(ConfigService* config, ThemeRegistry* registry,
-                      ThemeManager* themeMgr, QString exeDir,
+                      ThemeManager* themeMgr, LocaleManager* locale, QString exeDir,
                       PluginListModel* barPlugins, QObject* parent = nullptr);
 
     int barHeight() const { return m_barHeight; }
@@ -47,6 +49,7 @@ public:
     QStringList themePackNames() const;                // 已安装主题包显示名（下拉用）
     QStringList themePackIds() const;                  // 与 names 同序的 id（保存映射用）
     bool autoStart() const { return m_autoStart; }
+    QString language() const { return m_language; }
     QAbstractItemModel* pluginModel() const;   // 实现在 .cpp（头里模型是不完整类型）
     QObject* pluginProxy() const;              // 同上，实现在 .cpp
     QString errorMessage() const { return m_errorMessage; }
@@ -58,6 +61,7 @@ public:
     void setTheme(const QString& v);            // 设置模式
     void setThemeId(const QString& v);          // 设置主题包 id
     void setAutoStart(bool v);
+    void setLanguage(const QString& v);
 
     // 重新扫描 themes/ 刷新主题包列表（打开窗口 / 用户可能装了新包时调）
     Q_INVOKABLE void reloadThemePacks();
@@ -80,6 +84,7 @@ signals:
     void themeIdChanged();
     void themePacksReloaded();
     void autoStartChanged();
+    void languageChanged();
     void errorMessageChanged();
 
 private:
@@ -92,6 +97,7 @@ private:
     ConfigService* m_config;
     ThemeRegistry* m_registry;
     ThemeManager* m_themeMgr;   // 运行时主题状态（托盘临时切换的真实值，草稿以此对齐防回滚）
+    LocaleManager* m_locale;
     QString m_exeDir;
     PluginListModel* m_barPlugins;   // bar 的插件模型（部件实时内容宽度来源）
     SettingsPluginModel* m_pluginModel;
@@ -104,6 +110,7 @@ private:
     QString m_theme = QStringLiteral("dark");            // 模式
     QString m_themeId = QStringLiteral("xuanhub-default"); // 主题包 id
     bool m_autoStart = false;
+    QString m_language = QStringLiteral("system");
     QString m_errorMessage;
     QString m_openFingerprint;   // 打开窗口/上次成功保存时的配置指纹（草稿过期判定）
 };

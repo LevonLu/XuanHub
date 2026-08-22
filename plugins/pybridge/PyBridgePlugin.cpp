@@ -134,7 +134,7 @@ QJsonObject readPluginJson(const QDir& directory) {
 
 xuanhub::PluginMetadata PyBridgePlugin::metadata() const {
     return {QStringLiteral("pybridge"), QStringLiteral("PyBridge"),
-            QStringLiteral("0.2.0"), QStringLiteral("XuanHub")};
+            QStringLiteral("0.2.1"), QStringLiteral("XuanHub")};
 }
 
 bool PyBridgePlugin::init(xuanhub::BarPluginContext* ctx) {
@@ -180,9 +180,9 @@ bool PyBridgePlugin::init(xuanhub::BarPluginContext* ctx) {
         setPyNotified();
         m_ctx.eventBus->publish(QStringLiteral("app.notify"), {
             {QStringLiteral("title"), QStringLiteral("XuanHub")},
-            {QStringLiteral("message"), QStringLiteral(
-                "未检测到可用的 Python 3.12+ 运行时，Python 插件已停用。"
-                "安装 Python 或使用 Bundle 打包后重启即可启用。")},
+            {QStringLiteral("message"), QCoreApplication::translate(
+                "plugin.pybridge.notifications",
+                "未找到可用的 Python 3.12+ 运行时，Python 插件已停用。请安装 Python，或使用 Bundle 便携包。")},
         });
     }
     return true;
@@ -259,7 +259,8 @@ xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const 
         viewQml = qmls.first();
     }
 
-    auto* viewModel = new PyWorkerViewModel(id, dirPath, cfg, m_pythonExe, m_workerScript, this);
+    auto* viewModel = new PyWorkerViewModel(id, dirPath, cfg, m_pythonExe,
+                                            m_workerScript, m_ctx.eventBus, this);
     if (!viewModel->start()) {
         qWarning() << "[PyBridge]" << id << ": cannot start isolated worker";
         delete viewModel;

@@ -1,0 +1,19 @@
+{
+  "locale": "en-US",
+  "contexts": {
+    "plugin.py_todo.metadata": { "待办事项": "Todo" },
+    "plugin.py_todo.main": {
+      "无待办": "No pending items", "%1 项": "%1 items", "待办事项": "Todo",
+      "输入新待办，回车添加": "Enter a new item and press Enter",
+      "添加": "Add", "暂无待办，上方添加一条": "No todo items. Add one above.",
+      "操作失败，详见日志": "Operation failed; see the log",
+      "待办数据库不可用": "The todo database is unavailable",
+      "清空已完成": "Clear completed"
+    },
+    "plugin.py_todo.settings": {
+      "通用": "General", "刷新间隔 (ms)": "Refresh interval (ms)", "栏上前缀": "Bar prefix",
+      "栏上显示": "Bar display", "数量": "Count", "最近一项": "Most recent item",
+      "数量=显示未完成数；最近一项=显示最近一条未完成项": "Count shows the number of pending items; Most recent item shows the first pending item"
+    }
+  }
+}

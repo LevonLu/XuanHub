@@ -5,6 +5,7 @@
 #include "SettingsPluginSortModel.h"
 
 #include <QFile>
+#include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -67,6 +68,110 @@ private Q_SLOTS:
         QVERIFY(!service.load(dir.path(), dir.path()));
         QCOMPARE(service.barHeight(), 44);
         QCOMPARE(service.pluginEntries().size(), 1);
+    }
+
+    void languageDefaultsValidatesAndPreservesUnknownFields() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QJsonObject root = configWithPlugins({});
+        root[QStringLiteral("futureRoot")] = 17;
+        root[QStringLiteral("ui")] = QJsonObject{
+            {QStringLiteral("language"), QStringLiteral("xx-INVALID")},
+            {QStringLiteral("futureUi"), QStringLiteral("kept")}};
+        QVERIFY(writeJson(dir.path(), QJsonDocument(root)));
+
+        ConfigService service;
+        QVERIFY(service.load(dir.path(), dir.path()));
+        QCOMPARE(service.language(), QStringLiteral("system"));
+        QJsonObject saved = service.rawConfig();
+        QJsonObject ui = saved.value(QStringLiteral("ui")).toObject();
+        ui[QStringLiteral("language")] = QStringLiteral("en-US");
+        saved[QStringLiteral("ui")] = ui;
+        QVERIFY(service.save(saved));
+
+        QFile file(dir.filePath(QStringLiteral("config.json")));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QJsonObject reparsed = QJsonDocument::fromJson(file.readAll()).object();
+        QCOMPARE(reparsed.value(QStringLiteral("futureRoot")).toInt(), 17);
+        QCOMPARE(reparsed.value(QStringLiteral("ui")).toObject()
+                     .value(QStringLiteral("futureUi")).toString(), QStringLiteral("kept"));
+        QCOMPARE(reparsed.value(QStringLiteral("ui")).toObject()
+                     .value(QStringLiteral("language")).toString(), QStringLiteral("en-US"));
+
+        QTemporaryDir missingUiDir;
+        QVERIFY(writeJson(missingUiDir.path(), QJsonDocument(configWithPlugins({}))));
+        ConfigService missingUi;
+        QVERIFY(missingUi.load(missingUiDir.path(), missingUiDir.path()));
+        QCOMPARE(missingUi.language(), QStringLiteral("system"));
+    }
+
+    void schemaEnumFormatsAndLegacyBuiltInValuesAreMigrated() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString pluginDir = dir.filePath(QStringLiteral("plugins_py/py_enum"));
+        QVERIFY(QDir().mkpath(pluginDir));
+        QFile metadata(pluginDir + QStringLiteral("/plugin.json"));
+        QVERIFY(metadata.open(QIODevice::WriteOnly));
+        const QJsonObject schemaPlugin{
+            {QStringLiteral("id"), QStringLiteral("py_enum")},
+            {QStringLiteral("name"), QStringLiteral("枚举测试")},
+            {QStringLiteral("settings"), QJsonArray{
+                QJsonObject{{QStringLiteral("group"), QStringLiteral("常规")},
+                            {QStringLiteral("fields"), QJsonArray{
+                                QJsonObject{{QStringLiteral("key"), QStringLiteral("legacy")},
+                                            {QStringLiteral("type"), QStringLiteral("enum")},
+                                            {QStringLiteral("options"), QJsonArray{
+                                                QStringLiteral("one"), QStringLiteral("two")}}},
+                                QJsonObject{{QStringLiteral("key"), QStringLiteral("stable")},
+                                            {QStringLiteral("type"), QStringLiteral("enum")},
+                                            {QStringLiteral("options"), QJsonArray{
+                                                QJsonObject{{QStringLiteral("value"), QStringLiteral("daily")},
+                                                            {QStringLiteral("label"), QStringLiteral("每日重复")}}}}}
+                            }}}
+            }}
+        };
+        metadata.write(QJsonDocument(schemaPlugin).toJson(QJsonDocument::Compact));
+        metadata.close();
+
+        PluginConfigEntry countdown;
+        countdown.id = QStringLiteral("py_countdown");
+        countdown.config = {{QStringLiteral("mode"), QStringLiteral("每日重复")}};
+        PluginConfigEntry todo;
+        todo.id = QStringLiteral("py_todo");
+        todo.config = {{QStringLiteral("barMode"), QStringLiteral("最近一项")}};
+        PluginConfigEntry enumEntry;
+        enumEntry.id = QStringLiteral("py_enum");
+        enumEntry.config = {{QStringLiteral("legacy"), QStringLiteral("one")},
+                            {QStringLiteral("stable"), QStringLiteral("daily")}};
+
+        SettingsPluginModel model;
+        model.reload({countdown, todo, enumEntry}, {}, dir.path(),
+                     dir.filePath(QStringLiteral("config.json")));
+        QJsonArray exported;
+        QString error;
+        QVERIFY2(model.toPluginEntriesJson(&exported, &error), qPrintable(error));
+        QHash<QString, QJsonObject> byId;
+        for (const QJsonValue& value : exported) {
+            const QJsonObject object = value.toObject();
+            byId.insert(object.value(QStringLiteral("id")).toString(), object);
+        }
+        QCOMPARE(byId.value(QStringLiteral("py_countdown")).value(QStringLiteral("config"))
+                     .toObject().value(QStringLiteral("mode")).toString(), QStringLiteral("daily"));
+        QCOMPARE(byId.value(QStringLiteral("py_todo")).value(QStringLiteral("config"))
+                     .toObject().value(QStringLiteral("barMode")).toString(), QStringLiteral("latest"));
+
+        int enumRow = -1;
+        for (int row = 0; row < model.rowCount(); ++row) {
+            if (model.data(model.index(row), SettingsPluginModel::IdRole).toString()
+                == QStringLiteral("py_enum")) enumRow = row;
+        }
+        QVERIFY(enumRow >= 0);
+        const QJsonArray schema = model.data(model.index(enumRow), SettingsPluginModel::SchemaRole)
+                                      .toJsonArray();
+        const QJsonArray fields = schema.first().toObject().value(QStringLiteral("fields")).toArray();
+        QVERIFY(fields.at(0).toObject().value(QStringLiteral("options")).toArray().first().isObject());
+        QCOMPARE(fields.at(1).toObject().value(QStringLiteral("options")).toArray().first()
+                     .toObject().value(QStringLiteral("value")).toString(), QStringLiteral("daily"));
     }
 
     void secretReferenceHydratesOnlyForOwningPlugin() {
@@ -178,6 +283,28 @@ private Q_SLOTS:
                  QStringLiteral("enabled-left"));
         QCOMPARE(proxy.roleValue(2, QStringLiteral("groupKey")).toString(),
                  QStringLiteral("disabled-left"));
+    }
+
+    void pluginDraftDirtyOnlyAfterActualEdit() {
+        PluginConfigEntry entry;
+        entry.id = QStringLiteral("py_countdown");
+        entry.position = QStringLiteral("right");
+        entry.config = {{QStringLiteral("mode"), QStringLiteral("每日重复")}};
+
+        SettingsPluginModel model;
+        model.reload({entry}, QJsonArray{plugin(QStringLiteral("py_countdown"),
+                                                {{QStringLiteral("mode"),
+                                                  QStringLiteral("每日重复")}})},
+                     {}, {});
+        // 兼容迁移只建立内存草稿，不应让一次纯语言保存变成插件配置修改。
+        QVERIFY(!model.isDirty());
+        QVERIFY(model.setConfigValue(QStringLiteral("py_countdown"),
+                                     QStringLiteral("mode"), QStringLiteral("daily")));
+        QVERIFY(!model.isDirty());
+
+        QVERIFY(model.setConfigValue(QStringLiteral("py_countdown"),
+                                     QStringLiteral("mode"), QStringLiteral("date")));
+        QVERIFY(model.isDirty());
     }
 };
 

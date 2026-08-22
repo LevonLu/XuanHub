@@ -11,6 +11,48 @@ Item {
     id: root
     property var plugin
 
+    function trText(source) {
+        return qsTranslate("plugin.py_usage_hub.main", source)
+    }
+
+    function errorText(vendorId) {
+        var code = root.vendorVal(vendorId, "error_code") || "unknown"
+        var detail = root.vendorVal(vendorId, "error_detail") || ""
+        var sources = {
+            "apiKeyMissing": "API Key 未配置", "credentialsMissing": "认证信息未配置",
+            "cookieMissing": "Cookie 未配置", "cookieExpired": "Cookie 已失效，请重新从浏览器复制",
+            "networkError": "网络错误", "httpError": "HTTP 错误", "emptyResponse": "返回体为空",
+            "invalidJson": "JSON 解析失败", "balanceInfoMissing": "余额信息为空",
+            "balanceFieldMissing": "余额字段不存在", "invalidBalance": "余额格式错误",
+            "usageParseFailed": "未解析到用量数据，请检查 Cookie 和 Workspace",
+            "requestFailed": "请求失败", "unknown": "未知错误"
+        }
+        var message = root.trText(sources[code] || sources.unknown)
+        return detail ? message + ": " + detail : message
+    }
+
+    function summaryText(values) {
+        if (!values) return root.trText("初始化中...")
+        if (values.summary) return values.summary
+        if (values.summaryCode === "noEnabledVendors") return root.trText("无已启用厂商")
+        if (values.summaryCode === "notConfigured") return root.trText("未配置密钥")
+        return root.trText("初始化中...")
+    }
+
+    function resetText(vendorId, key) {
+        var seconds = root.vendorVal(vendorId, "go_" + key + "_reset_seconds")
+        if (seconds === undefined || seconds === null) return root.vendorVal(vendorId, "go_" + key + "_reset") || "-"
+        var value = Math.max(0, Number(seconds))
+        var days = Math.floor(value / 86400); value %= 86400
+        var hours = Math.floor(value / 3600); value %= 3600
+        var minutes = Math.floor(value / 60)
+        var parts = []
+        if (days) parts.push(root.trText("%1天").arg(days))
+        if (hours) parts.push(root.trText("%1时").arg(hours))
+        if (minutes) parts.push(root.trText("%1分").arg(minutes))
+        return parts.length ? parts.join(" ") : root.trText("即将重置")
+    }
+
     // childrenRect 取实际几何（不走 implicit 链——positioner/Rectangle 的 implicit 语义不可靠）
     width: Math.max(120, barRow.childrenRect.width + 16)
     height: 40
@@ -104,7 +146,7 @@ Item {
                 var pv = plugin ? plugin.values : null
                 var ids = (pv && pv.vendor_ids) ? pv.vendor_ids : []
                 if (ids.length > 0) return ""
-                return (pv && pv.summary) ? pv.summary : "初始化中..."
+                return root.summaryText(pv)
             }
             color: root.cMuted; font.pixelSize: 12
             visible: {
@@ -126,12 +168,12 @@ Item {
             width: Math.max(todayText.implicitWidth, balanceText.implicitWidth)
             Text {
                 id: todayText
-                text: "今日 " + (root.vval(vid, "today") || "...")
+                text: root.trText("今日 %1").arg(root.vval(vid, "today") || "...")
                 color: root.cSuccess; font.pixelSize: 10
             }
             Text {
                 id: balanceText
-                text: "余额 " + (root.vval(vid, "balance") || "...")
+                text: root.trText("余额 %1").arg(root.vval(vid, "balance") || "...")
                 color: root.cFg; font.pixelSize: 10
             }
         }
@@ -209,9 +251,9 @@ Item {
             width: 102
             Repeater {
                 model: [
-                    { "key": "rolling", "label": "滚" },
-                    { "key": "weekly", "label": "周" },
-                    { "key": "monthly", "label": "月" }
+                    { "key": "rolling", "label": root.trText("滚") },
+                    { "key": "weekly", "label": root.trText("周") },
+                    { "key": "monthly", "label": root.trText("月") }
                 ]
                 delegate: Row {
                     spacing: 4
@@ -294,6 +336,7 @@ Item {
 
     Window {
         id: tip; visible: false
+        transientParent: null
         property bool pendingClamp: false
         width: tipText.implicitWidth + 16; height: tipText.implicitHeight + 10
         color: "transparent"
@@ -326,9 +369,9 @@ Item {
                 color: root.cFg; font.pixelSize: 11
                 text: {
                     const pv = plugin ? plugin.values : null
-                    if (!pv) return "点击查看详情"
+                    if (!pv) return root.trText("点击查看详情")
                     const ids = pv.vendor_ids
-                    if (!ids || ids.length === 0) return "点击查看详情"
+                    if (!ids || ids.length === 0) return root.trText("点击查看详情")
                     let lines = []
                     for (let i = 0; i < ids.length; i++) {
                         const vid = ids[i]
@@ -392,6 +435,7 @@ Item {
 
     Window {
         id: popupWin
+        transientParent: null
         property bool pendingClamp: false
         // >=0 时为「上翻」模式：弹窗底边锚定在该屏幕 y 处（部件上方 6px）。
         // 卡片是 show 后异步填充的，高度会在 doClamp 之后继续变化（实测 520→394），
@@ -460,7 +504,7 @@ Item {
                 // 标题行
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { text: "用量中心"; color: root.cFg; font.pixelSize: 15; font.bold: true }
+                    Text { text: root.trText("用量中心"); color: root.cFg; font.pixelSize: 15; font.bold: true }
                     Item { Layout.fillWidth: true }
                     Text {
                         text: "✕"; color: root.cMuted; font.pixelSize: 16
@@ -483,7 +527,7 @@ Item {
 
                         Text {
                             id: emptyLabel; visible: false
-                            text: "无已启用厂商"; color: root.cMuted
+                            text: root.trText("无已启用厂商"); color: root.cMuted
                             font.pixelSize: 12
                             Layout.alignment: Qt.AlignCenter; Layout.topMargin: 40
                         }
@@ -503,7 +547,7 @@ Item {
                         border.width: 1; border.color: root.cBorder
                         Text {
                             id: refreshBtnText; anchors.centerIn: parent
-                            text: "⟳ 刷新全部"; color: root.cAccent; font.pixelSize: 12
+                            text: root.trText("⟳ 刷新全部"); color: root.cAccent; font.pixelSize: 12
                         }
                         MouseArea {
                             id: refreshMa; anchors.fill: parent
@@ -557,7 +601,7 @@ Item {
                         color: root.cFg; font.pixelSize: 13; font.bold: true
                     }
                     Item { Layout.fillWidth: true }
-                    Text { text: "余额"; color: root.cMuted; font.pixelSize: 10 }
+                    Text { text: root.trText("余额"); color: root.cMuted; font.pixelSize: 10 }
                 }
 
                 // 数据行
@@ -574,11 +618,11 @@ Item {
                     ColumnLayout {
                         spacing: 2
                         Text {
-                            text: "今日用量: " + (root.vendorVal(card.vendorId, "today") || "...")
+                            text: root.trText("今日用量: %1").arg(root.vendorVal(card.vendorId, "today") || "...")
                             color: root.cSuccess; font.pixelSize: 12
                         }
                         Text {
-                            text: "当前余额: " + (root.vendorVal(card.vendorId, "balance") || "...")
+                            text: root.trText("当前余额: %1").arg(root.vendorVal(card.vendorId, "balance") || "...")
                             color: root.cFg; font.pixelSize: 12
                         }
                     }
@@ -589,8 +633,8 @@ Item {
                     Text {
                         text: {
                             const st = root.vendorVal(card.vendorId, "status")
-                            if (st === "error") return "错误: " + (root.vendorVal(card.vendorId, "error") || "未知")
-                            return "查询中..."
+                            if (st === "error") return root.trText("错误: %1").arg(root.errorText(card.vendorId))
+                            return root.trText("查询中...")
                         }
                         color: root.vendorVal(card.vendorId, "status") === "error" ? root.cDanger : root.cMuted
                         font.pixelSize: 11
@@ -602,7 +646,7 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     Text {
-                        text: "更新: " + (root.vendorVal(card.vendorId, "last_update") || "...")
+                        text: root.trText("更新: %1").arg(root.vendorVal(card.vendorId, "last_update") || root.trText("从未"))
                         color: root.cMuted; font.pixelSize: 10
                     }
                     Item { Layout.fillWidth: true }
@@ -667,8 +711,8 @@ Item {
                     Text {
                         text: {
                             const st = root.vendorVal(planCard.vendorId, "status")
-                            if (st === "error") return "错误: " + (root.vendorVal(planCard.vendorId, "error") || "未知")
-                            return "查询中..."
+                            if (st === "error") return root.trText("错误: %1").arg(root.errorText(planCard.vendorId))
+                            return root.trText("查询中...")
                         }
                         color: root.vendorVal(planCard.vendorId, "status") === "error" ? root.cDanger : root.cMuted
                         font.pixelSize: 11
@@ -695,7 +739,7 @@ Item {
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Text {
-                                        text: "5小时窗口"
+                                        text: root.trText("5小时窗口")
                                         color: root.cFg; font.pixelSize: 11; font.bold: true
                                     }
                                     Text {
@@ -704,7 +748,7 @@ Item {
                                     }
                                     Item { Layout.fillWidth: true }
                                     Text {
-                                        text: "刷新: " + (root.vendorVal(planCard.vendorId, "plan_5h_reset") || "-")
+                                        text: root.trText("刷新: %1").arg(root.vendorVal(planCard.vendorId, "plan_5h_reset") || "-")
                                         color: root.cMuted; font.pixelSize: 10
                                     }
                                 }
@@ -754,7 +798,7 @@ Item {
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Text {
-                                        text: "每周窗口"
+                                        text: root.trText("每周窗口")
                                         color: root.cFg; font.pixelSize: 11; font.bold: true
                                     }
                                     Text {
@@ -763,7 +807,7 @@ Item {
                                     }
                                     Item { Layout.fillWidth: true }
                                     Text {
-                                        text: "刷新: " + (root.vendorVal(planCard.vendorId, "plan_weekly_reset") || "-")
+                                        text: root.trText("刷新: %1").arg(root.vendorVal(planCard.vendorId, "plan_weekly_reset") || "-")
                                         color: root.cMuted; font.pixelSize: 10
                                     }
                                 }
@@ -805,7 +849,7 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     Text {
-                        text: "更新: " + (root.vendorVal(planCard.vendorId, "last_update") || "...")
+                        text: root.trText("更新: %1").arg(root.vendorVal(planCard.vendorId, "last_update") || root.trText("从未"))
                         color: root.cMuted; font.pixelSize: 10
                     }
                     Item { Layout.fillWidth: true }
@@ -872,8 +916,8 @@ Item {
                     Text {
                         text: {
                             const st = root.vendorVal(goCard.vendorId, "status")
-                            if (st === "error") return "错误: " + (root.vendorVal(goCard.vendorId, "error") || "未知")
-                            return "查询中..."
+                            if (st === "error") return root.trText("错误: %1").arg(root.errorText(goCard.vendorId))
+                            return root.trText("查询中...")
                         }
                         color: root.vendorVal(goCard.vendorId, "status") === "error" ? root.cDanger : root.cMuted
                         font.pixelSize: 11
@@ -889,13 +933,13 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true; spacing: 6
                             Text {
-                                text: root.vendorVal(goCard.vendorId, "go_subscribed") ? "已订阅 OpenCode Go" : "未订阅"
+                                text: root.vendorVal(goCard.vendorId, "go_subscribed") ? root.trText("已订阅 OpenCode Go") : root.trText("未订阅")
                                 color: root.vendorVal(goCard.vendorId, "go_subscribed") ? root.cSuccess : root.cMuted
                                 font.pixelSize: 11; font.bold: true
                             }
                             Item { Layout.fillWidth: true }
                             Text {
-                                text: "Zen 余额兜底: " + (root.vendorVal(goCard.vendorId, "go_use_balance") ? "开启" : "关闭")
+                                text: root.trText("Zen 余额兜底: %1").arg(root.vendorVal(goCard.vendorId, "go_use_balance") ? root.trText("开启") : root.trText("关闭"))
                                 color: root.cMuted; font.pixelSize: 10
                             }
                         }
@@ -903,9 +947,9 @@ Item {
                         // 三个窗口
                         Repeater {
                             model: [
-                                { "key": "rolling", "title": "滚动窗口" },
-                                { "key": "weekly", "title": "每周窗口" },
-                                { "key": "monthly", "title": "每月窗口" }
+                                { "key": "rolling", "title": root.trText("滚动窗口") },
+                                { "key": "weekly", "title": root.trText("每周窗口") },
+                                { "key": "monthly", "title": root.trText("每月窗口") }
                             ]
                             delegate: goWindowBox
                         }
@@ -937,7 +981,7 @@ Item {
                                 }
                                 Item { Layout.fillWidth: true }
                                 Text {
-                                    text: "重置: " + (root.vendorVal(goCard.vendorId, "go_" + modelData.key + "_reset") || "-")
+                                    text: root.trText("重置: %1").arg(root.resetText(goCard.vendorId, modelData.key))
                                     color: root.cMuted; font.pixelSize: 10
                                 }
                             }
@@ -978,7 +1022,7 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     Text {
-                        text: "更新: " + (root.vendorVal(goCard.vendorId, "last_update") || "...")
+                        text: root.trText("更新: %1").arg(root.vendorVal(goCard.vendorId, "last_update") || root.trText("从未"))
                         color: root.cMuted; font.pixelSize: 10
                     }
                     Item { Layout.fillWidth: true }

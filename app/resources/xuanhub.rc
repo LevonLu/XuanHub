@@ -1,0 +1,2 @@
+// xuanhub.rc — 将多尺寸应用图标嵌入 Windows 可执行文件
+IDI_XUANHUB_ICON ICON "xuanhub.ico"

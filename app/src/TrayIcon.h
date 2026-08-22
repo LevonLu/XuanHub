@@ -6,6 +6,7 @@
 namespace xuanhub { class EventBus; }
 class ThemeManager;
 class ConfigService;
+class LocaleManager;
 class QSystemTrayIcon;
 class QMenu;
 class QAction;
@@ -14,7 +15,8 @@ class TrayIcon : public QObject {
     Q_OBJECT
 public:
     explicit TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
-                      ConfigService* config, QObject* parent = nullptr);
+                      ConfigService* config, LocaleManager* locale,
+                      QObject* parent = nullptr);
     ~TrayIcon() override;   // m_menu 无父对象（setContextMenu 不接管所有权），需手动释放
 
     void show();
@@ -31,13 +33,19 @@ private slots:
     void onAppNotify(QVariantMap payload);  // EventBus "app.notify"：插件请求的气泡提示
     void onQuickMenuCommand(QVariantMap payload);  // bar 菜单插件复用托盘动作
     void publishQuickMenuState(QVariantMap payload = {});  // 向插件回传当前勾选状态
+    void retranslate();
 
 private:
     QSystemTrayIcon* m_tray = nullptr;
     ThemeManager*    m_theme;
     ConfigService*   m_config;
     xuanhub::EventBus* m_bus;
+    LocaleManager*    m_locale;
     QMenu*           m_menu = nullptr;
     QAction*         m_autoStartAction = nullptr;
     QAction*         m_taskbarModeAction = nullptr;
+    QAction*         m_settingsAction = nullptr;
+    QAction*         m_toggleThemeAction = nullptr;
+    QAction*         m_reloadAction = nullptr;
+    QAction*         m_quitAction = nullptr;
 };

@@ -1,0 +1,22 @@
+{
+  "locale": "en-US",
+  "contexts": {
+    "plugin.py_intime.metadata": { "InTime": "InTime" },
+    "plugin.py_intime.main": {
+      "休息提醒": "Break reminder", "休息": "Break", "工作中": "Working",
+      "休息一下": "Take a break", "按 ESC 跳过休息": "Press ESC to skip this break"
+    },
+    "plugin.py_intime.settingsPage": {
+      "休息一下": "Take a break", "时间": "Timing", "工作时长:": "Work duration:", "秒": "sec",
+      "休息时长:": "Break duration:", "动画": "Animation", "进入时长:": "Enter duration:",
+      "ms（0 = 瞬间落下）": "ms (0 = instant)", "退出时长:": "Exit duration:",
+      "ms（0 = 瞬间收起）": "ms (0 = instant)", "锁屏进度条": "Overlay progress",
+      "不显示": "Hidden", "水平进度条": "Horizontal bar", "环形进度条": "Ring",
+      "显示在全屏遮罩倒计时下方": "Shown below the overlay countdown", "遮罩类型": "Overlay type",
+      "默认 (跟随主题)": "Default (follow theme)", "纯色": "Solid color", "图片": "Image",
+      "遮罩外观": "Overlay appearance", "颜色:": "Color:", "图片:": "Image:",
+      "本地图片绝对路径": "Absolute path to a local image", "不透明度:": "Opacity:",
+      "显示文字:": "Message:", "文字大小:": "Text size:"
+    }
+  }
+}

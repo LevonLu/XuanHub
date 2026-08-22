@@ -1,9 +1,12 @@
 // PyWorkerViewModelTest.cpp — 宿主 Qt 代理到真实隔离 Python worker 的集成回归测试
 #include "PyWorkerViewModel.h"
+#include "barplugin/EventBus.h"
+#include "barplugin/ProcessReaper.h"
 
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QProcess>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -11,6 +14,20 @@ class PyWorkerViewModelTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void reaperGraceTimerSurvivesEarlyWorkerExit() {
+        // 两个 worker 在 750ms 宽限期内先后自行退出，覆盖曾导致热重载闪退的
+        // finished/deleteLater 与 grace timer 竞态。旧实现会在这里访问悬空 QProcess。
+        for (int i = 0; i < 2; ++i) {
+            auto* process = new QProcess;
+            process->start(QStringLiteral("cmd.exe"),
+                           {QStringLiteral("/d"), QStringLiteral("/c"),
+                            QStringLiteral("ping -n 2 127.0.0.1 >nul")});
+            QVERIFY(process->waitForStarted(3000));
+            xuanhub::reapProcess(process, 1500);
+        }
+        QTest::qWait(2800);
+    }
+
     void startUpdateInvokeAndStop() {
         const QString python = qEnvironmentVariable("XUANHUB_TEST_PYTHON");
         const QString worker = qEnvironmentVariable("XUANHUB_TEST_WORKER");
@@ -28,12 +45,14 @@ private Q_SLOTS:
         QVERIFY(mainFile.open(QIODevice::WriteOnly | QIODevice::Text));
         QVERIFY(mainFile.write(R"PY(
 from pathlib import Path
-state = {"count": 0, "prefix": "", "stopFile": ""}
+state = {"count": 0, "prefix": "", "stopFile": "", "locale": "unset"}
 def init(config):
     state["prefix"] = config.get("prefix", "")
     state["stopFile"] = config.get("stopFile", "")
+def set_locale(locale):
+    state["locale"] = locale
 def update():
-    return {"count": state["count"], "prefix": state["prefix"]}
+    return {"count": state["count"], "prefix": state["prefix"], "locale": state["locale"]}
 def invoke(name, args):
     if name == "bump": state["count"] += int(args[0])
     return state["count"]
@@ -43,14 +62,21 @@ def stop():
         mainFile.close();
 
         {
+            xuanhub::EventBus bus;
             PyWorkerViewModel viewModel(QStringLiteral("py_worker_test"), pluginDir,
                                         {{QStringLiteral("prefix"), QStringLiteral("isolated")},
                                          {QStringLiteral("stopFile"), stopFile}},
-                                        python, worker);
+                                        python, worker, &bus);
             QVERIFY(viewModel.start());
             QTRY_VERIFY_WITH_TIMEOUT(viewModel.running(), 5000);
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("prefix")).toString(),
                                       QStringLiteral("isolated"), 5000);
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("locale")).toString(),
+                                      QStringLiteral("en-US"), 5000);
+            bus.publish(QStringLiteral("app.locale.changed"),
+                        {{QStringLiteral("locale"), QStringLiteral("zh-CN")}});
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("locale")).toString(),
+                                      QStringLiteral("zh-CN"), 5000);
             QCOMPARE(viewModel.call(QStringLiteral("bump"), {3}).toMap()
                          .value(QStringLiteral("queued")).toBool(), true);
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("count")).toInt(), 3, 5000);

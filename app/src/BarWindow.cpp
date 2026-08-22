@@ -5,6 +5,7 @@
 #include "TaskbarEmbed.h"
 #include "PluginListModel.h"
 #include "ThemeManager.h"
+#include "LocaleManager.h"
 
 #include <QScreen>
 #include <QGuiApplication>
@@ -16,11 +17,15 @@
 #include <QDebug>
 
 BarWindow::BarWindow(ConfigService* config, PluginListModel* model,
-                       ThemeManager* theme, QWindow* parent)
+                       ThemeManager* theme, LocaleManager* locale, QWindow* parent)
     : QQuickView(parent), m_config(config), m_guard(new WorkAreaGuard(this)),
       m_embed(new TaskbarEmbed(this)) {
     if (model) engine()->rootContext()->setContextProperty("pluginModel", model);
     if (theme) engine()->rootContext()->setContextProperty("themeManager", theme);
+    if (locale) {
+        engine()->rootContext()->setContextProperty("i18n", locale);
+        locale->registerEngine(engine());
+    }
     // barConfig：bar.height/edge/theme/mode 供 QML（含插件 QML，同引擎根上下文）读取
     if (config) engine()->rootContext()->setContextProperty("barConfig", config);
     // barWindow：暴露本窗口给 QML（插件 QML 用 Connections 收听 barPressed 信号）

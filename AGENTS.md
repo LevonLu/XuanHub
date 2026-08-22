@@ -4,7 +4,7 @@
 
 ## 1. 项目概览
 
-**玄枢（XuanHub）** 是一个基于 **Qt6 / QML 的 Windows 插件化状态栏框架**（对标 polybar / waybar / Rainmeter），当前版本 0.2.0。
+**玄枢（XuanHub）** 是一个基于 **Qt6 / QML 的 Windows 插件化状态栏框架**（对标 polybar / waybar / Rainmeter），当前版本 0.2.1。
 
 - `XuanHub.exe`：无边框、置顶、`Qt::Tool` 的 `QQuickView`，两种形态（`bar.mode`）：`appbar`（默认，Win32 AppBar 占住主屏顶部/底部工作区）；`taskbar`（`SetParent` 嵌入原生任务栏左侧，透明、不占工作区）。
 - 插件是独立 DLL（`QPluginLoader` 加载），自带 QML 界面，框架只负责发现、加载、布局。内置示例插件：`clock`、`sysinfo`。

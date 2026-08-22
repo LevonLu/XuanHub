@@ -13,13 +13,15 @@ class ThemeRegistry;
 class PluginManager;
 class PluginListModel;
 class BarWindow;
+class LocaleManager;
 
 class ConfigHotReloader : public QObject {
     Q_OBJECT
 public:
     ConfigHotReloader(ConfigService* config, ThemeManager* theme, ThemeRegistry* registry,
                       PluginManager* pm, PluginListModel* model, BarWindow* window,
-                      QString exeDir, QString configDir, QObject* parent = nullptr);
+                      LocaleManager* locale, QString exeDir, QString configDir,
+                      QObject* parent = nullptr);
 
 public slots:
     void reload();        // watcher/防抖路径：plugins 段未变则跳过插件全量重载
@@ -35,6 +37,7 @@ private:
     PluginManager* m_pm;
     PluginListModel* m_model;
     BarWindow* m_window;
+    LocaleManager* m_locale;
     QString m_exeDir;
     QString m_configDir;
     QFileSystemWatcher m_watcher;

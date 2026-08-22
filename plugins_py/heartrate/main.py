@@ -33,7 +33,8 @@ _cache = {
     "deviceName": "",       # 目标/已连接设备名
     "deviceId": "",         # 目标/已连接设备地址（QML 高亮匹配用）
     "devices": [],          # 扫描结果 [{id, name, rssi}, ...]
-    "error": "",            # 错误信息（弹窗展示，bar 仍显示"未连接设备"）
+    "errorCode": None,       # 稳定错误码；固定文案由 QML 语言包渲染
+    "errorDetail": None,
     "lastSeen": None,       # 最近一次心率时间戳（供失联判定）
     "history": [],          # 曲线数据 [[ts, hr], ...]（仅弹窗打开时填充）
     "historyWindow": 5,     # 当前曲线时长（分钟），QML 打开时同步选中态
@@ -388,7 +389,7 @@ async def _do_scan(clear_error=True):
     """开始持续扫描（已在扫则跳过）。已连接/连接中不再搜索。"""
     global _scan_task, _scanning_wanted
     if not _BLEAK_OK:
-        _set(state="error", error="未安装 bleak，请运行: py -m pip install bleak")
+        _set(state="error", errorCode="bleakMissing", errorDetail=None)
         return
     with _lock:
         if _cache["state"] in ("connected", "connecting"):
@@ -399,7 +400,7 @@ async def _do_scan(clear_error=True):
         _scanning_wanted = asyncio.Event()
     _scanning_wanted.set()  # 新建的 Event 默认未置位，必须 set 扫描循环才会继续
     if clear_error:
-        _set(state="scanning", error="", devices=[])
+        _set(state="scanning", errorCode=None, errorDetail=None, devices=[])
     else:
         # 连接失败后自动续扫：保留错误信息让用户看到失败原因
         _set(state="scanning", devices=[])
@@ -414,7 +415,7 @@ async def _scan_loop():
         while _scanning_wanted.is_set() and not _stop_flag.is_set():
             await asyncio.sleep(0.5)
     except Exception as e:
-        _set(state="error", error="扫描失败: %s" % e)
+        _set(state="error", errorCode="scanFailed", errorDetail=str(e))
     finally:
         if scanner is not None:
             try:
@@ -463,7 +464,8 @@ async def _do_connect(address, name):
     """连接设备并订阅心率通知。失败回落 error，由弹窗展示原因。"""
     global _client, _connected_at, _reconnect_count
     await _do_stop_scan()
-    _set(state="connecting", deviceName=name or address, deviceId=address, error="")
+    _set(state="connecting", deviceName=name or address, deviceId=address,
+         errorCode=None, errorDetail=None)
     client = None
     try:
         client = BleakClient(address, timeout=10.0)
@@ -494,7 +496,7 @@ async def _do_connect(address, name):
                     await client.disconnect()
             except Exception:
                 pass
-        _set(state="error", error="连接失败: %s" % e)
+        _set(state="error", errorCode="connectFailed", errorDetail=str(e))
         if _chart_active:
             await _do_scan(clear_error=False)  # 弹窗内失败后自动恢复扫描供重选
 
@@ -514,7 +516,8 @@ async def _do_disconnect():
     """手动断开：回 idle 并重置自动重连计数。弹窗内断开后自动恢复扫描。"""
     global _reconnect_count
     await _disconnect_client()
-    _set(state="idle", hr=None, deviceName="", deviceId="", error="")
+    _set(state="idle", hr=None, deviceName="", deviceId="",
+         errorCode=None, errorDetail=None)
     _reconnect_count = 0
     if _chart_active:
         await _do_scan()
@@ -565,7 +568,8 @@ async def _monitor():
             saved = _load_state()
             last = saved["lastDevice"] if saved else None
             if last:
-                _set(state="connecting", deviceName=last.get("name", ""), error="")
+                _set(state="connecting", deviceName=last.get("name", ""),
+                     errorCode=None, errorDetail=None)
                 try:
                     await asyncio.sleep(5)  # 退避，避免反复失败烧蓝牙栈
                 except asyncio.CancelledError:
@@ -594,7 +598,7 @@ def init(config):
          knownDevices=[{"id": d["address"], "name": d["name"], "lastSeen": d["lastSeen"]}
                        for d in _known])
     if not _BLEAK_OK:
-        _set(state="error", error="未安装 bleak，请运行: py -m pip install bleak")
+        _set(state="error", errorCode="bleakMissing", errorDetail=None)
         return
     _stop_flag.clear()
     _thread = threading.Thread(target=_worker, daemon=True, name="heartrate-ble")

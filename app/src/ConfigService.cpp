@@ -132,6 +132,7 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
     const QString oldTheme = m_theme;
     const QString oldThemeId = m_themeId;
     const QString oldBarMode = m_barMode;
+    const QString oldLanguage = m_language;
 
     const auto bar = root.value("bar").toObject();
     // height：钳到与设置窗口校验一致的范围（24–200），防手写越界（负值/超大）
@@ -180,6 +181,21 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
     if (bar.contains("taskbarOffsetX"))
         m_taskbarOffsetX = bar.value("taskbarOffsetX").toInt(m_taskbarOffsetX);
 
+    // ui.language：默认跟随系统；非法值回退 system，避免语言包路径被任意输入污染。
+    const QJsonObject ui = root.value(QStringLiteral("ui")).toObject();
+    if (ui.contains(QStringLiteral("language"))) {
+        const QString language = ui.value(QStringLiteral("language")).toString();
+        if (language == QStringLiteral("system") || language == QStringLiteral("zh-CN")
+            || language == QStringLiteral("en-US")) {
+            m_language = language;
+        } else {
+            qWarning() << "[Config] invalid language:" << language << "-> system";
+            m_language = QStringLiteral("system");
+        }
+    } else {
+        m_language = QStringLiteral("system");
+    }
+
     m_pluginEntries.clear();
     const auto arr = pluginArray;
     const SecretStore secrets(QFileInfo(m_activePath).absolutePath());
@@ -217,6 +233,7 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
              << "opacity=" << m_barOpacity
              << "themeId=" << m_themeId << "theme=" << m_theme
              << "barMode=" << m_barMode
+             << "language=" << m_language
              << "| plugins=" << m_pluginEntries.size();
 
     if (m_barHeight != oldHeight) emit barHeightChanged();
@@ -225,6 +242,7 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
     if (m_theme != oldTheme) emit themeChanged();
     if (m_themeId != oldThemeId) emit themeIdChanged();
     if (m_barMode != oldBarMode) emit barModeChanged();
+    if (m_language != oldLanguage) emit languageChanged();
     // 已成功从真实文件加载：此后文件缺失时不再播种默认配置（见上方缺失分支）
     m_everLoadedFromFile = true;
     return true;

@@ -36,6 +36,29 @@ add_custom_command(TARGET xuanhub_config_tests POST_BUILD
 
 add_test(NAME xuanhub_config_tests COMMAND xuanhub_config_tests)
 
+add_executable(xuanhub_locale_tests
+    LocaleTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/JsonTranslator.h
+    ${CMAKE_SOURCE_DIR}/app/src/JsonTranslator.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/LocaleManager.h
+    ${CMAKE_SOURCE_DIR}/app/src/LocaleManager.cpp
+)
+set_target_properties(xuanhub_locale_tests PROPERTIES AUTOMOC ON)
+target_include_directories(xuanhub_locale_tests PRIVATE ${CMAKE_SOURCE_DIR}/app/src)
+target_link_libraries(xuanhub_locale_tests PRIVATE barplugin Qt6::Core Qt6::Qml Qt6::Test)
+add_custom_command(TARGET xuanhub_locale_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:barplugin>" "$<TARGET_FILE_DIR:xuanhub_locale_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Core>" "$<TARGET_FILE_DIR:xuanhub_locale_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Qml>" "$<TARGET_FILE_DIR:xuanhub_locale_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Test>" "$<TARGET_FILE_DIR:xuanhub_locale_tests>"
+    VERBATIM
+)
+add_test(NAME xuanhub_locale_tests COMMAND xuanhub_locale_tests)
+
 # 协议回归只需可执行解释器，不需要开发头/库；找不到时不让核心 CTest 失效。
 find_package(Python 3.12 QUIET COMPONENTS Interpreter)
 if(Python_Interpreter_FOUND)

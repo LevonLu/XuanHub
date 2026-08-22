@@ -10,6 +10,17 @@ import QtQuick.Layouts
 Item {
     id: root
     property var plugin
+    function trText(source) { return qsTranslate("plugin.py_heartrate.main", source) }
+
+    function errorText() {
+        if (!plugin || !plugin.values) return ""
+        var code = plugin.values.errorCode
+        var text = code === "bleakMissing" ? trText("未安装 bleak，请运行: py -m pip install bleak")
+                 : code === "scanFailed" ? trText("扫描失败")
+                 : code === "connectFailed" ? trText("连接失败") : ""
+        var detail = plugin.values.errorDetail
+        return text + (detail ? ": " + detail : "")
+    }
 
     // 宽度跟随内容：未连接时显示"未连接设备"，连接后显示"♥ 72"，写死宽度会被槽位 clip:true 截断
     width: barText.implicitWidth + 24
@@ -58,15 +69,15 @@ Item {
         font.pixelSize: 15
         // 文案映射：连接+有数据 → "♥ 72"；连接中 → "连接中…"；其余 → "未连接设备"
         text: {
-            if (!plugin || !plugin.values) return "未连接设备"
+            if (!plugin || !plugin.values) return root.trText("未连接设备")
             const s = String(plugin.values.state)
-            if (s === "connecting") return "连接中…"
+            if (s === "connecting") return root.trText("连接中…")
             if (s === "connected") {
                 const h = plugin.values.hr
                 if (h !== null && h !== undefined) return "♥ " + h
-                return "已连接"
+                return root.trText("已连接")
             }
-            return "未连接设备"
+            return root.trText("未连接设备")
         }
         // 有心率时高亮（accent），否则 muted
         color: {
@@ -98,10 +109,10 @@ Item {
     function relTime(ts) {
         if (!ts) return ""
         const s = Math.floor(Date.now() / 1000) - ts
-        if (s < 60) return "刚刚"
-        if (s < 3600) return Math.floor(s / 60) + " 分钟前"
-        if (s < 86400) return Math.floor(s / 3600) + " 小时前"
-        return Math.floor(s / 86400) + " 天前"
+        if (s < 60) return trText("刚刚")
+        if (s < 3600) return trText("%1 分钟前").arg(Math.floor(s / 60))
+        if (s < 86400) return trText("%1 小时前").arg(Math.floor(s / 3600))
+        return trText("%1 天前").arg(Math.floor(s / 86400))
     }
 
     function openPopup() {
@@ -122,6 +133,7 @@ Item {
 
     Window {
         id: popupWin
+        transientParent: null
         property bool pendingClamp: false
         // >=0 时为「上翻」模式：弹窗底边锚定在该屏幕 y 处（部件上方 6px）。
         property real bottomAnchor: -1
@@ -201,7 +213,7 @@ Item {
                 // 标题行
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { text: "心率设备"; color: root.colors.fg; font.pixelSize: 15; font.bold: true }
+                    Text { text: root.trText("心率设备"); color: root.colors.fg; font.pixelSize: 15; font.bold: true }
                     Item { Layout.fillWidth: true }
                     Text {
                         text: "✕"; color: root.colors.muted; font.pixelSize: 16
@@ -223,21 +235,21 @@ Item {
                             const pv = plugin.values
                             if (pv.state === "connected") {
                                 const h = pv.hr
-                                const hrTxt = (h !== null && h !== undefined) ? "♥ " + h + " bpm" : "等待数据…"
-                                return "已连接 " + (pv.deviceName || "") + "　" + hrTxt
+                                const hrTxt = (h !== null && h !== undefined) ? "♥ " + h + " bpm" : root.trText("等待数据…")
+                                return root.trText("已连接") + " " + (pv.deviceName || "") + "　" + hrTxt
                             }
-                            if (pv.state === "connecting") return "连接中 " + (pv.deviceName || "") + "…"
-                            if (pv.state === "scanning") return "正在扫描附近设备…"
-                            if (pv.state === "error") return "出错"
-                            return "未连接设备"
+                            if (pv.state === "connecting") return root.trText("连接中") + " " + (pv.deviceName || "") + "…"
+                            if (pv.state === "scanning") return root.trText("正在扫描附近设备…")
+                            if (pv.state === "error") return root.trText("出错")
+                            return root.trText("未连接设备")
                         }
                     }
                     Text {
                         Layout.fillWidth: true
                         color: root.colors.danger; font.pixelSize: 11
                         wrapMode: Text.WrapAnywhere
-                        visible: plugin && plugin.values && plugin.values.error
-                        text: plugin && plugin.values ? String(plugin.values.error) : ""
+                        visible: root.errorText().length > 0
+                        text: root.errorText()
                     }
                 }
 
@@ -249,7 +261,7 @@ Item {
                         Layout.fillWidth: true; spacing: 4
                         Text {
                             color: root.colors.muted; font.pixelSize: 11
-                            text: "历史曲线"
+                            text: root.trText("历史曲线")
                         }
                         Item { Layout.fillWidth: true }
                         Repeater {
@@ -269,7 +281,7 @@ Item {
                                     anchors.centerIn: parent
                                     color: root.winSel === modelData ? root.colors.onAccent : root.colors.fg
                                     font.pixelSize: 11
-                                    text: modelData + "分"
+                                    text: root.trText("%1 分").arg(modelData)
                                 }
                                 MouseArea {
                                     id: winBtnMouse
@@ -304,7 +316,7 @@ Item {
                                 ctx.font = "11px sans-serif"
                                 ctx.textAlign = "center"
                                 ctx.textBaseline = "middle"
-                                ctx.fillText("暂无数据", w / 2, h / 2)
+                                ctx.fillText(root.trText("暂无数据"), w / 2, h / 2)
                                 return
                             }
                             // 数值范围（含上下留白）
@@ -361,9 +373,10 @@ Item {
                         horizontalAlignment: Text.AlignHCenter
                         color: root.colors.muted
                         font.pixelSize: 11
-                        text: "最大 " + plugin.values.historyMax
-                              + "　最小 " + plugin.values.historyMin
-                              + "　平均 " + plugin.values.historyAvg
+                        text: root.trText("最大 %1　最小 %2　平均 %3")
+                                  .arg(plugin.values.historyMax)
+                                  .arg(plugin.values.historyMin)
+                                  .arg(plugin.values.historyAvg)
                     }
                 }
 
@@ -412,7 +425,7 @@ Item {
                                     Layout.fillWidth: true
                                     elide: Text.ElideRight
                                     color: root.colors.fg; font.pixelSize: 12
-                                    text: devRow.model.name || "未命名设备"
+                                    text: devRow.model.name || root.trText("未命名设备")
                                 }
                                 Text {
                                     // 常用设备显示相对时间，扫描结果显示信号强度
@@ -425,7 +438,8 @@ Item {
                                 Text {
                                     visible: devRow.isTarget
                                     color: root.colors.onAccent; font.pixelSize: 11; font.bold: true
-                                    text: String(plugin.values.state) === "connected" ? "已连接" : "连接中"
+                                    text: String(plugin.values.state) === "connected"
+                                          ? root.trText("已连接") : root.trText("连接中")
                                 }
                             }
                             MouseArea {
@@ -461,7 +475,7 @@ Item {
                         }
                         Text {
                             color: root.colors.success; font.pixelSize: 11; font.bold: true
-                            text: "已连接"
+                            text: root.trText("已连接")
                         }
                     }
                 }
@@ -480,10 +494,10 @@ Item {
                     text: {
                         if (!plugin || !plugin.values) return ""
                         const s = String(plugin.values.state)
-                        if (s === "error") return "点击右上角 ✕ 关闭"
-                        if (s === "scanning") return "扫描中…未发现设备（确认设备已开启广播）"
+                        if (s === "error") return root.trText("点击右上角 ✕ 关闭")
+                        if (s === "scanning") return root.trText("扫描中…未发现设备（确认设备已开启广播）")
                         if (s === "connected" || s === "connecting") return ""
-                        return "未连接设备"
+                        return root.trText("未连接设备")
                     }
                 }
 
@@ -504,7 +518,7 @@ Item {
                             color: root.colors.fg; font.pixelSize: 12
                             text: {
                                 const s = plugin && plugin.values ? String(plugin.values.state) : "idle"
-                                return s === "scanning" ? "重新扫描" : "扫描"
+                                return s === "scanning" ? root.trText("重新扫描") : root.trText("扫描")
                             }
                         }
                         MouseArea {
@@ -530,7 +544,7 @@ Item {
                         Text {
                             anchors.centerIn: parent
                             color: root.colors.danger; font.pixelSize: 12
-                            text: "断开连接"
+                            text: root.trText("断开连接")
                         }
                         MouseArea {
                             id: discBtnMouse

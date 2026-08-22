@@ -14,6 +14,7 @@ Pane {
     // clip 防止子项（标题栏、滚动内容）溢出圆角区域。
     clip: true
     property int cornerRadius: UiMetrics.radiusL
+    function trText(source) { return qsTranslate("xuanhub.settings", source) }
 
     // [dev] UI 测试驱动：--uitest 启动时 SettingsController 注入 uiTestCommands（命令
     // 数组），本 Timer 每 500ms 回放一条（click:x,y / kp:文本）；正常启动该属性
@@ -52,18 +53,23 @@ Pane {
     }
 
     // 页名/图标表：导航、标题栏副标题、StackLayout 共用一份索引
-    readonly property var pageNames: ["外观", "插件", "通用"]
+    readonly property var pageNames: [
+        qsTranslate("xuanhub.settings", "外观"),
+        qsTranslate("xuanhub.settings", "插件"),
+        qsTranslate("xuanhub.settings", "通用")
+    ]
     readonly property var pageIcons: ["◐", "⌘", "⚙"]
     function positionLabel(position) {
-        if (position === "left") return "左侧区域"
-        if (position === "center") return "中间区域"
-        return position === "right" ? "右侧区域" : "未识别区域"
+        if (position === "left") return trText("左侧区域")
+        if (position === "center") return trText("中间区域")
+        return position === "right" ? trText("右侧区域") : trText("未识别区域")
     }
     function groupLabel(groupKey) {
         const separator = groupKey.indexOf("-")
         const enabled = groupKey.substring(0, separator) === "enabled"
         const position = separator >= 0 ? groupKey.substring(separator + 1) : groupKey
-        return (enabled ? "已启用" : "未启用") + " · " + positionLabel(position)
+        return (enabled ? trText("已启用") : trText("未启用"))
+                + " · " + positionLabel(position)
     }
 
     // 插件设置草稿读取：config 无该键时用 schema default 兜底（类型化表单与自绘页共用）
@@ -117,23 +123,26 @@ Pane {
                 anchors.rightMargin: UiMetrics.space3
                 spacing: UiMetrics.space3
 
-                Rectangle {
+                Image {
                     Layout.preferredWidth: 32
                     Layout.preferredHeight: 32
-                    radius: UiMetrics.radiusS
-                    color: root.c.accent
-                    Text {
-                        anchors.centerIn: parent
-                        text: "⚙"
-                        color: root.c.onAccent
-                        font.pixelSize: 18
-                    }
+                    source: "qrc:/qt/qml/XuanHub/resources/xuanhub-icon-256.png"
+                    sourceSize: Qt.size(64, 64)
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    mipmap: true
                 }
                 Text {
-                    text: "玄枢设置 XuanHub Settings"
+                    text: root.trText("玄枢设置 XuanHub Settings")
                     color: root.c.fg
                     font.pixelSize: UiMetrics.fontL
                     font.weight: Font.DemiBold
+                }
+                Text {
+                    visible: Qt.application.version.length > 0
+                    text: "v" + Qt.application.version
+                    color: root.c.muted
+                    font.pixelSize: UiMetrics.fontS
                 }
                 Rectangle {
                     radius: 10
@@ -151,7 +160,8 @@ Pane {
                 }
                 Item { Layout.fillWidth: true }
                 Text {
-                    text: root.invalidFields > 0 ? "请修正输入错误" : "更改将在保存后生效"
+                    text: root.invalidFields > 0 ? root.trText("请修正输入错误")
+                                                 : root.trText("更改将在保存后生效")
                     color: root.invalidFields > 0 ? root.c.danger : root.c.muted
                     font.pixelSize: UiMetrics.fontS
                 }
@@ -229,7 +239,7 @@ Pane {
                     spacing: UiMetrics.space1
 
                     Text {
-                        text: "设置"
+                        text: root.trText("设置")
                         color: root.c.muted
                         font.pixelSize: UiMetrics.fontTiny
                         font.weight: Font.DemiBold
@@ -342,13 +352,13 @@ Pane {
                                 Layout.fillWidth: true
                                 spacing: UiMetrics.space1
                                 Text {
-                                    text: "外观"
+                                    text: root.trText("外观")
                                     color: root.c.fg
                                     font.pixelSize: UiMetrics.fontXL
                                     font.weight: Font.DemiBold
                                 }
                                 Text {
-                                    text: "调整状态栏主题、尺寸和停靠方式"
+                                    text: root.trText("调整状态栏主题、尺寸和停靠方式")
                                     color: root.c.muted
                                     font.pixelSize: UiMetrics.fontM
                                 }
@@ -356,8 +366,8 @@ Pane {
 
                             UiCard {
                                 Layout.fillWidth: true
-                                title: "主题"
-                                description: "选择主题包和明暗模式；保存后立即热重载"
+                                title: root.trText("主题")
+                                description: root.trText("选择主题包和明暗模式；保存后立即热重载")
 
                                 GridLayout {
                                     Layout.fillWidth: true
@@ -369,13 +379,13 @@ Pane {
                                         Layout.fillWidth: true
                                         spacing: UiMetrics.space1
                                         Text {
-                                            text: "主题包"
+                                            text: root.trText("主题包")
                                             color: root.c.fg
                                             font.pixelSize: UiMetrics.fontS
                                             font.weight: Font.DemiBold
                                         }
                                         Text {
-                                            text: "决定色板与整体视觉风格"
+                                            text: root.trText("决定色板与整体视觉风格")
                                             color: root.c.muted
                                             font.pixelSize: UiMetrics.fontTiny
                                         }
@@ -397,20 +407,25 @@ Pane {
                                         Layout.fillWidth: true
                                         spacing: UiMetrics.space1
                                         Text {
-                                            text: "模式"
+                                            text: root.trText("模式")
                                             color: root.c.fg
                                             font.pixelSize: UiMetrics.fontS
                                             font.weight: Font.DemiBold
                                         }
                                         Text {
-                                            text: "浅色和深色模式均可跟随主题包"
+                                            text: root.trText("浅色和深色模式均可跟随主题包")
                                             color: root.c.muted
                                             font.pixelSize: UiMetrics.fontTiny
                                         }
                                         UiComboBox {
-                                            model: ["dark", "light"]
+                                            model: [
+                                                { value: "dark", label: root.trText("深色") },
+                                                { value: "light", label: root.trText("浅色") }
+                                            ]
+                                            textRole: "label"
+                                            valueRole: "value"
                                             currentIndex: settingsVM.theme === "light" ? 1 : 0
-                                            onActivated: settingsVM.theme = currentText
+                                            onActivated: settingsVM.theme = currentValue
                                         }
                                     }
                                 }
@@ -418,8 +433,8 @@ Pane {
 
                             UiCard {
                                 Layout.fillWidth: true
-                                title: "状态栏"
-                                description: "尺寸、停靠边缘与系统集成方式"
+                                title: root.trText("状态栏")
+                                description: root.trText("尺寸、停靠边缘与系统集成方式")
 
                                 GridLayout {
                                     Layout.fillWidth: true
@@ -430,33 +445,46 @@ Pane {
                                     ColumnLayout {
                                         Layout.fillWidth: true
                                         spacing: UiMetrics.space1
-                                        Text { text: "高度（像素）"; color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
-                                        Text { text: "状态栏的可视高度"; color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
+                                        Text { text: root.trText("高度（像素）"); color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
+                                        Text { text: root.trText("状态栏的可视高度"); color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
                                         UiSpinBox { from: 24; to: 200; value: settingsVM.barHeight; onValueModified: settingsVM.barHeight = value }
                                     }
                                     ColumnLayout {
                                         Layout.fillWidth: true
                                         spacing: UiMetrics.space1
-                                        Text { text: "停靠边缘"; color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
-                                        Text { text: "选择显示在屏幕顶部或底部"; color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
-                                        UiComboBox { model: ["top", "bottom"]; currentIndex: settingsVM.barEdge === "bottom" ? 1 : 0; onActivated: settingsVM.barEdge = currentText }
-                                    }
-                                    ColumnLayout {
-                                        Layout.fillWidth: true
-                                        spacing: UiMetrics.space1
-                                        Text { text: "工作模式"; color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
-                                        Text { text: "appbar 占用工作区；taskbar 嵌入任务栏"; color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
+                                        Text { text: root.trText("停靠边缘"); color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
+                                        Text { text: root.trText("选择显示在屏幕顶部或底部"); color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
                                         UiComboBox {
-                                            model: ["appbar", "taskbar"]
-                                            currentIndex: settingsVM.barMode === "taskbar" ? 1 : 0
-                                            onActivated: settingsVM.barMode = currentText
+                                            model: [
+                                                { value: "top", label: root.trText("顶部") },
+                                                { value: "bottom", label: root.trText("底部") }
+                                            ]
+                                            textRole: "label"; valueRole: "value"
+                                            currentIndex: settingsVM.barEdge === "bottom" ? 1 : 0
+                                            onActivated: settingsVM.barEdge = currentValue
                                         }
                                     }
                                     ColumnLayout {
                                         Layout.fillWidth: true
                                         spacing: UiMetrics.space1
-                                        Text { text: "透明度 (%)"; color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
-                                        Text { text: "最低 20%，避免状态栏不可见"; color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
+                                        Text { text: root.trText("工作模式"); color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
+                                        Text { text: root.trText("appbar 占用工作区；taskbar 嵌入任务栏"); color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
+                                        UiComboBox {
+                                            model: [
+                                                { value: "appbar", label: "AppBar" },
+                                                { value: "taskbar", label: root.trText("任务栏") }
+                                            ]
+                                            textRole: "label"
+                                            valueRole: "value"
+                                            currentIndex: settingsVM.barMode === "taskbar" ? 1 : 0
+                                            onActivated: settingsVM.barMode = currentValue
+                                        }
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: UiMetrics.space1
+                                        Text { text: root.trText("透明度 (%)"); color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
+                                        Text { text: root.trText("最低 20%，避免状态栏不可见"); color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
                                         UiSpinBox {
                                             from: 20; to: 100; stepSize: 5
                                             value: settingsVM.barOpacity
@@ -500,14 +528,14 @@ Pane {
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Text {
-                                        text: "插件"
+                                        text: root.trText("插件")
                                         color: root.c.fg
                                         font.pixelSize: UiMetrics.fontL
                                         font.weight: Font.DemiBold
                                         Layout.fillWidth: true
                                     }
                                     Text {
-                                        text: settingsVM.pluginModel.count + " 个"
+                                        text: settingsVM.pluginModel.count + " " + root.trText("个插件")
                                         color: root.c.muted
                                         font.pixelSize: UiMetrics.fontTiny
                                     }
@@ -515,7 +543,7 @@ Pane {
                                 UiTextField {
                                     id: pluginSearch
                                     Layout.fillWidth: true
-                                    placeholderText: "搜索插件…"
+                                    placeholderText: root.trText("搜索插件…")
                                 }
 
                                 ListView {
@@ -646,7 +674,7 @@ Pane {
                                             color: root.c.muted
                                             font.pixelSize: UiMetrics.fontTiny
                                             text: model.id + " · " + (model.kind === "python" ? "Python" : "C++")
-                                                  + (model.discovered ? "" : " · 磁盘缺失")
+                                                  + (model.discovered ? "" : " · " + root.trText("磁盘缺失"))
                                             elide: Text.ElideRight
                                             Layout.fillWidth: true
                                         }
@@ -742,7 +770,7 @@ Pane {
                                 Text {
                                     color: root.c.muted
                                     font.pixelSize: UiMetrics.fontM
-                                    text: "在左侧选择一个插件"
+                                    text: root.trText("在左侧选择一个插件")
                                 }
                             }
 
@@ -796,14 +824,14 @@ Pane {
                                                         let s = pluginList.currentId
                                                         if (d.version) s += " · v" + d.version
                                                         if (d.author) s += " · " + d.author
-                                                        if (d.discovered === false) s += " · 磁盘缺失"
+                                                        if (d.discovered === false) s += " · " + root.trText("磁盘缺失")
                                                         return s
                                                     }
                                                 }
                                             }
                                         }
                                         UiSwitch {
-                                            text: checked ? "已启用" : "已停用"
+                                            text: checked ? root.trText("已启用") : root.trText("已停用")
                                             checked: detailPanel.rowData.enabled === true
                                             onToggled: settingsVM.pluginModel.setRoleValue(
                                                            detailPanel.currentRow, "enabled", checked)
@@ -818,8 +846,8 @@ Pane {
 
                                         UiCard {
                                             Layout.fillWidth: true
-                                            title: "基础设置"
-                                            description: "控制插件在状态栏中的位置、显示顺序与占用宽度"
+                                            title: root.trText("基础设置")
+                                            description: root.trText("控制插件在状态栏中的位置、显示顺序与占用宽度")
 
                                             GridLayout {
                                                 Layout.fillWidth: true
@@ -830,27 +858,35 @@ Pane {
                                                 ColumnLayout {
                                                     Layout.fillWidth: true
                                                     spacing: UiMetrics.space1
-                                                    Text { text: "位置"; color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
-                                                    Text { text: "显示在状态栏的哪一栏"; color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
+                                                    Text { text: root.trText("位置"); color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
+                                                    Text { text: root.trText("显示在状态栏的哪一栏"); color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
                                                     UiComboBox {
-                                                        model: ["left", "center", "right"]
+                                                        model: [
+                                                            { value: "left", label: root.trText("左侧") },
+                                                            { value: "center", label: root.trText("中间") },
+                                                            { value: "right", label: root.trText("右侧") }
+                                                        ]
+                                                        textRole: "label"
+                                                        valueRole: "value"
                                                         currentIndex: Math.max(0, indexOfValue(detailPanel.rowData.position))
                                                         onActivated: settingsVM.pluginModel.setRoleValue(
-                                                                         detailPanel.currentRow, "position", currentText)
+                                                                         detailPanel.currentRow, "position", currentValue)
                                                     }
                                                 }
                                                 ColumnLayout {
                                                     Layout.fillWidth: true
                                                     spacing: UiMetrics.space1
-                                                    Text { text: "顺序"; color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
-                                                    Text { text: "仅在当前区域内调整"; color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
+                                                    Text { text: root.trText("顺序"); color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
+                                                    Text { text: root.trText("仅在当前区域内调整"); color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
                                                     RowLayout {
                                                         Layout.fillWidth: true
                                                         spacing: UiMetrics.space2
                                                         UiButton {
                                                             variant: "outline"
-                                                            text: "↑ 上移"
-                                                            Layout.preferredWidth: 82
+                                                            text: "↑ " + root.trText("上移")
+                                                            // 82 是中文下的最小触控宽度；英文等较长翻译按
+                                                            // UiButton 的文本 + padding 自然宽度扩展，避免溢出。
+                                                            Layout.preferredWidth: Math.max(82, implicitWidth)
                                                             enabled: settingsVM.pluginModel.canMoveUp(
                                                                          detailPanel.currentRow)
                                                             onClicked: settingsVM.pluginModel.moveUp(
@@ -858,8 +894,8 @@ Pane {
                                                         }
                                                         UiButton {
                                                             variant: "outline"
-                                                            text: "↓ 下移"
-                                                            Layout.preferredWidth: 82
+                                                            text: "↓ " + root.trText("下移")
+                                                            Layout.preferredWidth: Math.max(82, implicitWidth)
                                                             enabled: settingsVM.pluginModel.canMoveDown(
                                                                          detailPanel.currentRow)
                                                             onClicked: settingsVM.pluginModel.moveDown(
@@ -870,10 +906,11 @@ Pane {
                                                 ColumnLayout {
                                                     Layout.fillWidth: true
                                                     spacing: UiMetrics.space1
-                                                    Text { text: "宽度"; color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
+                                                    Text { text: root.trText("宽度"); color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
                                                     Text {
                                                         text: Number(detailPanel.rowData.width) > 0
-                                                              ? "固定插件占用宽度" : "自动跟随内容宽度"
+                                                              ? root.trText("固定插件占用宽度")
+                                                              : root.trText("自动跟随内容宽度")
                                                         color: root.c.muted
                                                         font.pixelSize: UiMetrics.fontTiny
                                                     }
@@ -881,7 +918,7 @@ Pane {
                                                         Layout.fillWidth: true
                                                         spacing: UiMetrics.space2
                                                         UiComboBox {
-                                                            model: ["自适应", "手动"]
+                                                            model: [root.trText("自适应"), root.trText("手动")]
                                                             currentIndex: Number(detailPanel.rowData.width) > 0 ? 1 : 0
                                                             onActivated: {
                                                                 if (currentIndex === 0) {
@@ -913,7 +950,7 @@ Pane {
                                                       && String(detailPanel.rowData.settingsQml).length > 0)
                                                      || (detailPanel.rowData.schema || []).length > 0
                                             Text {
-                                                text: "插件设置"
+                                                text: root.trText("插件设置")
                                                 color: root.c.fg
                                                 font.pixelSize: UiMetrics.fontL
                                                 font.weight: Font.DemiBold
@@ -922,7 +959,7 @@ Pane {
                                             Text {
                                                 text: detailPanel.rowData.settingsQml !== undefined
                                                       && String(detailPanel.rowData.settingsQml).length > 0
-                                                      ? "自定义设置页" : "通用设置项"
+                                                      ? root.trText("自定义设置页") : root.trText("通用设置项")
                                                 color: root.c.muted
                                                 font.pixelSize: UiMetrics.fontTiny
                                             }
@@ -956,7 +993,7 @@ Pane {
                                                 anchors.centerIn: parent
                                                 color: root.c.danger
                                                 font.pixelSize: UiMetrics.fontS
-                                                text: "⚠ 设置页加载失败（详见 xuanhub.log）"
+                                                text: "⚠ " + root.trText("设置页加载失败（详见 xuanhub.log）")
                                             }
                                         }
 
@@ -990,7 +1027,7 @@ Pane {
                                             anchors.left: parent.left
                                             anchors.leftMargin: UiMetrics.space2
                                             anchors.verticalCenter: parent.verticalCenter
-                                            text: groupRoot.groupData.group || "设置"
+                                            text: groupRoot.groupData.group || root.trText("设置")
                                             color: root.c.fg
                                             font.pixelSize: UiMetrics.fontL
                                             font.weight: Font.DemiBold
@@ -1177,7 +1214,7 @@ Pane {
                                         id: colorInput
                                         Layout.fillWidth: true
                                         invalid: colorRow.invalid
-                                        placeholderText: colorRow.field.placeholder || "留空跟随默认"
+                                        placeholderText: colorRow.field.placeholder || root.trText("留空跟随默认")
                                         onTextChanged: {
                                             if (!colorRow.field.key || colorRow._initializing) return
                                             const ok = colorRow.validText(text)
@@ -1202,17 +1239,26 @@ Pane {
                                 UiComboBox {
                                     property var field: ({})
                                     model: field.options || []
+                                    textRole: "label"
+                                    valueRole: "value"
                                     Component.onCompleted: init()
                                     onFieldChanged: init()
                                     function init() {
                                         if (!field.key) return
                                         const cur = String(root.draftValue(field.key,
                                             field.default !== undefined ? field.default : ""))
-                                        const i = (field.options || []).indexOf(cur)
-                                        currentIndex = i >= 0 ? i : 0
+                                        const options = field.options || []
+                                        let selected = -1
+                                        for (let i = 0; i < options.length; ++i) {
+                                            if (String(options[i].value) === cur) {
+                                                selected = i
+                                                break
+                                            }
+                                        }
+                                        currentIndex = selected >= 0 ? selected : 0
                                     }
                                     onActivated: if (field.key) settingsVM.pluginProxy.setValue(
-                                                     field.key, (field.options || [])[index])
+                                                     field.key, currentValue)
                                 }
                             }
 
@@ -1280,13 +1326,13 @@ Pane {
                                 Layout.fillWidth: true
                                 spacing: UiMetrics.space1
                                 Text {
-                                    text: "通用"
+                                    text: root.trText("通用")
                                     color: root.c.fg
                                     font.pixelSize: UiMetrics.fontXL
                                     font.weight: Font.DemiBold
                                 }
                                 Text {
-                                    text: "管理玄枢随 Windows 启动的方式"
+                                    text: root.trText("管理界面语言与 Windows 启动方式")
                                     color: root.c.muted
                                     font.pixelSize: UiMetrics.fontM
                                 }
@@ -1294,8 +1340,8 @@ Pane {
 
                             UiCard {
                                 Layout.fillWidth: true
-                                title: "系统"
-                                description: "登录 Windows 后自动启动玄枢状态栏"
+                                title: root.trText("语言")
+                                description: root.trText("默认跟随 Windows，也可以固定使用中文或英文")
 
                                 RowLayout {
                                     Layout.fillWidth: true
@@ -1303,19 +1349,58 @@ Pane {
                                         Layout.fillWidth: true
                                         spacing: UiMetrics.space1
                                         Text {
-                                            text: "开机自启"
+                                            text: root.trText("界面语言")
                                             color: root.c.fg
                                             font.pixelSize: UiMetrics.fontM
                                             font.weight: Font.DemiBold
                                         }
                                         Text {
-                                            text: "通过当前用户的 Windows 启动项运行"
+                                            text: root.trText("保存后立即更新所有已打开界面")
+                                            color: root.c.muted
+                                            font.pixelSize: UiMetrics.fontTiny
+                                        }
+                                    }
+                                    UiComboBox {
+                                        Layout.preferredWidth: 220
+                                        model: [
+                                            { value: "system", label: root.trText("跟随系统") },
+                                            { value: "zh-CN", label: "简体中文" },
+                                            { value: "en-US", label: "English" }
+                                        ]
+                                        textRole: "label"
+                                        valueRole: "value"
+                                        currentIndex: settingsVM.language === "zh-CN" ? 1
+                                                      : settingsVM.language === "en-US" ? 2 : 0
+                                        onActivated: settingsVM.language = currentValue
+                                    }
+                                }
+                            }
+
+                            UiCard {
+                                Layout.fillWidth: true
+                                title: root.trText("系统")
+                                description: root.trText("登录 Windows 后自动启动玄枢状态栏")
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: UiMetrics.space1
+                                        Text {
+                                            text: root.trText("开机自启")
+                                            color: root.c.fg
+                                            font.pixelSize: UiMetrics.fontM
+                                            font.weight: Font.DemiBold
+                                        }
+                                        Text {
+                                            text: root.trText("通过当前用户的 Windows 启动项运行")
                                             color: root.c.muted
                                             font.pixelSize: UiMetrics.fontTiny
                                         }
                                     }
                                     UiSwitch {
-                                        text: settingsVM.autoStart ? "已开启" : "已关闭"
+                                        text: settingsVM.autoStart ? root.trText("已开启")
+                                                                           : root.trText("已关闭")
                                         checked: settingsVM.autoStart
                                         onToggled: settingsVM.autoStart = checked
                                     }
@@ -1349,7 +1434,8 @@ Pane {
                 // 错误文本与按钮组使用锚定而非同一个 RowLayout：错误不存在时也不会
                 // 占用弹性宽度，从而始终让三个操作按钮紧凑地靠右对齐。
                 text: settingsVM.errorMessage.length > 0 ? settingsVM.errorMessage
-                    : (root.invalidFields > 0 ? "存在未修正的非法输入（红框项），修正后才能保存" : "")
+                    : (root.invalidFields > 0
+                       ? root.trText("存在未修正的非法输入（红框项），修正后才能保存") : "")
                 color: root.c.danger
                 font.pixelSize: UiMetrics.fontS
                 wrapMode: Text.Wrap
@@ -1367,21 +1453,21 @@ Pane {
 
                 UiButton {
                     variant: "ghost"
-                    text: "取消"
-                    Layout.preferredWidth: 72
+                    text: root.trText("取消")
+                    Layout.preferredWidth: Math.max(72, implicitWidth)
                     onClicked: Window.window.close()              // 隐藏，不保存
                 }
                 UiButton {
                     variant: "outline"
-                    text: "应用"
-                    Layout.preferredWidth: 76
+                    text: root.trText("应用")
+                    Layout.preferredWidth: Math.max(76, implicitWidth)
                     enabled: settingsVM.errorMessage.length === 0 && root.invalidFields === 0
                     onClicked: settingsVM.apply()                  // 保存但不关闭
                 }
                 UiButton {
                     variant: "primary"
-                    text: "保存并关闭"
-                    Layout.preferredWidth: 128
+                    text: root.trText("保存并关闭")
+                    Layout.preferredWidth: Math.max(128, implicitWidth)
                     enabled: root.invalidFields === 0
                     onClicked: if (settingsVM.apply()) Window.window.close()
                 }

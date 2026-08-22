@@ -3,9 +3,11 @@
 #include "ThemeManager.h"
 #include "ConfigService.h"
 #include "AutoStart.h"
+#include "LocaleManager.h"
 #include "barplugin/EventBus.h"
 
 #include <QJsonObject>
+#include <QIcon>
 #include <QPainter>
 #include <QPixmap>
 #include <QMenu>
@@ -15,14 +17,14 @@
 #include <QTimer>
 
 TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
-                   ConfigService* config, QObject* parent)
-    : QObject(parent), m_theme(theme), m_config(config), m_bus(bus),
+                   ConfigService* config, LocaleManager* locale, QObject* parent)
+    : QObject(parent), m_theme(theme), m_config(config), m_bus(bus), m_locale(locale),
       m_menu(nullptr), m_autoStartAction(nullptr), m_taskbarModeAction(nullptr) {
     m_tray = new QSystemTrayIcon(this);
-    refreshIcon();   // 首次绘制（读当前主题色板）
-    m_tray->setToolTip(QStringLiteral("玄枢 XuanHub"));
+    refreshIcon();   // 首次设置品牌图标
 
-    // 主题变化时重绘图标（ThemeManager 在主线程，AutoConnection 排队到 GUI 线程安全）
+    // 保留主题变化刷新入口；ThemeManager 在主线程，AutoConnection 排队到 GUI 线程安全。
+    // 品牌图标当前为固定配色，后续若增加主题化变体可继续复用此入口。
     if (m_theme) connect(m_theme, &ThemeManager::themeChanged, this, &TrayIcon::refreshIcon);
 
     // 插件经 EventBus 请求的气泡提示（如 pybridge 未检测到 Python 环境）。
@@ -41,10 +43,10 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
     m_menu = new QMenu();
 
     // 设置窗口（M8）
-    QAction* settings = m_menu->addAction(QStringLiteral("设置..."));
-    connect(settings, &QAction::triggered, this, &TrayIcon::settingsRequested);
+    m_settingsAction = m_menu->addAction(QString());
+    connect(m_settingsAction, &QAction::triggered, this, &TrayIcon::settingsRequested);
 
-    m_autoStartAction = m_menu->addAction(QStringLiteral("开机自启"));
+    m_autoStartAction = m_menu->addAction(QString());
     m_autoStartAction->setCheckable(true);
     connect(m_autoStartAction, &QAction::toggled, this, &TrayIcon::setAutoStartEnabled);
     // 勾选状态与注册表现状对齐（阻断信号，避免初始化时回写一遍）；
@@ -67,7 +69,7 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
     });
 
     // 工作模式开关（M11）：写回 config.json 的 bar.mode，生效全靠 M7 watcher 热重载
-    m_taskbarModeAction = m_menu->addAction(QStringLiteral("任务栏模式"));
+    m_taskbarModeAction = m_menu->addAction(QString());
     m_taskbarModeAction->setCheckable(true);
     connect(m_taskbarModeAction, &QAction::toggled, this, &TrayIcon::setTaskbarMode);
     if (m_config) {
@@ -75,8 +77,8 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
         m_taskbarModeAction->setChecked(m_config->barMode() == QStringLiteral("taskbar"));
     }
 
-    QAction* toggleTheme = m_menu->addAction(QStringLiteral("切换深色/浅色"));
-    connect(toggleTheme, &QAction::triggered, [this]() {
+    m_toggleThemeAction = m_menu->addAction(QString());
+    connect(m_toggleThemeAction, &QAction::triggered, [this]() {
         // 仅切 light/dark 模式，保持当前主题包（switchMode 不写回文件，热重载时会回滚）
         const QString t = (m_theme->mode() == QStringLiteral("dark"))
                               ? QStringLiteral("light") : QStringLiteral("dark");
@@ -84,14 +86,35 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
     });
 
     // 配置热重载（M7）：手动触发入口，与文件监听同一个 reload()
-    QAction* reload = m_menu->addAction(QStringLiteral("重新加载配置"));
-    connect(reload, &QAction::triggered, this, &TrayIcon::reloadRequested);
+    m_reloadAction = m_menu->addAction(QString());
+    connect(m_reloadAction, &QAction::triggered, this, &TrayIcon::reloadRequested);
 
     m_menu->addSeparator();
-    QAction* quit = m_menu->addAction(QStringLiteral("退出"));
-    connect(quit, &QAction::triggered, []() { QCoreApplication::quit(); });
+    m_quitAction = m_menu->addAction(QString());
+    connect(m_quitAction, &QAction::triggered, []() { QCoreApplication::quit(); });
+
+    if (m_locale)
+        connect(m_locale, &LocaleManager::localeChanged, this, &TrayIcon::retranslate);
+    retranslate();
 
     m_tray->setContextMenu(m_menu);
+}
+
+void TrayIcon::retranslate() {
+    m_tray->setToolTip(QCoreApplication::translate(
+        "xuanhub.tray", "玄枢 XuanHub"));
+    m_settingsAction->setText(QCoreApplication::translate(
+        "xuanhub.tray", "设置..."));
+    m_autoStartAction->setText(QCoreApplication::translate(
+        "xuanhub.tray", "开机自启"));
+    m_taskbarModeAction->setText(QCoreApplication::translate(
+        "xuanhub.tray", "任务栏模式"));
+    m_toggleThemeAction->setText(QCoreApplication::translate(
+        "xuanhub.tray", "切换深色/浅色"));
+    m_reloadAction->setText(QCoreApplication::translate(
+        "xuanhub.tray", "重新加载配置"));
+    m_quitAction->setText(QCoreApplication::translate(
+        "xuanhub.tray", "退出"));
 }
 
 void TrayIcon::show() { m_tray->show(); }
@@ -102,6 +125,16 @@ TrayIcon::~TrayIcon() {
 }
 
 void TrayIcon::refreshIcon() {
+    // 托盘只有 16–24 px：使用去掉端点层级、星形和渐变的紧凑 X 版本；
+    // 完整品牌图标缩到这里会变成零散亮点，并在浅色任务栏上显得过轻。
+    const QIcon brandIcon(QStringLiteral(
+        ":/qt/qml/XuanHub/resources/xuanhub-tray-icon-64.png"));
+    if (!brandIcon.isNull()) {
+        m_tray->setIcon(brandIcon);
+        return;
+    }
+
+    // 资源异常时保留原有动态绘制作为兜底，避免托盘入口完全不可见。
     // 从当前主题色板取色绘制托盘图标（底色=bg，边框=accent，文字=fg）
     // 主题不存在或缺字段时给深色兜底
     QColor bg     = QColor(QStringLiteral("#1e1e2e"));

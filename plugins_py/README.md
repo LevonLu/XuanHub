@@ -13,7 +13,8 @@ plugins_py/
 └── hello/
     ├── plugin.json   # 元数据（发现阶段的权威来源，读它不执行任何 Python 代码）
     ├── main.py       # 插件逻辑（模块级约定函数，见下）
-    └── Hello.qml     # 界面（契约同 C++ 插件）
+    ├── Hello.qml     # 界面（契约同 C++ 插件）
+    └── i18n/         # 可选；zh-CN.json / en-US.json，详见 docs/i18n.md
 ```
 
 `plugin.json`：
@@ -65,7 +66,9 @@ plugins_py/
 - 类型 → 控件：`bool`→CheckBox；`int`→SpinBox（`min`/`max`/`step`）；`double`→
   TextField+校验（`min`/`max`）；`string`→TextField（`placeholder`）；`color`→
   TextField+色块预览（**空串 = 插件内默认**，非空须 QColor 可解析）；`enum`→ComboBox
-  （`options` 字符串数组，必填）；`json`→多行编辑器（复杂结构兜底，保存前 JSON 校验）。
+  （`options` 必填；推荐用 `{ "value": "daily", "label": "每日重复" }` 对象数组，
+  `value` 是持久化稳定值、`label` 可翻译；旧字符串数组继续兼容）；`json`→多行编辑器
+  （复杂结构兜底，保存前 JSON 校验）。不要把翻译后的标签写进 config。
 - 编辑结果写入 config.json 的本插件 config 段（即 `init(config)` 收到的 dict），
   保存后热重载生效；schema 未声明的 config 键保存时原样保留。
 - `settingsQml`：声明自绘设置页（如 `"settingsQml": "Settings.qml"`，相对本目录），
@@ -86,6 +89,7 @@ plugins_py/
 
 ```python
 def init(config):    # 可选。注入 config.json 里本子插件的 config 段（dict）
+def set_locale(locale): # 可选。init 后及运行中切换语言时收到 zh-CN / en-US
 def update():        # 必需。每个 tick 调用，返回 dict → 原样填入 QML 的 plugin.values
 def invoke(name, args):  # 可选。QML 里 plugin.call(name, args) 的入口
 def stop():          # 可选。卸载/热重载前调用，用来停后台线程（见下节）
@@ -97,6 +101,9 @@ def stop():          # 可选。卸载/热重载前调用，用来停后台线�
 - `update()` 返回的 dict 值支持：str / int / float / bool / list / dict（嵌套），其他类型转字符串。
 - main.py 所在目录会追加到 `sys.path` 末尾，可导入同目录的辅助模块。
 - 抛异常不会拖垮宿主：traceback 记入日志，UI 保留上一次的值。
+- 固定界面文字应由 QML 通过 `qsTranslate("plugin.<id>.<page>", "中文源码")` 翻译；
+  Python 后端返回状态码和动态明细。完整语言包、上下文隔离与回退规则见
+  `docs/i18n.md`。
 
 ## 网络请求与后台线程
 

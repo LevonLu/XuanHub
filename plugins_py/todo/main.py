@@ -18,8 +18,9 @@ _cache: dict = {
     "firstActive": None,
     "todos": [],
     "prefix": "📝",
-    "barMode": "数量",
-    "lastError": None,
+    "barMode": "count",
+    "lastErrorKey": None,
+    "lastErrorDetail": None,
 }
 _db: sqlite3.Connection | None = None
 
@@ -51,8 +52,9 @@ def _set_database_error(error):
         "firstActive": None,
         "todos": [],
         "prefix": str(_config.get("prefix", "📝")),
-        "barMode": str(_config.get("barMode", "数量")),
-        "lastError": "待办数据库不可用：%s" % error,
+        "barMode": _normalized_bar_mode(_config.get("barMode", "count")),
+        "lastErrorKey": "databaseUnavailable",
+        "lastErrorDetail": str(error),
     }
 
 
@@ -97,6 +99,11 @@ def _next_sort_order():
     return row[0] + 1
 
 
+def _normalized_bar_mode(value):
+    """新配置使用稳定 id；保留旧版中文值兼容。"""
+    return "latest" if str(value) in ("latest", "最近一项") else "count"
+
+
 # ================= 缓存构建 =================
 
 
@@ -115,8 +122,9 @@ def _rebuild_cache():
         "firstActive": active[0]["text"] if active else None,
         "todos": todos,
         "prefix": str(_config.get("prefix", "📝")),
-        "barMode": str(_config.get("barMode", "数量")),
-        "lastError": None,
+        "barMode": _normalized_bar_mode(_config.get("barMode", "count")),
+        "lastErrorKey": None,
+        "lastErrorDetail": None,
     }
 
 
@@ -220,7 +228,7 @@ def invoke(name, args):
       - clear_done:  删除所有已完成条目
     """
     if _db is None:
-        _cache["lastError"] = _cache.get("lastError") or "待办数据库不可用，无法操作"
+        _cache["lastErrorKey"] = _cache.get("lastErrorKey") or "databaseUnavailable"
         return
 
     try:
@@ -237,7 +245,8 @@ def invoke(name, args):
     except Exception:
         # 异常穿透 invoke 会拖垮宿主：traceback 进日志、UI 显示错误、保留旧缓存
         traceback.print_exc()
-        _cache["lastError"] = "操作失败，详见日志"
+        _cache["lastErrorKey"] = "operationFailed"
+        _cache["lastErrorDetail"] = None
 
 
 def stop():

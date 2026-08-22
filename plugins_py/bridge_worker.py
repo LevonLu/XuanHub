@@ -73,7 +73,7 @@ def _recv(sock: socket.socket) -> dict[str, Any]:
     return message
 
 
-def _load_plugin(plugin_dir: Path, plugin_id: str, config: dict[str, Any]) -> Any:
+def _load_plugin(plugin_dir: Path, plugin_id: str, config: dict[str, Any], locale: str) -> Any:
     main_file = plugin_dir / "main.py"
     if not main_file.is_file():
         raise RuntimeError("main.py is missing")
@@ -91,6 +91,8 @@ def _load_plugin(plugin_dir: Path, plugin_id: str, config: dict[str, Any]) -> An
     spec.loader.exec_module(module)
     if hasattr(module, "init"):
         module.init(config)
+    if hasattr(module, "set_locale"):
+        module.set_locale(locale)
     if not hasattr(module, "update"):
         raise RuntimeError("main.py must define update()")
     return module
@@ -131,7 +133,10 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
                         config = data.get("config", {})
                         if not isinstance(config, dict):
                             raise ValueError("init config must be an object")
-                        module = _load_plugin(plugin_dir, plugin_id, config)
+                        locale = data.get("locale", "en-US")
+                        if not isinstance(locale, str):
+                            raise ValueError("init locale must be a string")
+                        module = _load_plugin(plugin_dir, plugin_id, config, locale)
                         result: Any = {"ready": True}
                     elif module is None:
                         raise RuntimeError("worker is not initialized")
@@ -145,6 +150,13 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
                         if not isinstance(name, str) or not isinstance(args, list):
                             raise ValueError("invoke requires string name and list args")
                         result = module.invoke(name, args) if hasattr(module, "invoke") else None
+                    elif op == "set_locale":
+                        locale = data.get("locale", "en-US")
+                        if not isinstance(locale, str):
+                            raise ValueError("locale must be a string")
+                        if hasattr(module, "set_locale"):
+                            module.set_locale(locale)
+                        result = None
                     elif op == "stop":
                         _stop_plugin(module)
                         stop_called = True

@@ -35,4 +35,7 @@ add_custom_command(TARGET xuanhub_menu POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/metadata.json"
         "${XUANHUB_BIN_DIR}/plugins/xuanhub_menu/metadata.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/i18n"
+        "${XUANHUB_BIN_DIR}/plugins/xuanhub_menu/i18n"
 )

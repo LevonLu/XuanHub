@@ -9,6 +9,7 @@ import XuanHub   // UiComboBox：裸 ComboBox 的 popup 是独立顶层窗口，
 Item {
     id: root
     property var plugin
+    function trText(source) { return qsTranslate("plugin.py_countdown.settingsPage", source) }
     implicitHeight: col.implicitHeight + 16
     implicitWidth: col.implicitWidth
 
@@ -31,8 +32,13 @@ Item {
         }
     }
 
-    property string currentMode: "每日重复"
-    property bool isDaily: currentMode === "每日重复"
+    property string currentMode: "daily"
+    property bool isDaily: currentMode === "daily"
+
+    function normalizedMode(value) {
+        return value === "date" || value === "once" || value === "指定日期"
+                ? "date" : "daily"
+    }
 
     // ── plugin 注入后初始化默认值 ──
     // 守卫：proxy 必须已指向本插件（防框架切换时序/异步路径把默认值写进别的插件）
@@ -40,14 +46,15 @@ Item {
         if (!plugin || plugin.pluginId !== "py_countdown") return
         _loading = true
 
-        if (v("mode") === undefined) sv("mode", "每日重复")
-        root.currentMode = v("mode") || "每日重复"
+        var mode = normalizedMode(v("mode"))
+        if (v("mode") !== mode) sv("mode", mode)
+        root.currentMode = mode
 
         if (v("targetTime") === undefined) sv("targetTime", "18:00")
         if (v("targetDateTime") === undefined) sv("targetDateTime", "")
-        if (v("prefix") === undefined) sv("prefix", "下班")
-        if (v("suffix") === undefined) sv("suffix", "剩余")
-        if (v("reachedText") === undefined) sv("reachedText", "下班啦🎉")
+        if (v("prefix") === undefined) sv("prefix", trText("下班"))
+        if (v("suffix") === undefined) sv("suffix", trText("剩余"))
+        if (v("reachedText") === undefined) sv("reachedText", trText("下班啦🎉"))
         if (v("reachedColor") === undefined) sv("reachedColor", "")
         if (v("intervalMs") === undefined) sv("intervalMs", 1000)
 
@@ -109,18 +116,24 @@ Item {
 
         // ── 目标模式 ──
         UiCard {
-            title: "目标模式"
+            title: root.trText("目标模式")
             Layout.fillWidth: true
             RowLayout {
                 spacing: 8
-                Label { text: "模式:"; Layout.preferredWidth: 70 }
+                Label { text: root.trText("模式:"); Layout.preferredWidth: 70 }
                 UiComboBox {
                     id: modeCombo
-                    model: ["每日重复", "指定日期"]
+                    model: [
+                        { value: "daily", label: root.trText("每日重复") },
+                        { value: "date", label: root.trText("指定日期") }
+                    ]
+                    textRole: "label"
+                    valueRole: "value"
                     currentIndex: root.isDaily ? 0 : 1
                     onCurrentIndexChanged: {
-                        sv("mode", currentText)
-                        root.currentMode = currentText
+                        if (currentIndex < 0) return
+                        sv("mode", currentValue)
+                        root.currentMode = currentValue
                         root.reloadTimeFields()
                     }
                 }
@@ -129,7 +142,7 @@ Item {
 
         // ── 目标时间 ──
         UiCard {
-            title: "目标时间"
+            title: root.trText("目标时间")
             Layout.fillWidth: true
             ColumnLayout {
                 spacing: 8
@@ -138,7 +151,7 @@ Item {
                 RowLayout {
                     visible: root.isDaily
                     spacing: 6
-                    Label { text: "每日时刻:"; Layout.preferredWidth: 70 }
+                    Label { text: root.trText("每日时刻:"); Layout.preferredWidth: 70 }
                     TextField {
                         id: hoursField
                         Layout.preferredWidth: 50
@@ -148,7 +161,7 @@ Item {
                         validator: IntValidator { bottom: 0; top: 23 }
                         onTextChanged: root.commitTargetTime()
                     }
-                    Label { text: "时" }
+                    Label { text: root.trText("时") }
                     TextField {
                         id: minutesField
                         Layout.preferredWidth: 50
@@ -158,7 +171,7 @@ Item {
                         validator: IntValidator { bottom: 0; top: 59 }
                         onTextChanged: root.commitTargetTime()
                     }
-                    Label { text: "分" }
+                    Label { text: root.trText("分") }
                 }
 
                 // 指定日期模式：日期 + 时:分
@@ -167,7 +180,7 @@ Item {
                     spacing: 6
                     RowLayout {
                         spacing: 6
-                        Label { text: "目标日期:"; Layout.preferredWidth: 70 }
+                        Label { text: root.trText("目标日期:"); Layout.preferredWidth: 70 }
                         TextField {
                             id: dateField
                             Layout.preferredWidth: 120
@@ -179,7 +192,7 @@ Item {
                     }
                     RowLayout {
                         spacing: 6
-                        Label { text: "目标时刻:"; Layout.preferredWidth: 70 }
+                        Label { text: root.trText("目标时刻:"); Layout.preferredWidth: 70 }
                         TextField {
                             id: dtHoursField
                             Layout.preferredWidth: 50
@@ -189,7 +202,7 @@ Item {
                             validator: IntValidator { bottom: 0; top: 23 }
                             onTextChanged: root.commitTargetDateTime()
                         }
-                        Label { text: "时" }
+                        Label { text: root.trText("时") }
                         TextField {
                             id: dtMinutesField
                             Layout.preferredWidth: 50
@@ -199,7 +212,7 @@ Item {
                             validator: IntValidator { bottom: 0; top: 59 }
                             onTextChanged: root.commitTargetDateTime()
                         }
-                        Label { text: "分" }
+                        Label { text: root.trText("分") }
                     }
                 }
             }
@@ -207,21 +220,21 @@ Item {
 
         // ── 显示 ──
         UiCard {
-            title: "显示"
+            title: root.trText("显示")
             Layout.fillWidth: true
             ColumnLayout {
                 spacing: 8
 
                 RowLayout {
                     spacing: 8
-                    Label { text: "预览:"; Layout.preferredWidth: 70 }
+                    Label { text: root.trText("预览:"); Layout.preferredWidth: 70 }
                     Label {
                         text: {
                             var p = v("prefix") || ""
                             var s = v("suffix") || ""
                             var t = root.isDaily ? root.previewTime() : "02:30:15"
                             var parts = [p, t, s].filter(function(x) { return x.length > 0 })
-                            return parts.join(" ") || "（空）"
+                            return parts.join(" ") || root.trText("（空）")
                         }
                         color: palette.mid
                         font.italic: true
@@ -230,48 +243,48 @@ Item {
 
                 RowLayout {
                     spacing: 8
-                    Label { text: "前缀:"; Layout.preferredWidth: 70 }
+                    Label { text: root.trText("前缀:"); Layout.preferredWidth: 70 }
                     TextField {
                         Layout.fillWidth: true
                         font.pixelSize: 13
                         text: v("prefix") || ""
-                        placeholderText: "倒计时前的文字，留空则不显示前缀"
+                        placeholderText: root.trText("倒计时前的文字，留空则不显示前缀")
                         selectByMouse: true
                         onTextChanged: sv("prefix", text)
                     }
                 }
                 RowLayout {
                     spacing: 8
-                    Label { text: "后缀:"; Layout.preferredWidth: 70 }
+                    Label { text: root.trText("后缀:"); Layout.preferredWidth: 70 }
                     TextField {
                         Layout.fillWidth: true
                         font.pixelSize: 13
                         text: v("suffix") || ""
-                        placeholderText: "倒计时后的文字，留空则不显示后缀"
+                        placeholderText: root.trText("倒计时后的文字，留空则不显示后缀")
                         selectByMouse: true
                         onTextChanged: sv("suffix", text)
                     }
                 }
                 RowLayout {
                     spacing: 8
-                    Label { text: "到点文字:"; Layout.preferredWidth: 70 }
+                    Label { text: root.trText("到点文字:"); Layout.preferredWidth: 70 }
                     TextField {
                         Layout.fillWidth: true
                         font.pixelSize: 13
-                        text: v("reachedText") || "下班啦🎉"
-                        placeholderText: "倒计时归零后显示"
+                        text: v("reachedText") || root.trText("下班啦🎉")
+                        placeholderText: root.trText("倒计时归零后显示")
                         selectByMouse: true
                         onTextChanged: sv("reachedText", text)
                     }
                 }
                 RowLayout {
                     spacing: 8
-                    Label { text: "到点颜色:"; Layout.preferredWidth: 70 }
+                    Label { text: root.trText("到点颜色:"); Layout.preferredWidth: 70 }
                     TextField {
                         Layout.preferredWidth: 120
                         font.pixelSize: 13
                         text: v("reachedColor") || ""
-                        placeholderText: "留空跟随主题"
+                        placeholderText: root.trText("留空跟随主题")
                         selectByMouse: true
                         onTextChanged: sv("reachedColor", text)
                     }
@@ -292,11 +305,11 @@ Item {
 
         // ── 刷新 ──
         UiCard {
-            title: "刷新"
+            title: root.trText("刷新")
             Layout.fillWidth: true
             RowLayout {
                 spacing: 8
-                Label { text: "刷新间隔:"; Layout.preferredWidth: 70 }
+                Label { text: root.trText("刷新间隔:"); Layout.preferredWidth: 70 }
                 SpinBox {
                     id: intervalSpin
                     from: 200; to: 60000

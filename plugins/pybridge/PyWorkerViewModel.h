@@ -14,6 +14,7 @@
 
 class QTcpServer;
 class QTcpSocket;
+namespace xuanhub { class EventBus; }
 
 class PyWorkerViewModel : public QObject {
     Q_OBJECT
@@ -21,7 +22,8 @@ class PyWorkerViewModel : public QObject {
     Q_PROPERTY(bool running READ running NOTIFY runningChanged)
 public:
     PyWorkerViewModel(QString id, QString dirPath, QVariantMap cfg, QString pythonExe,
-                      QString workerScript, QObject* parent = nullptr);
+                      QString workerScript, xuanhub::EventBus* bus,
+                      QObject* parent = nullptr);
     ~PyWorkerViewModel() override;
 
     QVariantMap values() const { return m_values; }
@@ -32,6 +34,9 @@ public:
 
     // 保持既有 QML API；调用改为排队异步执行，返回值仅表示是否已入队。
     Q_INVOKABLE QVariant call(const QString& name, const QVariantList& args);
+
+public slots:
+    void onLocaleChanged(QVariantMap payload);
 
 Q_SIGNALS:
     void valuesChanged();
@@ -64,6 +69,7 @@ private:
     QVariantMap m_cfg;
     QString m_pythonExe;
     QString m_workerScript;
+    QString m_locale = QStringLiteral("en-US");
     QVariantMap m_values;
     QPointer<QTcpServer> m_server;
     QPointer<QTcpSocket> m_socket;

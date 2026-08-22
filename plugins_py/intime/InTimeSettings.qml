@@ -9,6 +9,10 @@ Item {
     property var plugin
     implicitHeight: col.implicitHeight
 
+    function trText(source) {
+        return qsTranslate("plugin.py_intime.settingsPage", source)
+    }
+
     // 读 plugin.revision 建立绑定依赖：value() 是函数调用、自身无通知，
     // 引用 revision 后 setValue 触发的 valuesChanged 会让调用 v() 的绑定重算（预览实时刷新）
     function v(key) {
@@ -33,7 +37,7 @@ Item {
             if (v("maskType") === undefined) sv("maskType", "default")
             if (v("maskColor") === undefined) sv("maskColor", "#1e1e2e")
             if (v("maskOpacity") === undefined) sv("maskOpacity", 0.92)
-            if (v("maskText") === undefined) sv("maskText", "休息一下")
+            if (v("maskText") === undefined) sv("maskText", root.trText("休息一下"))
             if (v("textSize") === undefined) sv("textSize", 24)
             if (v("progressStyle") === undefined) sv("progressStyle", "none")
             if (v("enterDurationMs") === undefined) sv("enterDurationMs", 400)
@@ -49,13 +53,13 @@ Item {
 
         // ── 时间 ────────────────────────────────────────────
         UiCard {
-            title: "时间"
+            title: root.trText("时间")
             Layout.fillWidth: true
             ColumnLayout {
                 spacing: 8
                 RowLayout {
                     spacing: 8
-                    Label { text: "工作时长:"; Layout.preferredWidth: 70 }
+                    Label { text: root.trText("工作时长:"); Layout.preferredWidth: 70 }
                     TextField {
                         Layout.preferredWidth: 80
                         text: v("workSeconds") !== undefined ? String(v("workSeconds")) : "1500"
@@ -63,11 +67,11 @@ Item {
                         validator: IntValidator { bottom: 10; top: 86400 }
                         onTextChanged: { var n = parseInt(text); if (!isNaN(n)) sv("workSeconds", n) }
                     }
-                    Label { text: "秒" }
+                    Label { text: root.trText("秒") }
                 }
                 RowLayout {
                     spacing: 8
-                    Label { text: "休息时长:"; Layout.preferredWidth: 70 }
+                    Label { text: root.trText("休息时长:"); Layout.preferredWidth: 70 }
                     TextField {
                         Layout.preferredWidth: 80
                         text: v("restSeconds") !== undefined ? String(v("restSeconds")) : "300"
@@ -75,20 +79,20 @@ Item {
                         validator: IntValidator { bottom: 10; top: 3600 }
                         onTextChanged: { var n = parseInt(text); if (!isNaN(n)) sv("restSeconds", n) }
                     }
-                    Label { text: "秒" }
+                    Label { text: root.trText("秒") }
                 }
             }
         }
 
         // ── 动画 ────────────────────────────────────────────
         UiCard {
-            title: "动画"
+            title: root.trText("动画")
             Layout.fillWidth: true
             ColumnLayout {
                 spacing: 8
                 RowLayout {
                     spacing: 8
-                    Label { text: "进入时长:"; Layout.preferredWidth: 70 }
+                    Label { text: root.trText("进入时长:"); Layout.preferredWidth: 70 }
                     SpinBox {
                         Layout.preferredWidth: 140
                         from: 0; to: 3000; stepSize: 100
@@ -96,14 +100,14 @@ Item {
                         onValueModified: sv("enterDurationMs", value)
                     }
                     Label {
-                        text: "ms（0 = 瞬间落下）"
+                        text: root.trText("ms（0 = 瞬间落下）")
                         color: palette.placeholderText
                         font.pixelSize: 11
                     }
                 }
                 RowLayout {
                     spacing: 8
-                    Label { text: "退出时长:"; Layout.preferredWidth: 70 }
+                    Label { text: root.trText("退出时长:"); Layout.preferredWidth: 70 }
                     SpinBox {
                         Layout.preferredWidth: 140
                         from: 0; to: 3000; stepSize: 100
@@ -111,7 +115,7 @@ Item {
                         onValueModified: sv("exitDurationMs", value)
                     }
                     Label {
-                        text: "ms（0 = 瞬间收起）"
+                        text: root.trText("ms（0 = 瞬间收起）")
                         color: palette.placeholderText
                         font.pixelSize: 11
                     }
@@ -121,12 +125,12 @@ Item {
 
         // ── 锁屏进度条 ──────────────────────────────────────
         UiCard {
-            title: "锁屏进度条"
+            title: root.trText("锁屏进度条")
             Layout.fillWidth: true
             RowLayout {
                 spacing: 8
                 UiComboBox {
-                    model: ["不显示", "水平进度条", "环形进度条"]
+                    model: [root.trText("不显示"), root.trText("水平进度条"), root.trText("环形进度条")]
                     currentIndex: {
                         var t = v("progressStyle") || "none"
                         return t === "bar" ? 1 : t === "ring" ? 2 : 0
@@ -137,7 +141,7 @@ Item {
                     }
                 }
                 Label {
-                    text: "显示在全屏遮罩倒计时下方"
+                    text: root.trText("显示在全屏遮罩倒计时下方")
                     color: palette.placeholderText
                     font.pixelSize: 11
                 }
@@ -146,13 +150,13 @@ Item {
 
         // ── 遮罩类型 ────────────────────────────────────────
         UiCard {
-            title: "遮罩类型"
+            title: root.trText("遮罩类型")
             Layout.fillWidth: true
             RowLayout {
                 spacing: 8
                 UiComboBox {
                     id: maskTypeCombo
-                    model: ["默认 (跟随主题)", "纯色", "图片"]
+                    model: [root.trText("默认 (跟随主题)"), root.trText("纯色"), root.trText("图片")]
                     currentIndex: {
                         var t = v("maskType") || "default"
                         return t === "color" ? 1 : t === "image" ? 2 : 0
@@ -167,7 +171,7 @@ Item {
 
         // ── 遮罩外观（默认模式隐藏颜色/图片设置）─────────────
         UiCard {
-            title: "遮罩外观"
+            title: root.trText("遮罩外观")
             Layout.fillWidth: true
             ColumnLayout {
                 spacing: 8
@@ -175,7 +179,7 @@ Item {
 
                 RowLayout {
                     spacing: 8
-                    Label { text: "颜色:"; Layout.preferredWidth: 70 }
+                    Label { text: root.trText("颜色:"); Layout.preferredWidth: 70 }
                     TextField {
                         Layout.preferredWidth: 100
                         text: v("maskColor") || "#1e1e2e"
@@ -193,11 +197,11 @@ Item {
                 }
                 RowLayout {
                     spacing: 8
-                    Label { text: "图片:"; Layout.preferredWidth: 70 }
+                    Label { text: root.trText("图片:"); Layout.preferredWidth: 70 }
                     TextField {
                         Layout.fillWidth: true
                         text: v("maskImage") || ""
-                        placeholderText: "本地图片绝对路径"
+                        placeholderText: root.trText("本地图片绝对路径")
                         selectByMouse: true
                         onTextChanged: sv("maskImage", text)
                     }
@@ -205,7 +209,7 @@ Item {
                 }
                 RowLayout {
                     spacing: 8
-                    Label { text: "不透明度:"; Layout.preferredWidth: 70 }
+                    Label { text: root.trText("不透明度:"); Layout.preferredWidth: 70 }
                     Slider {
                         Layout.fillWidth: true
                         from: 0.1; to: 1.0; stepSize: 0.01
@@ -222,17 +226,17 @@ Item {
                 }
                 RowLayout {
                     spacing: 8
-                    Label { text: "显示文字:"; Layout.preferredWidth: 70 }
+                    Label { text: root.trText("显示文字:"); Layout.preferredWidth: 70 }
                     TextField {
                         Layout.fillWidth: true
-                        text: v("maskText") || "休息一下"
+                        text: v("maskText") || root.trText("休息一下")
                         selectByMouse: true
                         onTextChanged: sv("maskText", text)
                     }
                 }
                 RowLayout {
                     spacing: 8
-                    Label { text: "文字大小:"; Layout.preferredWidth: 70 }
+                    Label { text: root.trText("文字大小:"); Layout.preferredWidth: 70 }
                     SpinBox {
                         Layout.preferredWidth: 80
                         from: 12; to: 72; stepSize: 2

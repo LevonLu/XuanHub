@@ -8,8 +8,10 @@
 #include "SettingsPluginSortModel.h"
 #include "ThemeManager.h"
 #include "ThemeRegistry.h"
+#include "LocaleManager.h"
 
 #include <QDebug>
+#include <QCoreApplication>
 #include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -17,15 +19,22 @@
 #include <QSet>
 
 SettingsViewModel::SettingsViewModel(ConfigService* config, ThemeRegistry* registry,
-                                     ThemeManager* themeMgr, QString exeDir,
+                                     ThemeManager* themeMgr, LocaleManager* locale,
+                                     QString exeDir,
                                      PluginListModel* barPlugins, QObject* parent)
     : QObject(parent), m_config(config), m_registry(registry), m_themeMgr(themeMgr),
-      m_exeDir(std::move(exeDir)), m_barPlugins(barPlugins),
+      m_locale(locale), m_exeDir(std::move(exeDir)), m_barPlugins(barPlugins),
       m_pluginModel(new SettingsPluginModel(this)),
       m_sortModel(new SettingsPluginSortModel(this)),
       m_pluginProxy(new SettingsPluginProxy(m_pluginModel, this)) {
     m_sortModel->setSourceModel(m_pluginModel);
     m_sortModel->sort(0);   // sortColumn 置 0 启用排序；dynamicSortFilter 后续自动维持
+    if (m_locale) {
+        connect(m_locale, &LocaleManager::localeChanged, this, [this] {
+            m_pluginModel->retranslate();
+            setErrorMessage({});
+        });
+    }
 }
 
 QAbstractItemModel* SettingsViewModel::pluginModel() const { return m_sortModel; }
@@ -92,6 +101,13 @@ void SettingsViewModel::setAutoStart(bool v) {
     emit autoStartChanged();
 }
 
+void SettingsViewModel::setLanguage(const QString& v) {
+    const QString normalized = LocaleManager::normalizeRequested(v);
+    if (m_language == normalized) return;
+    m_language = normalized;
+    emit languageChanged();
+}
+
 void SettingsViewModel::reloadThemePacks() {
     // 真正扫盘（用户可能新装/卸载了主题包），再发 NOTIFY 让 QML 重新读取 names/ids
     if (m_registry)
@@ -111,6 +127,7 @@ void SettingsViewModel::reloadFromConfig() {
     setTheme(m_themeMgr ? m_themeMgr->mode() : m_config->theme());
     setThemeId(m_themeMgr ? m_themeMgr->themeId() : m_config->themeId());
     setAutoStart(autostart::isEnabled());
+    setLanguage(m_config->language());
     m_pluginModel->reload(m_config->pluginEntries(),
                           m_config->rawConfig().value(QStringLiteral("plugins")).toArray(),
                           m_exeDir, m_config->activePath());
@@ -120,7 +137,7 @@ void SettingsViewModel::reloadFromConfig() {
 }
 
 QString SettingsViewModel::currentFingerprint() const {
-    // 只取本窗口会写回的内容：bar 段已知键 + plugins 数组原始 JSON（含手写未知键，
+    // 只取本窗口会写回的内容：ui.language + bar 段已知键 + plugins 数组原始 JSON（含手写未知键，
     // 外部只改未知键同样算外部改动）。bar 未知键（如 monitor）本窗口不动，不入指纹
     const QJsonObject root = m_config->rawConfig();
     const QJsonObject bar = root.value(QStringLiteral("bar")).toObject();
@@ -128,6 +145,10 @@ QString SettingsViewModel::currentFingerprint() const {
     for (const char* k : {"height", "edge", "mode", "opacity", "theme", "themeId"})
         barKeys.insert(QString::fromLatin1(k), bar.value(QString::fromLatin1(k)));
     QJsonObject fp;
+    QJsonObject uiKeys;
+    const QJsonObject ui = root.value(QStringLiteral("ui")).toObject();
+    uiKeys.insert(QStringLiteral("language"), ui.value(QStringLiteral("language")));
+    fp[QStringLiteral("ui")] = uiKeys;
     fp[QStringLiteral("bar")] = barKeys;
     fp[QStringLiteral("plugins")] = root.value(QStringLiteral("plugins")).toArray();
     return QString::fromUtf8(QJsonDocument(fp).toJson(QJsonDocument::Compact));
@@ -137,36 +158,55 @@ bool SettingsViewModel::apply() {
     // 草稿过期保护：窗口打开后配置被外部改动（热重载/手动编辑）则拒绝保存——
     // 草稿是打开时的快照，继续保存会用旧草稿把外部改动整体覆盖、静默回滚
     if (currentFingerprint() != m_openFingerprint) {
-        setErrorMessage(QStringLiteral("配置已被外部修改（热重载/手动编辑），请关闭设置窗口重开后再保存"));
+        setErrorMessage(QCoreApplication::translate(
+            "xuanhub.settings.errors",
+            "配置已被外部修改（热重载/手动编辑），请关闭设置窗口重开后再保存"));
         return false;
     }
     // 校验（QML 控件已限范围，这里双保险——草稿也可能被外部代码改动）
     if (m_barHeight < 24 || m_barHeight > 200) {
-        setErrorMessage(QStringLiteral("状态栏高度需在 24–200 之间"));
+        setErrorMessage(QCoreApplication::translate(
+            "xuanhub.settings.errors", "状态栏高度需在 24–200 之间"));
         return false;
     }
     if (m_barEdge != QStringLiteral("top") && m_barEdge != QStringLiteral("bottom")) {
-        setErrorMessage(QStringLiteral("停靠边缘仅支持 top / bottom"));
+        setErrorMessage(QCoreApplication::translate(
+            "xuanhub.settings.errors", "停靠边缘仅支持 top / bottom"));
         return false;
     }
     if (m_barMode != QStringLiteral("appbar") && m_barMode != QStringLiteral("taskbar")) {
-        setErrorMessage(QStringLiteral("工作模式仅支持 appbar / taskbar"));
+        setErrorMessage(QCoreApplication::translate(
+            "xuanhub.settings.errors", "工作模式仅支持 appbar / taskbar"));
         return false;
     }
     if (m_theme != QStringLiteral("dark") && m_theme != QStringLiteral("light")) {
-        setErrorMessage(QStringLiteral("主题模式仅支持 dark / light"));
+        setErrorMessage(QCoreApplication::translate(
+            "xuanhub.settings.errors", "主题模式仅支持 dark / light"));
+        return false;
+    }
+    if (m_language != QStringLiteral("system") && m_language != QStringLiteral("zh-CN")
+        && m_language != QStringLiteral("en-US")) {
+        setErrorMessage(QCoreApplication::translate(
+            "xuanhub.settings.errors", "界面语言配置无效"));
         return false;
     }
     // 校验主题包存在（防 config 手写错 id）
     if (m_registry && m_registry->find(m_themeId) == nullptr) {
-        setErrorMessage(QStringLiteral("主题包不存在：") + m_themeId);
+        setErrorMessage(QCoreApplication::translate(
+            "xuanhub.settings.errors", "主题包不存在：") + m_themeId);
         return false;
     }
     QJsonArray plugins;
     QString err;
-    if (!m_pluginModel->toPluginEntriesJson(&plugins, &err)) {
-        setErrorMessage(err);
-        return false;
+    if (m_pluginModel->isDirty()) {
+        if (!m_pluginModel->toPluginEntriesJson(&plugins, &err)) {
+            setErrorMessage(err);
+            return false;
+        }
+    } else {
+        // 插件页没有实际编辑时保留原始数组。模型加载阶段会为旧中文枚举建立
+        // 稳定值草稿，但语言/主题保存不应顺带写回这些迁移并触发插件全量重载。
+        plugins = m_config->rawConfig().value(QStringLiteral("plugins")).toArray();
     }
     // 只改已知键：基于 rawConfig 组装，未知键（如 bar.monitor）原样保留
     QJsonObject root = m_config->rawConfig();
@@ -178,9 +218,13 @@ bool SettingsViewModel::apply() {
     bar[QStringLiteral("theme")] = m_theme;          // 模式 dark/light
     bar[QStringLiteral("themeId")] = m_themeId;      // 主题包 id
     root[QStringLiteral("bar")] = bar;
+    QJsonObject ui = root.value(QStringLiteral("ui")).toObject();
+    ui[QStringLiteral("language")] = m_language;
+    root[QStringLiteral("ui")] = ui;
     root[QStringLiteral("plugins")] = plugins;
     if (!m_config->save(root)) {
-        setErrorMessage(QStringLiteral("写入 config.json 失败（权限/磁盘，详见日志）"));
+        setErrorMessage(QCoreApplication::translate(
+            "xuanhub.settings.errors", "写入 config.json 失败（权限/磁盘，详见日志）"));
         return false;
     }
     autostart::setEnabled(m_autoStart);
@@ -192,6 +236,7 @@ bool SettingsViewModel::apply() {
              << "height=" << m_barHeight << "edge=" << m_barEdge
              << "barMode=" << m_barMode
              << "themeId=" << m_themeId << "theme=" << m_theme
+             << "language=" << m_language
              << "autoStart=" << m_autoStart << "plugins=" << plugins.size();
     return true;
 }

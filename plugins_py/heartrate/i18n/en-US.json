@@ -1,0 +1,27 @@
+{
+  "locale": "en-US",
+  "contexts": {
+    "plugin.py_heartrate.metadata": { "HeartRate": "Heart Rate" },
+    "plugin.py_heartrate.main": {
+      "未安装 bleak，请运行: py -m pip install bleak": "bleak is not installed. Run: py -m pip install bleak",
+      "扫描失败": "Scan failed", "连接失败": "Connection failed", "未连接设备": "No device connected",
+      "连接中…": "Connecting…", "已连接": "Connected", "刚刚": "Just now",
+      "%1 分钟前": "%1 minutes ago", "%1 小时前": "%1 hours ago", "%1 天前": "%1 days ago",
+      "心率设备": "Heart Rate Device", "等待数据…": "Waiting for data…", "连接中": "Connecting",
+      "正在扫描附近设备…": "Scanning nearby devices…", "出错": "Error", "历史曲线": "History",
+      "%1 分": "%1 min", "暂无数据": "No data", "最大 %1　最小 %2　平均 %3": "Max %1   Min %2   Avg %3",
+      "未命名设备": "Unnamed device", "点击右上角 ✕ 关闭": "Use ✕ in the top-right to close",
+      "扫描中…未发现设备（确认设备已开启广播）": "Scanning… No devices found. Make sure the device is advertising.",
+      "重新扫描": "Scan again", "扫描": "Scan", "断开连接": "Disconnect"
+    },
+    "plugin.py_heartrate.settings": {
+      "连接": "Connection", "刷新间隔 (ms)": "Refresh interval (ms)",
+      "启动时自动重连上次设备": "Reconnect the last device on startup",
+      "失联后也会自动重试（最多 3 次）": "Also retries after a lost connection (up to 3 times)",
+      "失联判定 (s)": "Connection timeout (s)",
+      "连接后超过该时长收不到心率数据即视为失联": "Treat the device as disconnected after this long without heart-rate data",
+      "默认曲线时长": "Default chart window",
+      "弹窗内历史曲线打开时的默认时间窗口（分钟）": "Default history window when opening the chart (minutes)"
+    }
+  }
+}

@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "barplugin/ProcessReaper.h"
+#include "barplugin/EventBus.h"
 
 namespace {
 constexpr quint32 kMaxMessageBytes = 4 * 1024 * 1024;
@@ -27,13 +28,19 @@ QString processStatusText(QProcess::ExitStatus status) {
 } // namespace
 
 PyWorkerViewModel::PyWorkerViewModel(QString id, QString dirPath, QVariantMap cfg, QString pythonExe,
-                                     QString workerScript, QObject* parent)
+                                     QString workerScript, xuanhub::EventBus* bus,
+                                     QObject* parent)
     : QObject(parent)
     , m_id(std::move(id))
     , m_dirPath(std::move(dirPath))
     , m_cfg(std::move(cfg))
     , m_pythonExe(std::move(pythonExe))
     , m_workerScript(std::move(workerScript)) {
+    if (bus) {
+        bus->subscribe(QStringLiteral("app.locale.changed"), this,
+                       "onLocaleChanged(QVariantMap)");
+        bus->publish(QStringLiteral("app.locale.request"));
+    }
     m_startTimer.setSingleShot(true);
     m_requestTimer.setSingleShot(true);
     m_updateTimer.setSingleShot(true);
@@ -44,6 +51,17 @@ PyWorkerViewModel::PyWorkerViewModel(QString id, QString dirPath, QVariantMap cf
     connect(&m_updateTimer, &QTimer::timeout, this, [this] {
         enqueue({QStringLiteral("update"), {}});
     });
+}
+
+void PyWorkerViewModel::onLocaleChanged(QVariantMap payload) {
+    const QString locale = payload.value(QStringLiteral("locale")).toString();
+    if (locale.isEmpty() || locale == m_locale) return;
+    m_locale = locale;
+    if (m_authenticated) {
+        enqueue({QStringLiteral("set_locale"), {
+            {QStringLiteral("locale"), m_locale}
+        }}, true);
+    }
 }
 
 PyWorkerViewModel::~PyWorkerViewModel() {
@@ -183,7 +201,10 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
         m_startTimer.stop();
         if (m_server) m_server->close();
         Q_EMIT runningChanged();
-        enqueue({QStringLiteral("init"), {{QStringLiteral("config"), QJsonObject::fromVariantMap(m_cfg)}}});
+        enqueue({QStringLiteral("init"), {
+            {QStringLiteral("config"), QJsonObject::fromVariantMap(m_cfg)},
+            {QStringLiteral("locale"), m_locale}
+        }});
         return;
     }
 
@@ -226,7 +247,8 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
         }
     }
 
-    if (op == QLatin1String("init") || op == QLatin1String("invoke")) scheduleUpdate(0);
+    if (op == QLatin1String("init") || op == QLatin1String("invoke")
+        || op == QLatin1String("set_locale")) scheduleUpdate(0);
     if (op == QLatin1String("update")) scheduleUpdate();
     dispatchNext();
 }

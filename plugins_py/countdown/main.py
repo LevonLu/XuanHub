@@ -10,6 +10,7 @@
 from datetime import datetime
 
 _config = {}
+_locale = "zh-CN"
 
 # 「指定日期」模式接受的输入格式（带秒优先，缺秒容错）
 _DATE_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M")
@@ -47,17 +48,6 @@ def _parse_datetime(text):
     return None
 
 
-def _fmt_duration(seconds):
-    """秒数 → 显示串：< 24h 显示 HH:MM:SS；≥ 24h 显示 'X天 HH:MM:SS'。"""
-    total = int(max(0, seconds))
-    days, rem = divmod(total, 86400)
-    hours, rem = divmod(rem, 3600)
-    mins, secs = divmod(rem, 60)
-    if days > 0:
-        return "%d天 %02d:%02d:%02d" % (days, hours, mins, secs)
-    return "%02d:%02d:%02d" % (hours, mins, secs)
-
-
 # ========== 模块约定 ==========
 
 def init(config):
@@ -66,15 +56,21 @@ def init(config):
     _config = dict(config or {})
 
 
+def set_locale(locale):
+    """可选运行时回调：只影响缺省文案，不改写用户已经保存的文字。"""
+    global _locale
+    _locale = str(locale or "en-US")
+
+
 def update():
     """每个 tick 被调用，返回的 dict 原样填入 QML 的 plugin.values。"""
     cfg = _config
     now = datetime.now()
     reached_color = str(cfg.get("reachedColor", ""))
 
-    # mode 宽松匹配：非明确「指定日期」一律走每日（与 settings 的中文 enum 对齐，
-    # 同时兼容手填英文 daily/once 的写法——只要不是「指定日期」就走每日）
-    daily = str(cfg.get("mode", "每日重复")) != "指定日期"
+    # 新配置持久化稳定 id；继续识别旧版中文值和曾支持的 once 写法。
+    mode = str(cfg.get("mode", "daily"))
+    daily = mode not in ("date", "once", "指定日期")
 
     if daily:
         raw = str(cfg.get("targetTime", "")).strip()
@@ -82,7 +78,7 @@ def update():
             raw = "18:00"                         # 空配置兜底：默认 18:00
         parsed = _try_parse_time(raw)
         if parsed is None:
-            return {"text": "⚠ 目标时间格式错误（HH:MM）", "reached": False,
+            return {"textKey": "invalidDailyTime", "reached": False,
                     "reachedColor": reached_color}
         h, m, s = parsed
         target = now.replace(hour=h, minute=m, second=s, microsecond=0)
@@ -90,23 +86,26 @@ def update():
         raw = str(cfg.get("targetDateTime", "")).strip()
         target = _parse_datetime(raw)
         if target is None:
-            return {"text": "⚠ 目标时间格式错误（YYYY-MM-DD HH:MM）", "reached": False,
+            return {"textKey": "invalidDateTime", "reached": False,
                     "reachedColor": reached_color}
 
     reached = now >= target
 
     if reached:
-        text = str(cfg.get("reachedText", "下班啦🎉"))
-    else:
-        # 前缀/后缀：去首尾空白，纯空白串视为空（与 settings 中留空语义一致）
-        prefix = str(cfg.get("prefix", "")).strip()
-        suffix = str(cfg.get("suffix", "")).strip()
-        body = _fmt_duration((target - now).total_seconds())
-        # 自动拼接：空的前后缀不留多余空格
-        text = " ".join(p for p in (prefix, body, suffix) if p)
-
+        text = str(cfg.get("reachedText",
+                           "下班啦🎉" if _locale == "zh-CN" else "Time's up 🎉"))
+        return {
+            "text": text,
+            "reached": True,
+            "reachedColor": reached_color,
+        }
+    # 前缀/后缀：去首尾空白，纯空白串视为空（与 settings 中留空语义一致）
+    prefix = str(cfg.get("prefix", "")).strip()
+    suffix = str(cfg.get("suffix", "")).strip()
     return {
-        "text": text,
-        "reached": reached,
+        "remainingSeconds": int(max(0, (target - now).total_seconds())),
+        "prefix": prefix,
+        "suffix": suffix,
+        "reached": False,
         "reachedColor": reached_color,
     }

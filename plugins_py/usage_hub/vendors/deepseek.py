@@ -52,13 +52,15 @@ class DeepseekVendor(VendorBase):
 
         if not self.api_key:
             self.status = "error"
-            self.error_message = "API Key 未配置"
+            self.error_code = "apiKeyMissing"
+            self.error_detail = ""
             return {"today": "N/A", "balance": "N/A"}
 
-        balance, err = self._fetch_balance()
-        if err:
+        balance, error_code, error_detail = self._fetch_balance()
+        if error_code:
             self.status = "error"
-            self.error_message = err
+            self.error_code = error_code
+            self.error_detail = error_detail
             # 保留旧数据
             return {
                 "today": "%.2f" % abs(self.today_usage) if self.current_balance is not None else "ERR",
@@ -66,7 +68,8 @@ class DeepseekVendor(VendorBase):
             }
 
         self.status = "ok"
-        self.error_message = ""
+        self.error_code = ""
+        self.error_detail = ""
         self.last_update_ts = time.time()
 
         # 判断是否需要记录今日起始余额
@@ -99,30 +102,30 @@ class DeepseekVendor(VendorBase):
                 code = r.getcode()
                 body = r.read().decode("utf-8", "replace")
         except urllib.error.HTTPError as e:
-            return None, "HTTP %d" % e.code
+            return None, "httpError", str(e.code)
         except Exception as e:
-            return None, "网络错误: " + str(e)
+            return None, "networkError", str(e)
 
         if code != 200:
-            return None, "HTTP %d" % code
+            return None, "httpError", str(code)
         if not body:
-            return None, "返回体为空"
+            return None, "emptyResponse", ""
 
         try:
             obj = json.loads(body)
         except ValueError as e:
-            return None, "JSON解析失败: " + str(e)
+            return None, "invalidJson", str(e)
 
         infos = obj.get("balance_infos")
         if not infos:
-            return None, "balance_infos 为空"
+            return None, "balanceInfoMissing", ""
         balance_str = infos[0].get("total_balance")
         if balance_str is None:
-            return None, "total_balance 字段不存在"
+            return None, "balanceFieldMissing", ""
         try:
-            return float(balance_str), None
+            return float(balance_str), "", ""
         except (TypeError, ValueError):
-            return None, "余额格式错误: " + str(balance_str)
+            return None, "invalidBalance", str(balance_str)
 
     # ---- 起始余额判定 ----
 

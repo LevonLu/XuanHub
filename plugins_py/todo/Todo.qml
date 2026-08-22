@@ -13,6 +13,7 @@ import XuanHub
 Item {
     id: root
     property var plugin
+    function trText(source) { return qsTranslate("plugin.py_todo.main", source) }
 
     // childrenRect 取实际几何（不走 implicit 链——positioner/Rectangle 的 implicit 语义不可靠）
     width: Math.max(120, barRow.childrenRect.width + 16)
@@ -62,12 +63,12 @@ Item {
                 var pv = plugin ? plugin.values : null
                 if (!pv) return "…"
                 var prefix = pv.prefix !== undefined ? pv.prefix : "📝"
-                if (pv.barMode === "最近一项") {
+                if (pv.barMode === "latest" || pv.barMode === "最近一项") {
                     var fa = pv.firstActive
-                    return fa ? prefix + " " + fa : prefix + " 无待办"
+                    return fa ? prefix + " " + fa : prefix + " " + root.trText("无待办")
                 }
                 var n = pv.activeCount !== undefined ? pv.activeCount : 0
-                return prefix + " " + n + "项"
+                return prefix + " " + root.trText("%1 项").arg(n)
             }
             // 显式宽度上限：最近一项模式长文本截断，bar 部件宽度因此受限
             readonly property real maxW: 260
@@ -160,6 +161,7 @@ Item {
 
     Window {
         id: popupWin
+        transientParent: null
         property bool pendingClamp: false
         // >=0 时为「上翻」模式：弹窗底边锚定在该屏幕 y 处（部件上方 6px）。
         // 列表是异步填充的，高度会在 doClamp 之后继续变化（增删条目），
@@ -229,7 +231,7 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     Text {
-                        text: "待办事项"; color: root.cFg
+                        text: root.trText("待办事项"); color: root.cFg
                         font.pixelSize: 15; font.bold: true
                     }
                     Item { Layout.fillWidth: true }
@@ -258,7 +260,7 @@ Item {
                     TextField {
                         id: addField
                         Layout.fillWidth: true
-                        placeholderText: "输入新待办，回车添加"
+                        placeholderText: root.trText("输入新待办，回车添加")
                         selectByMouse: true
                         onAccepted: root.addCurrent()
                     }
@@ -269,7 +271,7 @@ Item {
                         border.width: 1; border.color: root.cBorder
                         Text {
                             id: addBtnText; anchors.centerIn: parent
-                            text: "＋ 添加"; color: root.cAccent; font.pixelSize: 11
+                            text: "＋ " + root.trText("添加"); color: root.cAccent; font.pixelSize: 11
                         }
                         MouseArea {
                             id: addBtnMa; anchors.fill: parent
@@ -293,7 +295,7 @@ Item {
                                 var t = root.vv("todos")
                                 return !t || t.length === 0
                             }
-                            text: "暂无待办，上方添加一条"
+                            text: root.trText("暂无待办，上方添加一条")
                             color: root.cMuted; font.pixelSize: 12
                             Layout.alignment: Qt.AlignCenter; Layout.topMargin: 40
                         }
@@ -305,8 +307,15 @@ Item {
 
                         // 错误提示（invoke 失败时 main.py 置 lastError）
                         Text {
-                            visible: !!root.vv("lastError")
-                            text: "⚠ " + (root.vv("lastError") || "")
+                            visible: !!root.vv("lastErrorKey")
+                            text: {
+                                var key = root.vv("lastErrorKey")
+                                var message = key === "operationFailed"
+                                    ? root.trText("操作失败，详见日志")
+                                    : root.trText("待办数据库不可用")
+                                var detail = root.vv("lastErrorDetail")
+                                return "⚠ " + message + (detail ? ": " + detail : "")
+                            }
                             color: root.cDanger; font.pixelSize: 10
                             wrapMode: Text.WordWrap
                         }
@@ -323,7 +332,8 @@ Item {
                             var d = root.vv("doneCount")
                             return d !== undefined && d > 0
                         }
-                        text: "🗑 清空已完成 (" + (root.vv("doneCount") || 0) + ")"
+                        text: "🗑 " + root.trText("清空已完成")
+                              + " (" + (root.vv("doneCount") || 0) + ")"
                         color: root.cMuted; font.pixelSize: 11
                         MouseArea {
                             anchors.fill: parent; cursorShape: Qt.PointingHandCursor

@@ -1,0 +1,24 @@
+{
+  "locale": "en-US",
+  "contexts": {
+    "plugin.sysinfo.metadata": {
+      "System Info": "System Info"
+    },
+    "plugin.sysinfo.settingsPage": {
+      "不显示": "Hidden",
+      "内存": "Memory",
+      "下行": "Download",
+      "上行": "Upload",
+      "布局": "Layout",
+      "控制指标在状态栏中如何分列排列": "Control how metrics are arranged into columns on the bar",
+      "每列显示项数": "Items per column",
+      "超出后会从右侧开始新的一列": "Extra items start a new column on the right",
+      "显示项": "Displayed metrics",
+      "拖动手柄表示顺序；也可以用上下按钮微调。留空颜色将跟随主题。": "Drag to reorder, or use the arrow buttons. Empty colors follow the theme.",
+      "前缀": "Prefix",
+      "颜色": "Color",
+      "添加显示项": "Add metric",
+      "至少添加一个显示项，否则状态栏不显示任何内容": "Add at least one metric or this plugin will show no content on the bar"
+    }
+  }
+}

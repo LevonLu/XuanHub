@@ -156,6 +156,8 @@ Item {
 
     Window {
         id: menuWin
+        // taskbar 模式下 bar 是 Shell_TrayWnd 的子窗口，不能作为 transient parent。
+        transientParent: null
         visible: false
         width: 280
         height: 364
@@ -195,29 +197,39 @@ Item {
                     anchors.leftMargin: 44
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 1
-                    Text { text: "玄枢 XuanHub"; color: root.colors.fg; font.pixelSize: 15; font.bold: true }
-                    Text { text: "快速设置"; color: root.colors.muted; font.pixelSize: 11 }
+                    Text {
+                        text: qsTranslate("plugin.xuanhub_menu.main", "玄枢 XuanHub")
+                        color: root.colors.fg; font.pixelSize: 15; font.bold: true
+                    }
+                    Text {
+                        text: Qt.application.version.length > 0
+                              ? qsTranslate("plugin.xuanhub_menu.main", "快速设置")
+                                + " · v" + Qt.application.version
+                              : qsTranslate("plugin.xuanhub_menu.main", "快速设置")
+                        color: root.colors.muted
+                        font.pixelSize: 11
+                    }
                 }
             }
 
             Rectangle { width: parent.width; height: 1; color: root.colors.border }
 
             MenuRow {
-                title: "打开设置"
-                subtitle: "管理主题、布局与插件"
+                title: qsTranslate("plugin.xuanhub_menu.main", "打开设置")
+                subtitle: qsTranslate("plugin.xuanhub_menu.main", "管理主题、布局与插件")
                 onTriggered: {
                     menuWin.hide()
                     if (root.plugin) root.plugin.invokeAction("settings")
                 }
             }
             MenuRow {
-                title: "开机自启"
+                title: qsTranslate("plugin.xuanhub_menu.main", "开机自启")
                 checkable: true
                 checked: root.plugin ? root.plugin.autoStartEnabled : false
                 onTriggered: if (root.plugin) root.plugin.invokeAction("autostart", !checked)
             }
             MenuRow {
-                title: "任务栏模式"
+                title: qsTranslate("plugin.xuanhub_menu.main", "任务栏模式")
                 checkable: true
                 checked: root.plugin ? root.plugin.taskbarMode : false
                 onTriggered: {
@@ -226,13 +238,13 @@ Item {
                 }
             }
             MenuRow {
-                title: "浅色模式"
+                title: qsTranslate("plugin.xuanhub_menu.main", "浅色模式")
                 checkable: true
                 checked: root.plugin ? root.plugin.themeMode === "light" : false
                 onTriggered: if (root.plugin) root.plugin.invokeAction("lightMode", !checked)
             }
             MenuRow {
-                title: "重新加载配置"
+                title: qsTranslate("plugin.xuanhub_menu.main", "重新加载配置")
                 onTriggered: {
                     menuWin.hide()
                     if (root.plugin) root.plugin.invokeAction("reload")
@@ -242,7 +254,7 @@ Item {
             Rectangle { width: parent.width; height: 1; color: root.colors.border }
 
             MenuRow {
-                title: "退出 XuanHub"
+                title: qsTranslate("plugin.xuanhub_menu.main", "退出 XuanHub")
                 dangerous: true
                 onTriggered: {
                     menuWin.hide()

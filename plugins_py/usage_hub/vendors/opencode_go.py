@@ -76,23 +76,27 @@ class OpenCodeGoVendor(VendorBase):
 
         if not self.cookie:
             self.status = "error"
-            self.error_message = "Cookie 未配置"
+            self.error_code = "cookieMissing"
+            self.error_detail = ""
             return self._empty_result()
 
-        html_text, err = self._fetch_page()
-        if err:
+        html_text, error_code, error_detail = self._fetch_page()
+        if error_code:
             self.status = "error"
-            self.error_message = err
+            self.error_code = error_code
+            self.error_detail = error_detail
             return self._empty_result()
 
-        usage, use_balance, subscribed, parse_err = self._parse(html_text)
-        if parse_err:
+        usage, use_balance, subscribed, parse_error = self._parse(html_text)
+        if parse_error:
             self.status = "error"
-            self.error_message = parse_err
+            self.error_code = parse_error
+            self.error_detail = ""
             return self._empty_result()
 
         self.status = "ok"
-        self.error_message = ""
+        self.error_code = ""
+        self.error_detail = ""
         self.last_update_ts = time.time()
 
         result = {
@@ -103,7 +107,7 @@ class OpenCodeGoVendor(VendorBase):
             prefix = "go_" + name
             result[prefix + "_pct"] = u["usagePercent"]
             if u["status"] == "ok":
-                result[prefix + "_reset"] = self._fmt_countdown(u["resetInSec"])
+                result[prefix + "_reset_seconds"] = u["resetInSec"]
             else:
                 result[prefix + "_reset"] = u["status"]
             limit = _LIMITS.get(name)
@@ -135,14 +139,15 @@ class OpenCodeGoVendor(VendorBase):
         for _ in range(3):
             try:
                 with urllib.request.urlopen(req, timeout=self.timeout_sec) as resp:
-                    return resp.read().decode("utf-8", "replace"), None
+                    return resp.read().decode("utf-8", "replace"), "", ""
             except urllib.error.HTTPError as e:
                 if e.code in (401, 403):
-                    return "", "HTTP %d —— cookie 可能已失效，请重新从浏览器复制" % e.code
-                last_err = "HTTP %d" % e.code
+                    return "", "cookieExpired", str(e.code)
+                last_err = ("httpError", str(e.code))
             except Exception as e:
-                last_err = "网络错误: " + str(e)
-        return "", last_err or "请求失败"
+                last_err = ("networkError", str(e))
+        code, detail = last_err or ("requestFailed", "")
+        return "", code, detail
 
     def _page_url(self):
         ws = self.workspace or _DEFAULT_WORKSPACE
@@ -160,7 +165,7 @@ class OpenCodeGoVendor(VendorBase):
                 "usagePercent": int(percent),
             }
         if not usage:
-            return {}, False, False, "未解析到用量数据（页面结构可能已变化，或 cookie 无权限访问该 workspace）"
+            return {}, False, False, "usageParseFailed"
 
         use_balance = False
         m = _USE_BALANCE_RE.search(html_text)
@@ -190,18 +195,3 @@ class OpenCodeGoVendor(VendorBase):
             "go_monthly_pct": 0, "go_monthly_detail": "-", "go_monthly_reset": "-",
             "go_subscribed": False, "go_use_balance": False,
         }
-
-    @staticmethod
-    def _fmt_countdown(seconds: int) -> str:
-        """把重置倒计时秒格式化成「X天 X时 X分」（不足 1 分钟显示「即将重置」）。"""
-        d, rem = divmod(int(seconds), 86400)
-        h, rem = divmod(rem, 3600)
-        m = divmod(rem, 60)[0]
-        parts = []
-        if d:
-            parts.append("%d天" % d)
-        if h:
-            parts.append("%d时" % h)
-        if m:
-            parts.append("%d分" % m)
-        return " ".join(parts) if parts else "即将重置"

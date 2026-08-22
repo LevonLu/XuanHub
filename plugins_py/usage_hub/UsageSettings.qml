@@ -10,13 +10,17 @@ Item {
     property var plugin
     implicitHeight: col.implicitHeight
 
+    function trText(source) {
+        return qsTranslate("plugin.py_usage_hub.settingsPage", source)
+    }
+
     // ── 厂商模板 ──────────────────────────────────────────────
     property var supportedVendors: [
         { "id": "deepseek", "name": "DeepSeek",
-          "modes": ["balance"], "modeLabels": ["余额"],
+          "modes": ["balance"], "modeLabels": [root.trText("余额")],
           "apiUrl": "https://api.deepseek.com/user/balance",
           "keyHint": "API Key (sk-...)" },
-        { "id": "glm", "name": "GLM (智谱)",
+        { "id": "glm", "name": root.trText("GLM (智谱)"),
           "modes": ["plan"], "modeLabels": ["Plan"],
           "apiUrl": "https://open.bigmodel.cn",
           "keyHint": "Auth Token" },
@@ -89,7 +93,7 @@ Item {
 
         Label {
             visible: root.vendors.length === 0
-            text: "暂无厂商，点击下方按钮添加"
+            text: root.trText("暂无厂商，点击下方按钮添加")
             color: palette.placeholderText; font.pixelSize: 12
         }
 
@@ -149,7 +153,7 @@ Item {
                         Item { Layout.fillWidth: true }
 
                         UiSwitch {
-                            text: checked ? "已启用" : "已停用"
+                            text: checked ? root.trText("已启用") : root.trText("已停用")
                             checked: modelData.enabled !== false
                             onToggled: root.updateField(index, "enabled", checked)
                         }
@@ -172,7 +176,7 @@ Item {
                             Layout.fillWidth: false
                             Layout.preferredWidth: 110
                             text: modelData.name || ""
-                            placeholderText: "显示名称"
+                            placeholderText: root.trText("显示名称")
                             selectByMouse: true
                             onTextChanged: root.updateField(index, "name", text)
                         }
@@ -193,7 +197,7 @@ Item {
                         spacing: UiMetrics.space2
 
                         Label {
-                            text: "查询间隔"
+                            text: root.trText("查询间隔")
                             color: palette.windowText
                             font.pixelSize: 11
                         }
@@ -203,7 +207,7 @@ Item {
                             Layout.preferredWidth: 110
                             from: 30; to: 86400; stepSize: 30
                             value: modelData.intervalSec || 300
-                            textFromValue: function(v) { return v + " 秒" }
+                            textFromValue: function(v) { return v + " " + root.trText("秒") }
                             valueFromText: function(t) { return parseInt(t) || 300 }
                             onValueChanged: root.updateField(index, "intervalSec", value)
                         }
@@ -224,7 +228,7 @@ Item {
                         UiTextField {
                             Layout.fillWidth: true
                             text: modelData.workspace || ""
-                            placeholderText: "留空使用默认"
+                            placeholderText: root.trText("留空使用默认")
                             selectByMouse: true
                             onTextChanged: root.updateField(index, "workspace", text)
                         }
@@ -233,6 +237,6 @@ Item {
             }
         }
 
-        UiButton { variant: "outline"; text: "＋ 添加厂商"; onClicked: root.addVendor() }
+        UiButton { variant: "outline"; text: root.trText("＋ 添加厂商"); onClicked: root.addVendor() }
     }
 }

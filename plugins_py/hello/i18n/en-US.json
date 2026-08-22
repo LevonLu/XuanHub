@@ -1,0 +1,9 @@
+{
+  "locale": "en-US",
+  "contexts": {
+    "plugin.py_hello.metadata": { "PyHello": "Python Example" },
+    "plugin.py_hello.settings": {
+      "通用": "General", "刷新间隔 (ms)": "Refresh interval (ms)", "前缀": "Prefix"
+    }
+  }
+}

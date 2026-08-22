@@ -53,7 +53,8 @@ class GLMVendor(VendorBase):
 
         if not self.auth_token or not self.base_url:
             self.status = "error"
-            self.error_message = "认证信息未配置"
+            self.error_code = "credentialsMissing"
+            self.error_detail = ""
             return self._empty_result()
 
         # 解析 base_url 获取 base_domain
@@ -63,14 +64,16 @@ class GLMVendor(VendorBase):
 
         quota_url = f"{base_domain}/api/monitor/usage/quota/limit"
 
-        data, err = self._fetch_json(quota_url)
-        if err:
+        data, error_code, error_detail = self._fetch_json(quota_url)
+        if error_code:
             self.status = "error"
-            self.error_message = err
+            self.error_code = error_code
+            self.error_detail = error_detail
             return self._empty_result()
 
         self.status = "ok"
-        self.error_message = ""
+        self.error_code = ""
+        self.error_detail = ""
         self.last_update_ts = time.time()
 
         result = {}
@@ -119,12 +122,12 @@ class GLMVendor(VendorBase):
             with urllib.request.urlopen(req, timeout=self.timeout_sec) as resp:
                 body = resp.read().decode("utf-8")
                 data = json.loads(body)
-                return (data.get("data", data), None)
+                return (data.get("data", data), "", "")
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", "replace")
-            return ({}, f"HTTP {e.code}: {body[:200]}")
+            return ({}, "httpError", f"{e.code}: {body[:200]}")
         except Exception as e:
-            return ({}, "网络错误: " + str(e))
+            return ({}, "networkError", str(e))
 
     # ---- 状态持久化 ----
 

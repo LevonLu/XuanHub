@@ -21,7 +21,7 @@ from vendors.opencode_go import OpenCodeGoVendor
 
 # ================= 模块级状态 =================
 _vendors: list[VendorBase] = []
-_cache: dict = {"summary": "初始化中..."}
+_cache: dict = {"summaryCode": "initializing"}
 _lock = threading.Lock()
 _stop_flag = False
 _refresh_event = threading.Event()
@@ -119,7 +119,8 @@ def _rebuild_cache():
         vendor_ids.append(v.id)
         prefix = v.id + "_"
         cache[prefix + "status"] = v.status
-        cache[prefix + "error"] = v.error_message
+        cache[prefix + "error_code"] = v.error_code
+        cache[prefix + "error_detail"] = v.error_detail
         cache[prefix + "last_update"] = v.last_update_str
         cache[prefix + "mode"] = v.mode
         cache[prefix + "name"] = v.name
@@ -154,9 +155,11 @@ def _rebuild_cache():
 
     if parts:
         cache["summary"] = " | ".join(parts)
+        cache["summaryCode"] = ""
     else:
         # 区分两种空态：完全没配厂商 → 引导用户去配置；配了但全部禁用 → 如实说明
-        cache["summary"] = "无已启用厂商" if _vendors else "未配置密钥"
+        cache["summary"] = ""
+        cache["summaryCode"] = "noEnabledVendors" if _vendors else "notConfigured"
     cache["vendor_ids"] = vendor_ids
     return cache
 

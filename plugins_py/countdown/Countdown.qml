@@ -7,6 +7,34 @@ Item {
     id: root
     property var plugin
 
+    function formatDuration(seconds) {
+        var total = Math.max(0, Number(seconds) || 0)
+        var days = Math.floor(total / 86400)
+        var rem = total % 86400
+        var hours = Math.floor(rem / 3600)
+        rem %= 3600
+        var minutes = Math.floor(rem / 60)
+        var secs = Math.floor(rem % 60)
+        function pad(v) { return v < 10 ? "0" + v : String(v) }
+        var clock = pad(hours) + ":" + pad(minutes) + ":" + pad(secs)
+        return days > 0
+                ? qsTranslate("plugin.py_countdown.main", "%1 天 %2").arg(days).arg(clock)
+                : clock
+    }
+
+    function displayText() {
+        if (!plugin || !plugin.values) return "..."
+        var values = plugin.values
+        if (values.textKey === "invalidDailyTime")
+            return qsTranslate("plugin.py_countdown.main", "⚠ 目标时间格式错误（HH:MM）")
+        if (values.textKey === "invalidDateTime")
+            return qsTranslate("plugin.py_countdown.main", "⚠ 目标时间格式错误（YYYY-MM-DD HH:MM）")
+        if (values.reached) return values.text || "..."
+        var parts = [values.prefix || "", formatDuration(values.remainingSeconds),
+                     values.suffix || ""]
+        return parts.filter(function(value) { return value.length > 0 }).join(" ")
+    }
+
     // 宽度随内容（原为固定 200，倒计时文字短时槽位大片留白，
     // 在 bar 上会与右侧插件拉开异常间距）
     width: label.implicitWidth + 16; height: 40
@@ -29,6 +57,6 @@ Item {
         anchors.centerIn: parent
         color: root.displayColor
         font.pixelSize: 13
-        text: (plugin && plugin.values && plugin.values.text) ? plugin.values.text : "..."
+        text: root.displayText()
     }
 }

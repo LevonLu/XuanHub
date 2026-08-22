@@ -2,6 +2,7 @@
 #include "barplugin/ProcessReaper.h"
 
 #include <QCoreApplication>
+#include <QPointer>
 #include <QProcess>
 #include <QSet>
 #include <QTimer>
@@ -23,10 +24,15 @@ public:
             m_processes.remove(process);
             process->deleteLater();
         });
-        const auto terminate = [process] {
-            if (process->state() != QProcess::NotRunning) process->terminate();
-            QTimer::singleShot(1000, process, [process] {
-                if (process->state() != QProcess::NotRunning) process->kill();
+        // worker 可能在宽限期内自行退出，finished 会先 deleteLater。宽限定时器若
+        // 捕获裸指针，随后会对已释放 QProcess 调 state()，多 worker 重载时稳定触发
+        // Qt6Core 访问冲突。QPointer 让两级定时器都能安全识别对象已销毁。
+        const QPointer<QProcess> guarded(process);
+        const auto terminate = [guarded] {
+            if (!guarded) return;
+            if (guarded->state() != QProcess::NotRunning) guarded->terminate();
+            QTimer::singleShot(1000, guarded, [guarded] {
+                if (guarded && guarded->state() != QProcess::NotRunning) guarded->kill();
             });
         };
         if (graceMs > 0) QTimer::singleShot(graceMs, this, terminate);

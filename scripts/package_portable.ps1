@@ -79,6 +79,26 @@ function Test-StrictChildPath {
            -not $childFull.Equals($parentFull, [StringComparison]::OrdinalIgnoreCase)
 }
 
+# PowerShell 5.1 通常提供 Get-FileHash，但部分精简/受限宿主没有该 cmdlet；
+# 直接使用 .NET 计算 SHA-256，保证打包安全闸门在这些环境中仍可执行。
+function Get-FileSha256 {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try {
+            return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '')
+        } finally {
+            $sha.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
+}
+
 # 最终发布闸门：运行时文件一律拒绝，config.json 必须与仓库内置默认配置一致；
 # 文本文件再检查高置信凭据形状和本机用户目录，避免“打包机状态”混入成品。
 function Assert-PackageSafe {
@@ -113,17 +133,31 @@ function Assert-PackageSafe {
     $packageConfig = Join-Path $PackageDir "config.json"
     if (-not (Test-Path $packageConfig -PathType Leaf)) {
         $violations.Add("缺少干净默认配置: $packageConfig")
-    } elseif ((Get-FileHash $packageConfig -Algorithm SHA256).Hash -ne
-              (Get-FileHash $DefaultConfig -Algorithm SHA256).Hash) {
+    } elseif ((Get-FileSha256 $packageConfig) -ne
+              (Get-FileSha256 $DefaultConfig)) {
         $violations.Add("config.json 不是仓库内置默认配置")
     }
 
     $packageLicense = Join-Path $PackageDir "LICENSE"
     if (-not (Test-Path $packageLicense -PathType Leaf)) {
         $violations.Add("缺少 BSD-3-Clause 许可证: $packageLicense")
-    } elseif ((Get-FileHash $packageLicense -Algorithm SHA256).Hash -ne
-              (Get-FileHash $LicenseFile -Algorithm SHA256).Hash) {
+    } elseif ((Get-FileSha256 $packageLicense) -ne
+              (Get-FileSha256 $LicenseFile)) {
         $violations.Add("LICENSE 与仓库许可证不一致")
+    }
+
+    # 官方包内每个随附插件都必须同时保留中英 JSON 语言包；核心语言包已嵌入 exe。
+    $pluginMetadata = @(
+        Get-ChildItem (Join-Path $PackageDir "plugins") -Filter "metadata.json" -Recurse -File -ErrorAction SilentlyContinue
+        Get-ChildItem (Join-Path $PackageDir "plugins_py") -Filter "plugin.json" -Recurse -File -ErrorAction SilentlyContinue
+    )
+    foreach ($metadata in $pluginMetadata) {
+        foreach ($locale in @("zh-CN", "en-US")) {
+            $catalog = Join-Path $metadata.Directory.FullName "i18n\$locale.json"
+            if (-not (Test-Path $catalog -PathType Leaf)) {
+                $violations.Add("缺少插件语言包: $catalog")
+            }
+        }
     }
 
     $textExtensions = @(
@@ -223,11 +257,11 @@ function Assert-ZipManifestSafe {
         $archive.Dispose()
     }
 
-    $defaultHash = (Get-FileHash $DefaultConfig -Algorithm SHA256).Hash
+    $defaultHash = Get-FileSha256 $DefaultConfig
     if ($configHashes.Count -ne 1 -or $configHashes[0] -ne $defaultHash) {
         $violations.Add("ZIP 中缺少唯一且干净的默认 config.json")
     }
-    $licenseHash = (Get-FileHash $LicenseFile -Algorithm SHA256).Hash
+    $licenseHash = Get-FileSha256 $LicenseFile
     if ($licenseHashes.Count -ne 1 -or $licenseHashes[0] -ne $licenseHash) {
         $violations.Add("ZIP 中缺少唯一且正确的 LICENSE")
     }
@@ -314,7 +348,7 @@ $versionMatch = Select-String -Path $CmakeFile -Pattern 'VERSION\s+(\d+\.\d+\.\d
 if ($versionMatch) {
     $Version = $versionMatch.Matches[0].Groups[1].Value
 } else {
-    $Version = "0.2.0"
+    $Version = "0.2.1"
 }
 
 $packageName = "XuanHub-v$Version-portable-x64"
@@ -674,7 +708,7 @@ if (-not $NoPrune) {
 
     $pruned = 0
 
-    # Translation files (~7 MB)
+    # Qt 自带 translations 目前不用；插件自身的 i18n/ JSON 目录必须保留。
     $translationsDir = Join-Path $DistDir "translations"
     if (Test-Path $translationsDir) {
         Remove-Item $translationsDir -Recurse -Force -ErrorAction SilentlyContinue

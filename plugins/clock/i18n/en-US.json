@@ -1,0 +1,19 @@
+{
+  "locale": "en-US",
+  "contexts": {
+    "plugin.clock.calendar": {
+      "上一月": "Previous month",
+      "%1 年 %2 月": "%1 %2",
+      "下一月": "Next month",
+      "回到今天": "Today"
+    },
+    "plugin.clock.metadata": {
+      "Clock": "Clock"
+    },
+    "plugin.clock.settings": {
+      "显示": "Display",
+      "时间格式": "Time format",
+      "Qt 时间格式串，如 HH:mm:ss、hh:mm AP": "Qt time format, such as HH:mm:ss or hh:mm AP"
+    }
+  }
+}

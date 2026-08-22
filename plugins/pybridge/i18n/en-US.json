@@ -1,0 +1,11 @@
+{
+  "locale": "en-US",
+  "contexts": {
+    "plugin.pybridge.metadata": {
+      "PyBridge": "Python Plugin Bridge"
+    },
+    "plugin.pybridge.notifications": {
+      "未找到可用的 Python 3.12+ 运行时，Python 插件已停用。请安装 Python，或使用 Bundle 便携包。": "No usable Python 3.12+ runtime was found. Python plugins are disabled. Install Python or use the Bundle portable package."
+    }
+  }
+}

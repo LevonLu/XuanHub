@@ -55,6 +55,14 @@ public:
     // 校验失败 err 带原因、返回 false
     bool toPluginEntriesJson(QJsonArray* out, QString* err) const;
 
+    // 仅插件草稿被用户实际改动时为 true。语言、主题等宿主设置单独保存时，
+    // SettingsViewModel 据此原样保留 plugins 数组，避免把兼容迁移或默认值整理
+    // 误判成插件变更，进而无谓重启全部插件。
+    bool isDirty() const { return m_dirty; }
+
+    // 语言切换时只刷新显示角色，不重建行或 config 草稿，避免丢失未保存编辑。
+    void retranslate();
+
 private:
     struct Row {
         QString id, name, version, author, kind;   // kind: "dll" | "python"
@@ -75,4 +83,5 @@ private:
 
     QVector<Row> m_rows;
     QString m_secretDir;  // secrets.json 与当前 config.json 同目录（便携模式也成立）
+    bool m_dirty = false;
 };

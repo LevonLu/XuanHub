@@ -7,8 +7,10 @@
 #include "PluginManager.h"
 #include "ThemeManager.h"
 #include "ThemeRegistry.h"
+#include "LocaleManager.h"
 
 #include <QDebug>
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -37,10 +39,11 @@ QString pluginsFingerprint(const QList<PluginConfigEntry>& entries) {
 ConfigHotReloader::ConfigHotReloader(ConfigService* config, ThemeManager* theme,
                                      ThemeRegistry* registry,
                                      PluginManager* pm, PluginListModel* model,
-                                     BarWindow* window,
+                                     BarWindow* window, LocaleManager* locale,
                                      QString exeDir, QString configDir, QObject* parent)
     : QObject(parent), m_config(config), m_theme(theme), m_registry(registry),
       m_pm(pm), m_model(model), m_window(window),
+      m_locale(locale),
       m_exeDir(std::move(exeDir)), m_configDir(std::move(configDir)) {
     // 防抖：一次保存常触发多个 fileChanged（写内容 + 改属性），合并为一次 reload
     m_debounce.setSingleShot(true);
@@ -95,6 +98,10 @@ void ConfigHotReloader::reloadImpl(bool force) {
     }
     armWatcher();  // 生效路径可能换边（exeDir ↔ configDir）
 
+    // languageChanged 已在 ConfigService::load() 内同步触发；强制重载时即使语言值
+    // 未变也重扫插件 i18n 目录，方便开发者更新语言包后从托盘立即验证。
+    if (force && m_locale) m_locale->reloadCatalogs();
+
     // 主题包：重扫 themes/（用户可能新装/卸载了主题包），再按文件值同步当前主题
     if (m_registry) m_registry->reload(QDir(m_exeDir).absoluteFilePath(QStringLiteral("themes")));
 
@@ -107,9 +114,6 @@ void ConfigHotReloader::reloadImpl(bool force) {
         m_theme->refresh();
     }
 
-    // 高度/边缘：重新协商 AppBar 并定位窗口（幂等；值没变也无副作用）
-    m_window->setupBar();
-
     // 插件全量重载：仅在 plugins 段真的变了（或托盘强制）时执行——改主题色、
     // 高度这类无关变更不再摧毁所有插件状态（打开的弹窗、内部计时、Python
     // 子插件运行时）。顺序铁律：先 shutdown 删光插件对象再 load，
@@ -117,12 +121,20 @@ void ConfigHotReloader::reloadImpl(bool force) {
     // setPlugins 内部 begin/endResetModel 驱动 ListView 重建 delegate
     const QString fp = pluginsFingerprint(m_config->pluginEntries());
     if (!force && fp == m_pluginsFingerprint) {
+        // 高度/边缘/模式仍可能变化：无插件重载时直接重新协商并定位。
+        m_window->setupBar();
         qDebug() << "[Config] plugins section unchanged, skip plugin reload";
         return;
     }
     m_pluginsFingerprint = fp;
+    // 模型中的 Loader/delegate 持有插件 ViewModel 的元对象，而这些元对象代码位于
+    // 插件 DLL。必须先让 QML 解除引用并处理延迟删除，再 shutdown/unload；旧顺序
+    // 先卸 DLL、后 reset model，会在 delegate 清理时跳入已卸载代码导致崩溃。
+    m_model->setPlugins({});
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     m_pm->shutdownAll();
     m_pm->loadFrom(QDir(m_exeDir).absoluteFilePath(QStringLiteral("plugins")),
                    m_config->pluginEntries());
     m_model->setPlugins(m_pm->loaded());
+    m_window->setupBar();
 }

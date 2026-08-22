@@ -3,6 +3,7 @@
 #include "SecretStore.h"
 
 #include <QColor>
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -15,10 +16,87 @@
 #include <algorithm>
 
 namespace {
+QString pluginTranslation(const QString& pluginId, const QString& section,
+                          const QString& source) {
+    if (source.isEmpty()) return source;
+    const QByteArray context = QStringLiteral("plugin.%1.%2")
+                                   .arg(pluginId, section).toUtf8();
+    const QByteArray sourceUtf8 = source.toUtf8();
+    return QCoreApplication::translate(context.constData(), sourceUtf8.constData());
+}
+
+QString settingsError(const char* source) {
+    return QCoreApplication::translate("xuanhub.settings.errors", source);
+}
+
+QJsonArray localizedSchema(const QString& pluginId, const QJsonArray& schema) {
+    QJsonArray result;
+    for (const QJsonValue& groupValue : schema) {
+        QJsonObject group = groupValue.toObject();
+        if (group.contains(QStringLiteral("group"))) {
+            group[QStringLiteral("group")] = pluginTranslation(
+                pluginId, QStringLiteral("settings"),
+                group.value(QStringLiteral("group")).toString());
+        }
+        QJsonArray fields;
+        for (const QJsonValue& fieldValue : group.value(QStringLiteral("fields")).toArray()) {
+            QJsonObject field = fieldValue.toObject();
+            for (const QString& key : {QStringLiteral("label"),
+                                       QStringLiteral("description"),
+                                       QStringLiteral("placeholder")}) {
+                if (field.contains(key)) {
+                    field[key] = pluginTranslation(pluginId, QStringLiteral("settings"),
+                                                   field.value(key).toString());
+                }
+            }
+
+            // 对外统一为 {value,label}：旧字符串数组仍保存原始稳定值，只翻译显示标签。
+            if (field.value(QStringLiteral("type")).toString() == QStringLiteral("enum")) {
+                QJsonArray options;
+                for (const QJsonValue& optionValue : field.value(QStringLiteral("options")).toArray()) {
+                    QJsonObject option;
+                    if (optionValue.isObject()) {
+                        option = optionValue.toObject();
+                    } else {
+                        option[QStringLiteral("value")] = optionValue;
+                        option[QStringLiteral("label")] = optionValue.toString();
+                    }
+                    const QString label = option.value(QStringLiteral("label"))
+                                              .toString(option.value(QStringLiteral("value")).toString());
+                    option[QStringLiteral("label")] = pluginTranslation(
+                        pluginId, QStringLiteral("settings"), label);
+                    options.append(option);
+                }
+                field[QStringLiteral("options")] = options;
+            }
+            fields.append(field);
+        }
+        group[QStringLiteral("fields")] = fields;
+        result.append(group);
+    }
+    return result;
+}
+
 QJsonObject readJsonFile(const QString& path) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return {};
     return QJsonDocument::fromJson(f.readAll()).object();
+}
+
+QVariantMap migrateBuiltInConfig(const QString& pluginId, QVariantMap config) {
+    // 内置插件旧版曾把中文显示标签直接写进配置；设置草稿加载时归一化为稳定值。
+    if (pluginId == QLatin1String("py_countdown")) {
+        const QString mode = config.value(QStringLiteral("mode")).toString();
+        if (mode == QStringLiteral("每日重复")) config[QStringLiteral("mode")] = QStringLiteral("daily");
+        else if (mode == QStringLiteral("指定日期") || mode == QStringLiteral("once"))
+            config[QStringLiteral("mode")] = QStringLiteral("date");
+    } else if (pluginId == QLatin1String("py_todo")) {
+        const QString mode = config.value(QStringLiteral("barMode")).toString();
+        if (mode == QStringLiteral("数量")) config[QStringLiteral("barMode")] = QStringLiteral("count");
+        else if (mode == QStringLiteral("最近一项"))
+            config[QStringLiteral("barMode")] = QStringLiteral("latest");
+    }
+    return config;
 }
 
 // 导出时的 schema 字段校验（双保险；QML 控件是第一道）。失败原因写入 why。
@@ -32,14 +110,14 @@ bool validateField(const QJsonObject& f, const QVariant& v, QString* why) {
         if (v.metaType().id() == QMetaType::Double) {
             const double dv = v.toDouble();
             if (qFloor(dv) != dv) {
-                *why = QStringLiteral("应为 %1-%2 的整数").arg(lo).arg(hi);
+                *why = settingsError("应为 %1-%2 的整数").arg(lo).arg(hi);
                 return false;
             }
         }
         bool ok = false;
         const int n = v.toInt(&ok);
         if (!ok || n < lo || n > hi) {
-            *why = QStringLiteral("应为 %1-%2 的整数").arg(lo).arg(hi);
+            *why = settingsError("应为 %1-%2 的整数").arg(lo).arg(hi);
             return false;
         }
     } else if (type == QStringLiteral("double")) {
@@ -48,18 +126,18 @@ bool validateField(const QJsonObject& f, const QVariant& v, QString* why) {
         const double lo = f.value(QStringLiteral("min")).toDouble(-1e300);
         const double hi = f.value(QStringLiteral("max")).toDouble(1e300);
         if (!ok || d < lo || d > hi) {
-            *why = QStringLiteral("应为 %1-%2 的数字").arg(lo).arg(hi);
+            *why = settingsError("应为 %1-%2 的数字").arg(lo).arg(hi);
             return false;
         }
     } else if (type == QStringLiteral("bool")) {
         if (v.metaType().id() != QMetaType::Bool) {
-            *why = QStringLiteral("应为布尔值");
+            *why = settingsError("应为布尔值");
             return false;
         }
     } else if (type == QStringLiteral("color")) {
         const QString s = v.toString();
         if (!s.isEmpty() && !QColor::isValidColorName(s)) {   // 空串合法（= 插件内默认）
-            *why = QStringLiteral("不是合法颜色");
+            *why = settingsError("不是合法颜色");
             return false;
         }
     } else if (type == QStringLiteral("enum")) {
@@ -67,10 +145,13 @@ bool validateField(const QJsonObject& f, const QVariant& v, QString* why) {
         const auto opts = f.value(QStringLiteral("options")).toArray();
         bool found = false;
         for (const auto& o : opts) {
-            if (o.toString() == s) { found = true; break; }
+            const QString value = o.isObject()
+                ? o.toObject().value(QStringLiteral("value")).toString()
+                : o.toString();
+            if (value == s) { found = true; break; }
         }
         if (!found) {
-            *why = QStringLiteral("不在可选值内");
+            *why = settingsError("不在可选值内");
             return false;
         }
     }
@@ -116,14 +197,14 @@ bool protectUsageHubVendorSecrets(const QString& pluginId, QVariantMap* config,
             const QString reference = SecretStore::referenceId(candidate);
             if (!reference.isEmpty()) {
                 if (reference != secretId) {
-                    *err = QStringLiteral("py_usage_hub：厂商凭据引用无效");
+                    *err = settingsError("py_usage_hub：厂商凭据引用无效");
                     return false;
                 }
                 vendor.insert(QStringLiteral("apiKey"), SecretStore::referenceValue(secretId).toVariant());
             } else {
                 const QString plaintext = vendor.value(QStringLiteral("apiKey")).toString();
                 if (!secrets.write(secretId, plaintext)) {
-                    *err = QStringLiteral("py_usage_hub：无法安全保存厂商凭据");
+                    *err = settingsError("py_usage_hub：无法安全保存厂商凭据");
                     return false;
                 }
                 if (plaintext.isEmpty()) vendor.remove(QStringLiteral("apiKey"));
@@ -144,7 +225,7 @@ bool protectUsageHubVendorSecrets(const QString& pluginId, QVariantMap* config,
         const QString secretId = SecretStore::idForPluginField(
             pluginId, QStringLiteral("vendors.%1.apiKey").arg(it.key()));
         if (SecretStore::referenceId(it.value()) == secretId && !secrets.write(secretId, {})) {
-            *err = QStringLiteral("py_usage_hub：无法清除已删除厂商的凭据");
+            *err = settingsError("py_usage_hub：无法清除已删除厂商的凭据");
             return false;
         }
     }
@@ -165,7 +246,8 @@ QVariant SettingsPluginModel::data(const QModelIndex& index, int role) const {
     const auto& r = m_rows.at(index.row());
     switch (role) {
         case IdRole:         return r.id;
-        case NameRole:       return r.name;
+        case NameRole:       return pluginTranslation(
+            r.id, QStringLiteral("metadata"), r.name);
         case VersionRole:    return r.version;
         case AuthorRole:     return r.author;
         case KindRole:       return r.kind;
@@ -174,7 +256,7 @@ QVariant SettingsPluginModel::data(const QModelIndex& index, int role) const {
         case OrderRole:      return r.order;
         case WidthRole:      return r.width;
         case ConfigRole:     return r.config;
-        case SchemaRole:     return r.schema.toVariantList();
+        case SchemaRole:     return localizedSchema(r.id, r.schema).toVariantList();
         case SettingsQmlRole:
             return r.settingsQml.isEmpty() ? QVariant() : QVariant(r.settingsQml);
         case DiscoveredRole: return r.discovered;
@@ -185,25 +267,47 @@ QVariant SettingsPluginModel::data(const QModelIndex& index, int role) const {
     return {};
 }
 
+void SettingsPluginModel::retranslate() {
+    if (m_rows.isEmpty()) return;
+    emit dataChanged(index(0), index(m_rows.size() - 1), {NameRole, SchemaRole});
+}
+
 bool SettingsPluginModel::setData(const QModelIndex& index, const QVariant& value, int role) {
     if (!index.isValid() || index.row() < 0 || index.row() >= m_rows.size())
         return false;
     auto& r = m_rows[index.row()];
     switch (role) {
-        case EnabledRole:    r.enabled = value.toBool(); break;
-        case PositionRole:   r.position = value.toString(); break;
-        case OrderRole:      r.order = value.toInt(); break;
-        case WidthRole:      r.width = value.toInt(); break;
+        case EnabledRole:
+            if (r.enabled == value.toBool()) return true;
+            r.enabled = value.toBool();
+            break;
+        case PositionRole:
+            if (r.position == value.toString()) return true;
+            r.position = value.toString();
+            break;
+        case OrderRole:
+            if (r.order == value.toInt()) return true;
+            r.order = value.toInt();
+            break;
+        case WidthRole:
+            if (r.width == value.toInt()) return true;
+            r.width = value.toInt();
+            break;
         case SetConfigValueRole: {
             // value 形如 {key: "...", value: ...}，写 config 草稿单字段
             const QVariantMap m = value.toMap();
-            r.config.insert(m.value(QStringLiteral("key")).toString(),
-                            m.value(QStringLiteral("value")));
+            const QString key = m.value(QStringLiteral("key")).toString();
+            const QVariant newValue = m.value(QStringLiteral("value"));
+            if (key.isEmpty()) return false;
+            if (r.config.contains(key) && r.config.value(key) == newValue) return true;
+            r.config.insert(key, newValue);
+            m_dirty = true;
             emit dataChanged(index, index, {ConfigRole});
             return true;
         }
         default: return false;
     }
+    m_dirty = true;
     // 启用状态与区域会改变 QML ListView 的分组键，必须连同派生 role 一并通知，
     // 否则代理排序虽更新，分隔标题仍可能保留旧状态。
     if (role == EnabledRole || role == PositionRole)
@@ -257,7 +361,7 @@ void SettingsPluginModel::reload(const QList<PluginConfigEntry>& entries,
         r.position = e.position.isEmpty() ? QStringLiteral("right") : e.position;
         r.order = e.order;
         r.width = e.width;
-        r.config = e.config;   // 结构化草稿直接入行（未知键随之保留）
+        r.config = migrateBuiltInConfig(e.id, e.config); // 未知键保留，旧中文枚举转稳定值
         r.raw = rawById.value(e.id);
         // kind 先按 id 前缀猜，磁盘发现命中后会被纠正
         r.kind = e.id.startsWith(QStringLiteral("py_")) ? QStringLiteral("python")
@@ -276,6 +380,7 @@ void SettingsPluginModel::reload(const QList<PluginConfigEntry>& entries,
                         QStringLiteral("python"), pyDir.absoluteFilePath(sub));
 
     endResetModel();
+    m_dirty = false;
 }
 
 void SettingsPluginModel::mergeDiscovered(const QJsonObject& meta, const QString& kind,
@@ -325,7 +430,10 @@ bool SettingsPluginModel::setConfigValue(const QString& id, const QString& key,
                                          const QVariant& value) {
     for (int i = 0; i < m_rows.size(); ++i) {
         if (m_rows[i].id != id) continue;
+        if (m_rows[i].config.contains(key) && m_rows[i].config.value(key) == value)
+            return true;
         m_rows[i].config.insert(key, value);
+        m_dirty = true;
         const QModelIndex mi = index(i);
         emit dataChanged(mi, mi, {ConfigRole});
         return true;
@@ -367,6 +475,7 @@ bool SettingsPluginModel::moveWithinPosition(int sourceRow, int direction) {
     // order 仍是兼容的磁盘格式，而界面则完全由可见的上移/下移控制。
     for (int i = 0; i < rows.size(); ++i)
         m_rows[rows[i]].order = i;
+    m_dirty = true;
     emit dataChanged(index(0), index(m_rows.size() - 1), {OrderRole});
     return true;
 }
@@ -379,15 +488,15 @@ bool SettingsPluginModel::toPluginEntriesJson(QJsonArray* out, QString* err) con
         if (!r.enabled) continue;
         if (r.position != QStringLiteral("left") && r.position != QStringLiteral("center")
             && r.position != QStringLiteral("right")) {
-            *err = r.id + QStringLiteral("：position 非法（left/center/right）");
+            *err = settingsError("%1：position 非法（left/center/right）").arg(r.id);
             return false;
         }
         if (r.order < 0) {
-            *err = r.id + QStringLiteral("：order 不能为负");
+            *err = settingsError("%1：order 不能为负").arg(r.id);
             return false;
         }
         if (r.width < 0 || r.width > 800) {
-            *err = r.id + QStringLiteral("：width 需在 0-800 之间");
+            *err = settingsError("%1：width 需在 0-800 之间").arg(r.id);
             return false;
         }
         // schema 声明字段的导出校验（双保险；QML 控件是第一道）
@@ -429,8 +538,8 @@ bool SettingsPluginModel::toPluginEntriesJson(QJsonArray* out, QString* err) con
                 }
                 const QString plaintext = config.value(key).toString();
                 if (!secrets.write(secretId, plaintext)) {
-                    *err = r.id + QStringLiteral("：无法安全保存 ")
-                           + f.value(QStringLiteral("label")).toString(key);
+                    *err = settingsError("%1：无法安全保存 %2")
+                               .arg(r.id, f.value(QStringLiteral("label")).toString(key));
                     return false;
                 }
                 if (plaintext.isEmpty()) config.remove(key);

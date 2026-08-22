@@ -40,9 +40,10 @@ class PluginResilienceTests(unittest.TestCase):
             plugin.sqlite3.connect = original_connect
         self.assertEqual(values["activeCount"], 0)
         self.assertEqual(values["prefix"], "T")
-        self.assertIn("数据库不可用", values["lastError"])
+        self.assertEqual(values["lastErrorKey"], "databaseUnavailable")
+        self.assertIn("simulated database failure", values["lastErrorDetail"])
         plugin.invoke("add", ["不会写入的数据"])
-        self.assertIn("数据库不可用", plugin.update()["lastError"])
+        self.assertEqual(plugin.update()["lastErrorKey"], "databaseUnavailable")
 
 
 if __name__ == "__main__":

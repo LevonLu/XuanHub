@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QIcon>
 #include <QTextStream>
 #include <QDateTime>
 #include <QLockFile>
@@ -25,6 +26,7 @@
 #include "ThemeManager.h"
 #include "ThemeRegistry.h"
 #include "TrayIcon.h"
+#include "LocaleManager.h"
 #include "barplugin/EventBus.h"
 
 // ── 日志系统 ──────────────────────────────────────────────
@@ -94,6 +96,12 @@ int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("XuanHub"));
     app.setOrganizationName(QStringLiteral("XuanHub"));
+    // 唯一版本源来自根 CMake project(VERSION)，QML 通过 Qt.application.version 读取。
+    app.setApplicationVersion(QStringLiteral(XUANHUB_VERSION));
+    // Windows Shell 使用 PE 内嵌 .ico；Qt 顶层窗口使用同源 PNG，保证设置窗口、
+    // 任务栏预览和运行时窗口拥有一致的品牌标识。
+    app.setWindowIcon(QIcon(QStringLiteral(
+        ":/qt/qml/XuanHub/resources/xuanhub-icon-256.png")));
     // BarWindow 是 Qt::Tool，lastWindowClosed 机制会把它排除在"可见顶层窗口"之外，
     // 于是设置窗口（唯一普通顶层窗口）被 close 隐藏后 Qt 误判"已无窗口"→ 默认退出整个进程。
     // 玄枢的生命周期由托盘 "退出" 显式控制，关闭这条隐式退出路径。
@@ -142,6 +150,12 @@ int main(int argc, char* argv[]) {
     ConfigService config;
     config.load(exeDir, configDir);
 
+    // 翻译器必须先于托盘、插件和任何 QML 引擎安装，首次创建即使用正确语言。
+    LocaleManager locale(&bus, exeDir);
+    locale.setRequestedLanguage(config.language());
+    QObject::connect(&config, &ConfigService::languageChanged, &locale,
+                     [&config, &locale] { locale.setRequestedLanguage(config.language()); });
+
     // 主题包注册表：扫描 themes/*/theme.json，解析校验后缓存所有已安装主题包
     ThemeRegistry registry;
     registry.reload(QDir(exeDir).absoluteFilePath(QStringLiteral("themes")));
@@ -150,7 +164,7 @@ int main(int argc, char* argv[]) {
 
     // 托盘（先于插件加载创建：插件加载期间可能经 EventBus "app.notify"
     // 请求气泡提示——如 pybridge 未检测到 Python 环境，订阅必须先于发布）
-    TrayIcon tray(&theme, &bus, &config);
+    TrayIcon tray(&theme, &bus, &config, &locale);
     tray.show();
 
     PluginManager pm(&bus, configDir);
@@ -160,19 +174,20 @@ int main(int argc, char* argv[]) {
     PluginListModel model;
     model.setPlugins(pm.loaded());
 
-    BarWindow window(&config, &model, &theme);
+    BarWindow window(&config, &model, &theme, &locale);
     window.create();
     window.setupBar();
     window.show();
 
     // 配置热重载（M7）：文件监听自动触发（plugins 段未变则跳过插件重载），
     // 托盘 "重新加载配置" 手动触发走 forceReload（无条件全量，插件 DLL 更新后用）
-    ConfigHotReloader reloader(&config, &theme, &registry, &pm, &model, &window, exeDir, configDir);
+    ConfigHotReloader reloader(&config, &theme, &registry, &pm, &model, &window,
+                               &locale, exeDir, configDir);
     QObject::connect(&tray, &TrayIcon::reloadRequested,
                      &reloader, &ConfigHotReloader::forceReload);
 
     // 设置窗口（M8）：托盘 "设置..." 打开（懒建，关闭=隐藏不销毁）
-    SettingsController settingsCtl(&config, &theme, &registry, exeDir, &model);
+    SettingsController settingsCtl(&config, &theme, &registry, &locale, exeDir, &model);
     QObject::connect(&tray, &TrayIcon::settingsRequested,
                      &settingsCtl, &SettingsController::open);
 

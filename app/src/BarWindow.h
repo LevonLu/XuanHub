@@ -9,6 +9,7 @@ class ConfigService;
 class WorkAreaGuard;
 class TaskbarEmbed;
 class PluginListModel;
+class LocaleManager;
 
 class ThemeManager;
 
@@ -16,7 +17,8 @@ class BarWindow : public QQuickView {
     Q_OBJECT
 public:
     explicit BarWindow(ConfigService* config, PluginListModel* model,
-                       ThemeManager* theme, QWindow* parent = nullptr);
+                       ThemeManager* theme, LocaleManager* locale,
+                       QWindow* parent = nullptr);
     ~BarWindow() override;
 
     // 在窗口已 create() 之后调用：按当前模式定位窗口（appbar reserve / taskbar 嵌入）。

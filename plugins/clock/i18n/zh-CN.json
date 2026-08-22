@@ -1,0 +1,19 @@
+{
+  "locale": "zh-CN",
+  "contexts": {
+    "plugin.clock.calendar": {
+      "上一月": "上一月",
+      "%1 年 %2 月": "%1 年 %2 月",
+      "下一月": "下一月",
+      "回到今天": "回到今天"
+    },
+    "plugin.clock.metadata": {
+      "Clock": "时钟"
+    },
+    "plugin.clock.settings": {
+      "显示": "显示",
+      "时间格式": "时间格式",
+      "Qt 时间格式串，如 HH:mm:ss、hh:mm AP": "Qt 时间格式串，如 HH:mm:ss、hh:mm AP"
+    }
+  }
+}

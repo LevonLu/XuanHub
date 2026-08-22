@@ -1,0 +1,9 @@
+{
+  "locale": "zh-CN",
+  "contexts": {
+    "plugin.py_hello.metadata": { "PyHello": "Python 示例" },
+    "plugin.py_hello.settings": {
+      "通用": "通用", "刷新间隔 (ms)": "刷新间隔 (ms)", "前缀": "前缀"
+    }
+  }
+}

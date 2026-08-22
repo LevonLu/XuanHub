@@ -9,6 +9,10 @@ Item {
     id: root
     property var plugin
 
+    function trText(source) {
+        return qsTranslate("plugin.py_intime.main", source)
+    }
+
     width: 130; height: 40
 
     // 色板（跟随主题，浅色/深色自动适配）
@@ -54,8 +58,10 @@ Item {
                ? root.cDanger : root.cFg
         font.pixelSize: 12
         text: {
-            if (!plugin || !plugin.values) return "休息提醒"
-            return (plugin.values.label || "工作中") + " " + (plugin.values.timeStr || "--:--")
+            if (!plugin || !plugin.values) return root.trText("休息提醒")
+            var label = plugin.values.status === "resting"
+                      ? root.trText("休息") : root.trText("工作中")
+            return label + " " + (plugin.values.timeStr || "--:--")
         }
     }
 
@@ -71,6 +77,7 @@ Item {
     // ── 遮罩（全屏 Window + 内部 clip 动画）─────────────────────
     Window {
         id: overlay
+        transientParent: null
         visible: false
         color: "transparent"
         flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
@@ -220,13 +227,14 @@ Item {
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: (plugin && plugin.values) ? (plugin.values.maskText || "休息一下") : "休息一下"
+                        text: (plugin && plugin.values && plugin.values.maskText)
+                              ? plugin.values.maskText : root.trText("休息一下")
                         color: root.cFg
                         font.pixelSize: (plugin && plugin.values) ? (plugin.values.textSize || 24) : 24
                     }
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: "按 ESC 跳过休息"
+                        text: root.trText("按 ESC 跳过休息")
                         color: root.cMuted; font.pixelSize: 14
                     }
                 }

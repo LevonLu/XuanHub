@@ -38,6 +38,9 @@ add_custom_command(TARGET pybridge POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/metadata.json"
         "${XUANHUB_BIN_DIR}/plugins/pybridge/metadata.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/i18n"
+        "${XUANHUB_BIN_DIR}/plugins/pybridge/i18n"
     # 先清理旧目录再同步，避免已从源码移除的子插件继续残留在开发/发布目录中。
     COMMAND ${CMAKE_COMMAND} -E rm -rf
         "${XUANHUB_BIN_DIR}/plugins_py"

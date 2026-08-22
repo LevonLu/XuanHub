@@ -1,0 +1,19 @@
+{
+  "locale": "en-US",
+  "contexts": {
+    "plugin.xuanhub_menu.main": {
+      "玄枢 XuanHub": "XuanHub",
+      "快速设置": "Quick settings",
+      "打开设置": "Open Settings",
+      "管理主题、布局与插件": "Manage themes, layout, and plugins",
+      "开机自启": "Start with Windows",
+      "任务栏模式": "Taskbar mode",
+      "浅色模式": "Light mode",
+      "重新加载配置": "Reload configuration",
+      "退出 XuanHub": "Exit XuanHub"
+    },
+    "plugin.xuanhub_menu.metadata": {
+      "玄枢菜单": "XuanHub Menu"
+    }
+  }
+}
