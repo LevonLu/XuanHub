@@ -351,9 +351,9 @@ unchanged
 
 #### 阶段 C：模型增量更新
 
-- [ ] PluginListModel 支持按 ID 插入、移除和角色更新。
-- [ ] 位置变化正确地在三组 FilterModel 间移动。
-- [ ] QML delegate 只销毁受影响插件。
+- [x] PluginListModel 支持按 ID 插入、移除和角色更新。
+- [x] 位置变化正确地在三组 FilterModel 间移动。
+- [x] QML delegate 只销毁受影响插件。
 
 #### 阶段 D：可选热配置接口
 

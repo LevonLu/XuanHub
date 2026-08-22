@@ -112,6 +112,57 @@ private Q_SLOTS:
         QVERIFY(!secondViewModel.restarted);
         QVERIFY(!model.restartPlugin(QStringLiteral("missing")));
     }
+
+    void incrementallyUpdatesOnlyTargetRowsAndRegions() {
+        QObject leftVm;
+        QObject rightVm;
+        PluginManager::LoadedPlugin left;
+        left.id = QStringLiteral("left");
+        left.position = QStringLiteral("left");
+        left.order = 0;
+        left.viewModel = &leftVm;
+        PluginManager::LoadedPlugin right;
+        right.id = QStringLiteral("right");
+        right.position = QStringLiteral("right");
+        right.order = 0;
+        right.viewModel = &rightVm;
+
+        PluginListModel model;
+        QSignalSpy resetSpy(&model, &QAbstractItemModel::modelReset);
+        QSignalSpy insertedSpy(&model, &QAbstractItemModel::rowsInserted);
+        QSignalSpy removedSpy(&model, &QAbstractItemModel::rowsRemoved);
+        model.setPlugins({left, right});
+        QCOMPARE(resetSpy.count(), 1);
+        QCOMPARE(model.leftPlugins()->rowCount(), 1);
+        QCOMPARE(model.rightPlugins()->rowCount(), 1);
+
+        PluginManager::LoadedPlugin center;
+        QObject centerVm;
+        center.id = QStringLiteral("center");
+        center.position = QStringLiteral("center");
+        center.viewModel = &centerVm;
+        QVERIFY(model.insertPlugin(center));
+        QCOMPARE(insertedSpy.count(), 1);
+        QCOMPARE(resetSpy.count(), 1);
+        QCOMPARE(model.centerPlugins()->rowCount(), 1);
+
+        model.reportContentWidth(QStringLiteral("right"), 91);
+        QVERIFY(model.updateLayout(QStringLiteral("right"), QStringLiteral("left"), -1, 140));
+        QCOMPARE(model.leftPlugins()->rowCount(), 2);
+        QCOMPARE(model.rightPlugins()->rowCount(), 0);
+        QCOMPARE(model.data(model.index(0), PluginListModel::IdRole).toString(),
+                 QStringLiteral("right"));
+        QCOMPARE(model.data(model.index(0), PluginListModel::ViewModelRole).value<QObject*>(),
+                 &rightVm);
+        QCOMPARE(model.contentWidth(QStringLiteral("right")), 91);
+        QCOMPARE(resetSpy.count(), 1);
+
+        QVERIFY(model.removePlugin(QStringLiteral("center")));
+        QCOMPARE(removedSpy.count(), 2); // 一次移动移除 + 一次显式移除
+        QCOMPARE(model.centerPlugins()->rowCount(), 0);
+        QVERIFY(!model.removePlugin(QStringLiteral("missing")));
+        QCOMPARE(model.rowCount(), 2);
+    }
 };
 
 QTEST_GUILESS_MAIN(PluginListModelTest)

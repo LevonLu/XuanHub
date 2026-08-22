@@ -4,6 +4,15 @@
 
 #include <algorithm>
 
+namespace {
+int positionRank(const QString& position) {
+    if (position == QStringLiteral("left")) return 0;
+    if (position == QStringLiteral("center")) return 1;
+    return 2;
+}
+
+} // namespace
+
 PluginListModel::PluginListModel(QObject* parent) : QAbstractListModel(parent) {
     m_leftModel   = new PluginFilterModel(QStringLiteral("left"),   this);
     m_centerModel = new PluginFilterModel(QStringLiteral("center"), this);
@@ -66,37 +75,108 @@ void PluginListModel::setPlugins(const QVector<PluginManager::LoadedPlugin>& ite
     // 再启用的插件继承过期尺寸。
     m_contentWidths.clear();
 
-    auto sorted = items;
-    // stable_sort：同 position 同 order 的插件保持加载顺序——std::sort 对等价
-    // 元素相对顺序不定，热重载（重新加载）后同 order 插件排位会随机互换
-    std::stable_sort(sorted.begin(), sorted.end(),
-              [](const PluginManager::LoadedPlugin& a,
-                 const PluginManager::LoadedPlugin& b) {
-                  static const QString posOrder[] = {
-                      QStringLiteral("left"),
-                      QStringLiteral("center"),
-                      QStringLiteral("right")
-                  };
-                  int pa = 0, pb = 0;
-                  for (int i = 0; i < 3; ++i) {
-                      if (posOrder[i] == a.position) pa = i;
-                      if (posOrder[i] == b.position) pb = i;
-                  }
-                  if (pa != pb) return pa < pb;
-                  return a.order < b.order;
-    });
-
-    for (const auto& lp : sorted) {
-        Item item;
-        item.id = lp.id;
-        item.position = lp.position;
-        item.qmlUrl = lp.qmlUrl;
-        item.vm = lp.viewModel;
-        item.width = lp.width;
-        item.health = lp.health;
-        m_items.append(item);
-    }
+    for (const auto& lp : items) m_items.append(fromLoaded(lp));
+    // stable_sort：同 position 同 order 的插件保持加载顺序。
+    std::stable_sort(m_items.begin(), m_items.end(), layoutLess);
     endResetModel();
+}
+
+bool PluginListModel::insertPlugin(const PluginManager::LoadedPlugin& loaded) {
+    if (loaded.id.isEmpty() || rowForId(loaded.id) >= 0) return false;
+    const Item item = fromLoaded(loaded);
+    const int row = insertionRow(item);
+    beginInsertRows({}, row, row);
+    m_items.insert(row, item);
+    endInsertRows();
+    return true;
+}
+
+bool PluginListModel::removePlugin(const QString& id) {
+    const int row = rowForId(id);
+    if (row < 0) return false;
+    beginRemoveRows({}, row, row);
+    m_items.removeAt(row);
+    m_contentWidths.remove(id);
+    endRemoveRows();
+    return true;
+}
+
+bool PluginListModel::replacePlugin(const PluginManager::LoadedPlugin& loaded) {
+    const int oldRow = rowForId(loaded.id);
+    if (oldRow < 0) return insertPlugin(loaded);
+    beginRemoveRows({}, oldRow, oldRow);
+    m_items.removeAt(oldRow);
+    endRemoveRows();
+    const Item item = fromLoaded(loaded);
+    const int newRow = insertionRow(item);
+    beginInsertRows({}, newRow, newRow);
+    m_items.insert(newRow, item);
+    endInsertRows();
+    return true;
+}
+
+bool PluginListModel::updateLayout(const QString& id, const QString& position,
+                                   int order, int width) {
+    const int oldRow = rowForId(id);
+    if (oldRow < 0) return false;
+    Item item = m_items.at(oldRow);
+    const bool moves = item.position != position || item.order != order;
+    const bool widthChanged = item.width != width;
+    if (!moves && !widthChanged) return true;
+
+    item.position = position;
+    item.order = order;
+    item.width = width;
+    if (!moves) {
+        m_items[oldRow] = item;
+        const QModelIndex changed = index(oldRow);
+        Q_EMIT dataChanged(changed, changed, {WidthRole});
+        return true;
+    }
+
+    // 跨三栏时代理模型会重建本插件 delegate，但 ViewModel 本身保持原地址；
+    // 其他行不 reset，因此其弹窗和内部状态不受影响。
+    beginRemoveRows({}, oldRow, oldRow);
+    m_items.removeAt(oldRow);
+    endRemoveRows();
+    const int newRow = insertionRow(item);
+    beginInsertRows({}, newRow, newRow);
+    m_items.insert(newRow, item);
+    endInsertRows();
+    return true;
+}
+
+PluginListModel::Item PluginListModel::fromLoaded(
+    const PluginManager::LoadedPlugin& loaded) {
+    Item item;
+    item.id = loaded.id;
+    item.position = loaded.position;
+    item.order = loaded.order;
+    item.qmlUrl = loaded.qmlUrl;
+    item.vm = loaded.viewModel;
+    item.width = loaded.width;
+    item.health = loaded.health;
+    return item;
+}
+
+bool PluginListModel::layoutLess(const Item& a, const Item& b) {
+    const int pa = positionRank(a.position);
+    const int pb = positionRank(b.position);
+    return pa != pb ? pa < pb : a.order < b.order;
+}
+
+int PluginListModel::insertionRow(const Item& item) const {
+    for (int row = 0; row < m_items.size(); ++row) {
+        if (layoutLess(item, m_items.at(row))) return row;
+    }
+    return m_items.size();
+}
+
+int PluginListModel::rowForId(const QString& id) const {
+    for (int row = 0; row < m_items.size(); ++row) {
+        if (m_items.at(row).id == id) return row;
+    }
+    return -1;
 }
 
 QAbstractItemModel* PluginListModel::leftPlugins()   const { return m_leftModel; }

@@ -44,6 +44,12 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     void setPlugins(const QVector<PluginManager::LoadedPlugin>& items);
+    bool insertPlugin(const PluginManager::LoadedPlugin& item);
+    bool removePlugin(const QString& id);
+    // 重启后替换 ViewModel/QML 时只重建目标 delegate，不 reset 其他插件。
+    bool replacePlugin(const PluginManager::LoadedPlugin& item);
+    // position/order 变化只移动目标行；width 单独更新角色，不销毁插件实例。
+    bool updateLayout(const QString& id, const QString& position, int order, int width);
 
     QAbstractItemModel* leftPlugins()   const;
     QAbstractItemModel* centerPlugins() const;
@@ -62,11 +68,17 @@ private:
     struct Item {
         QString id;
         QString position;
+        int order = 0;
         QUrl qmlUrl;
         QObject* vm = nullptr;
         int width = 0;
         xuanhub::PluginHealth health;
     };
+
+    static Item fromLoaded(const PluginManager::LoadedPlugin& item);
+    static bool layoutLess(const Item& a, const Item& b);
+    int insertionRow(const Item& item) const;
+    int rowForId(const QString& id) const;
     QVector<Item> m_items;
     QHash<QString, int> m_contentWidths;
 
