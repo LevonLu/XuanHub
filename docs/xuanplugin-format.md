@@ -112,4 +112,21 @@ python scripts/package_plugin.py plugins_py/hello `
 
 原生插件把源目录换成构建后的单插件运行目录，并传 `--runtime native`。加 `--json` 可得到机器可读结果。
 
+发布者首次签名先在插件源码目录之外创建私钥：
+
+```powershell
+python scripts/generate_plugin_signing_key.py `
+  --output D:/keys/xuanhub-publisher.json `
+  --publisher "Example Publisher"
+
+python scripts/package_plugin.py plugins_py/hello `
+  --runtime python `
+  --signing-key D:/keys/xuanhub-publisher.json `
+  --output dist/py_hello-0.1.0.xuanplugin
+```
+
+密钥生成器拒绝覆盖已有文件，输出只显示 `keyId`，不显示私钥。私钥必须离线备份，不得进入
+插件目录、源码仓库或发布包；打包器也会主动拒绝位于插件源目录内的签名密钥。相同插件内容、
+发布者信息和密钥使用 RFC 6979 确定性 ECDSA，签名包仍保持字节级可复现。
+
 参考打包器使用固定 ZIP 时间、固定权限、排序路径和 Stored 存储，输入相同则产物字节完全相同。它会 fail closed：链接或 junction、VCS 元数据、Python 缓存、日志/锁、常见凭据文件、私钥和高置信访问令牌都会阻止打包，而不是被静默忽略。

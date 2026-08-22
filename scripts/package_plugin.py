@@ -12,6 +12,8 @@ import tempfile
 import unicodedata
 import zipfile
 
+from plugin_signing import create_signature, load_key_file, SigningError
+
 
 MAXIMUM_ENTRIES = 2048
 MAXIMUM_ARCHIVE_BYTES = 256 * 1024 * 1024
@@ -25,6 +27,7 @@ _SEMVER = re.compile(
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _DEVICE = re.compile(r"^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$", re.IGNORECASE)
 _PRIVATE_KEY = re.compile(br"-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----")
+_XUANHUB_PRIVATE_KEY = re.compile(br'"privateKey"\s*:\s*"[A-Za-z0-9+/=]+"')
 _CREDENTIAL_PATTERNS = (
     re.compile(br"AKIA[0-9A-Z]{16}"),
     re.compile(br"gh[pousr]_[A-Za-z0-9]{36,255}"),
@@ -110,7 +113,10 @@ def _scan_source(source: Path, output: Path) -> dict[str, bytes]:
             if expanded > MAXIMUM_EXPANDED_BYTES:
                 raise PackageError("expanded package size exceeds the limit")
             data = path.read_bytes()
-            if _PRIVATE_KEY.search(data) or any(pattern.search(data) for pattern in _CREDENTIAL_PATTERNS):
+            if (_PRIVATE_KEY.search(data)
+                    or (b'"ecdsa-p256-sha256"' in data
+                        and _XUANHUB_PRIVATE_KEY.search(data))
+                    or any(pattern.search(data) for pattern in _CREDENTIAL_PATTERNS)):
                 raise PackageError(f"credential-like content is not allowed: {relative}")
             payload[f"payload/{relative}"] = data
     if not payload:
@@ -148,9 +154,19 @@ def _zip_info(path: str) -> zipfile.ZipInfo:
 
 
 def package_plugin(source: Path, output: Path, runtime: str,
-                   publisher: str = "") -> dict[str, object]:
+                   publisher: str = "",
+                   signing_key: Path | None = None) -> dict[str, object]:
     source = source.expanduser().resolve(strict=True)
     output = output.expanduser().resolve(strict=False)
+    resolved_signing_key: Path | None = None
+    if signing_key is not None:
+        resolved_signing_key = signing_key.expanduser().resolve(strict=True)
+        try:
+            resolved_signing_key.relative_to(source)
+        except ValueError:
+            pass
+        else:
+            raise PackageError("signing key must be outside the plugin source directory")
     if output.suffix.casefold() != ".xuanplugin":
         raise PackageError("output extension must be .xuanplugin")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -165,9 +181,18 @@ def package_plugin(source: Path, output: Path, runtime: str,
         "runtime": runtime,
         "manifest": f"payload/{manifest_name}",
     }
-    effective_publisher = publisher.strip() or str(runtime_manifest.get("author", "")).strip()
+    loaded_key = load_key_file(resolved_signing_key) if resolved_signing_key else None
+    effective_publisher = (publisher.strip()
+                           or (str(loaded_key.get("publisher", "")).strip()
+                               if loaded_key else "")
+                           or str(runtime_manifest.get("author", "")).strip())
     if effective_publisher:
         package_manifest["publisher"] = effective_publisher
+    if loaded_key:
+        package_manifest["signature"] = {
+            "algorithm": "ecdsa-p256-sha256",
+            "keyId": str(loaded_key["keyId"]),
+        }
     files["plugin.json"] = (
         json.dumps(package_manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     ).encode("utf-8")
@@ -177,6 +202,16 @@ def package_plugin(source: Path, output: Path, runtime: str,
         + path.encode("utf-8") + b"\n"
         for path, data in ordered_files.items()
     )
+    signature_json: bytes | None = None
+    signer_key_id = ""
+    if loaded_key:
+        declaration, signature = create_signature(loaded_key, manifest_sha256)
+        if declaration != package_manifest["signature"]:
+            raise PackageError("signing declaration changed while creating the package")
+        signature_json = (
+            json.dumps(signature, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+        signer_key_id = str(loaded_key["keyId"])
 
     temporary_path: Path | None = None
     try:
@@ -187,6 +222,8 @@ def package_plugin(source: Path, output: Path, runtime: str,
         with zipfile.ZipFile(temporary_path, "w", allowZip64=False) as archive:
             archive_files = dict(ordered_files)
             archive_files["manifest.sha256"] = manifest_sha256
+            if signature_json is not None:
+                archive_files["signature.json"] = signature_json
             for path, data in sorted(archive_files.items()):
                 archive.writestr(_zip_info(path), data)
         if temporary_path.stat().st_size > MAXIMUM_ARCHIVE_BYTES:
@@ -206,6 +243,8 @@ def package_plugin(source: Path, output: Path, runtime: str,
         "runtime": runtime,
         "files": len(ordered_files),
         "sha256": f"sha256:{digest}",
+        "signatureStatus": "verified" if loaded_key else "unsigned",
+        "signerKeyId": signer_key_id,
     }
 
 
@@ -215,12 +254,15 @@ def main() -> int:
     parser.add_argument("--runtime", choices=("native", "python"), required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--publisher", default="")
+    parser.add_argument("--signing-key", type=Path,
+                        help="由 generate_plugin_signing_key.py 创建的私钥 JSON")
     parser.add_argument("--json", action="store_true", help="输出机器可读结果")
     arguments = parser.parse_args()
     try:
         result = package_plugin(
-            arguments.source, arguments.output, arguments.runtime, arguments.publisher)
-    except (OSError, PackageError) as error:
+            arguments.source, arguments.output, arguments.runtime,
+            arguments.publisher, arguments.signing_key)
+    except (OSError, PackageError, SigningError) as error:
         if arguments.json:
             print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False))
         else:

@@ -238,6 +238,9 @@ add_custom_command(TARGET xuanhub_plugin_manifest_tests POST_BUILD
 )
 add_test(NAME xuanhub_plugin_manifest_tests COMMAND xuanhub_plugin_manifest_tests)
 
+# 协议和插件发布工具只需可执行解释器，不需要开发头/库；找不到时不让核心 CTest 失效。
+find_package(Python 3.12 QUIET COMPONENTS Interpreter)
+
 add_executable(xuanhub_plugin_package_tests
     PluginPackageValidatorTest.cpp
     ${CMAKE_SOURCE_DIR}/app/src/PluginPackageValidator.h
@@ -260,6 +263,11 @@ target_link_libraries(xuanhub_plugin_package_tests PRIVATE
     Qt6::Test
     bcrypt
 )
+if(Python_Interpreter_FOUND)
+    target_compile_definitions(xuanhub_plugin_package_tests PRIVATE
+        XUANHUB_TEST_PYTHON="${Python_EXECUTABLE}"
+        XUANHUB_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+endif()
 add_custom_command(TARGET xuanhub_plugin_package_tests POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:barplugin>" "$<TARGET_FILE_DIR:xuanhub_plugin_package_tests>"
@@ -380,8 +388,6 @@ add_custom_command(TARGET xuanhub_plugin_host_services_tests POST_BUILD
 )
 add_test(NAME xuanhub_plugin_host_services_tests COMMAND xuanhub_plugin_host_services_tests)
 
-# 协议回归只需可执行解释器，不需要开发头/库；找不到时不让核心 CTest 失效。
-find_package(Python 3.12 QUIET COMPONENTS Interpreter)
 if(Python_Interpreter_FOUND)
     add_test(NAME xuanhub_pyworker_tests
         COMMAND "${Python_EXECUTABLE}" -B -m unittest discover -s plugins_py/tests -v)

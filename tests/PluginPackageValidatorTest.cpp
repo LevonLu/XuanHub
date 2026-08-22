@@ -311,6 +311,119 @@ private Q_SLOTS:
         QVERIFY(incompatible.error.contains(QStringLiteral("below minimum")));
     }
 
+    void referencePackagerCreatesDeterministicHostVerifiedSignature() {
+#if defined(XUANHUB_TEST_PYTHON) && defined(XUANHUB_SOURCE_DIR)
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString sourceDirectory = directory.filePath(QStringLiteral("plugin"));
+        QVERIFY(QDir().mkpath(sourceDirectory));
+        auto write = [&sourceDirectory](const QString& name, const QByteArray& data) {
+            QFile file(QDir(sourceDirectory).filePath(name));
+            return file.open(QIODevice::WriteOnly | QIODevice::Truncate)
+                && file.write(data) == data.size();
+        };
+        const QJsonObject plugin{
+            {QStringLiteral("id"), QStringLiteral("py_signed_demo")},
+            {QStringLiteral("name"), QStringLiteral("Signed Demo")},
+            {QStringLiteral("version"), QStringLiteral("1.0.0")},
+            {QStringLiteral("apiVersion"), 2},
+            {QStringLiteral("minHostVersion"), QStringLiteral("0.3.0")},
+            {QStringLiteral("maxHostVersion"), QStringLiteral("0.x")},
+            {QStringLiteral("qml"), QStringLiteral("Demo.qml")},
+            {QStringLiteral("permissions"), QJsonArray{QStringLiteral("notifications")}},
+        };
+        QVERIFY(write(QStringLiteral("plugin.json"),
+                      QJsonDocument(plugin).toJson(QJsonDocument::Indented)));
+        QVERIFY(write(QStringLiteral("main.py"),
+                      QByteArray("def update(): return {}\n")));
+        QVERIFY(write(QStringLiteral("Demo.qml"),
+                      QByteArray("import QtQuick\nItem {}\n")));
+
+        const QDir repository(QStringLiteral(XUANHUB_SOURCE_DIR));
+        const QString keyPath = directory.filePath(QStringLiteral("publisher.json"));
+        QProcess keyProcess;
+        keyProcess.start(QStringLiteral(XUANHUB_TEST_PYTHON), {
+            repository.filePath(QStringLiteral("scripts/generate_plugin_signing_key.py")),
+            QStringLiteral("--output"), keyPath,
+            QStringLiteral("--publisher"), QStringLiteral("Test Publisher"),
+            QStringLiteral("--json")});
+        QVERIFY(keyProcess.waitForFinished(30000));
+        QCOMPARE(keyProcess.exitStatus(), QProcess::NormalExit);
+        QCOMPARE(keyProcess.exitCode(), 0);
+
+        auto runPackager = [&](const QString& output) {
+            QProcess process;
+            process.start(QStringLiteral(XUANHUB_TEST_PYTHON), {
+                repository.filePath(QStringLiteral("scripts/package_plugin.py")),
+                sourceDirectory,
+                QStringLiteral("--runtime"), QStringLiteral("python"),
+                QStringLiteral("--signing-key"), keyPath,
+                QStringLiteral("--output"), output,
+                QStringLiteral("--json")});
+            if (!process.waitForFinished(30000)
+                || process.exitStatus() != QProcess::NormalExit
+                || process.exitCode() != 0) {
+                qWarning().noquote() << process.readAllStandardError()
+                                     << process.readAllStandardOutput();
+                return false;
+            }
+            return true;
+        };
+        const QString first = directory.filePath(QStringLiteral("first.xuanplugin"));
+        const QString second = directory.filePath(QStringLiteral("second.xuanplugin"));
+        QVERIFY(runPackager(first));
+        QVERIFY(runPackager(second));
+        QFile firstFile(first);
+        QFile secondFile(second);
+        QVERIFY(firstFile.open(QIODevice::ReadOnly));
+        QVERIFY(secondFile.open(QIODevice::ReadOnly));
+        QCOMPARE(firstFile.readAll(), secondFile.readAll());
+
+        const auto result = PluginPackageValidator::validateAndExtract(
+            first, testEnvironment());
+        QVERIFY2(result.ok, qPrintable(result.error));
+        QCOMPARE(result.descriptor.id, QStringLiteral("py_signed_demo"));
+        QCOMPARE(result.publisher, QStringLiteral("Test Publisher"));
+        QCOMPARE(result.signatureStatus, QStringLiteral("verified"));
+        QCOMPARE(result.signatureAlgorithm, QStringLiteral("ecdsa-p256-sha256"));
+        QVERIFY(result.signerKeyId.startsWith(QStringLiteral("sha256:")));
+
+        const QString unsafeKey = QDir(sourceDirectory).filePath(
+            QStringLiteral("publisher-private.json"));
+        QVERIFY(QFile::copy(keyPath, unsafeKey));
+        QProcess unsafeProcess;
+        unsafeProcess.start(QStringLiteral(XUANHUB_TEST_PYTHON), {
+            repository.filePath(QStringLiteral("scripts/package_plugin.py")),
+            sourceDirectory,
+            QStringLiteral("--runtime"), QStringLiteral("python"),
+            QStringLiteral("--signing-key"), unsafeKey,
+            QStringLiteral("--output"),
+            directory.filePath(QStringLiteral("unsafe.xuanplugin")),
+            QStringLiteral("--json")});
+        QVERIFY(unsafeProcess.waitForFinished(30000));
+        QCOMPARE(unsafeProcess.exitStatus(), QProcess::NormalExit);
+        QVERIFY(unsafeProcess.exitCode() != 0);
+        QVERIFY(unsafeProcess.readAllStandardOutput().contains(
+            "outside the plugin source directory"));
+
+        QProcess scanProcess;
+        scanProcess.start(QStringLiteral(XUANHUB_TEST_PYTHON), {
+            repository.filePath(QStringLiteral("scripts/package_plugin.py")),
+            sourceDirectory,
+            QStringLiteral("--runtime"), QStringLiteral("python"),
+            QStringLiteral("--output"),
+            directory.filePath(QStringLiteral("leaked.xuanplugin")),
+            QStringLiteral("--json")});
+        QVERIFY(scanProcess.waitForFinished(30000));
+        QCOMPARE(scanProcess.exitStatus(), QProcess::NormalExit);
+        QVERIFY(scanProcess.exitCode() != 0);
+        QVERIFY(scanProcess.readAllStandardOutput().contains(
+            "credential-like content"));
+#else
+        QSKIP("Python 3.12 interpreter was not found while configuring tests");
+#endif
+    }
+
     void rejectsTraversalDevicesAndUnexpectedRoots() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
