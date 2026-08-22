@@ -10,6 +10,7 @@
 #include <QVariantMap>
 
 #include "PluginManager.h"
+#include "ResponsiveLayoutEngine.h"
 
 class PluginFilterModel;
 
@@ -18,6 +19,9 @@ class PluginListModel : public QAbstractListModel {
     Q_PROPERTY(QAbstractItemModel* leftPlugins   READ leftPlugins   CONSTANT)
     Q_PROPERTY(QAbstractItemModel* centerPlugins READ centerPlugins CONSTANT)
     Q_PROPERTY(QAbstractItemModel* rightPlugins  READ rightPlugins  CONSTANT)
+    Q_PROPERTY(QVariantList overflowPlugins READ overflowPlugins
+               NOTIFY responsiveLayoutChanged)
+    Q_PROPERTY(int layoutRevision READ layoutRevision NOTIFY responsiveLayoutChanged)
 
 public:
     enum Roles {
@@ -37,6 +41,16 @@ public:
         ConsecutiveFailuresRole,
         LoadDurationMsRole,
         QueueDepthRole,
+        EffectiveWidthRole,
+        LayoutVisibleRole,
+        OverflowedRole,
+        LayoutDeclaredRole,
+        LayoutMinWidthRole,
+        LayoutPreferredWidthRole,
+        LayoutMaxWidthRole,
+        LayoutFlexRole,
+        LayoutPriorityRole,
+        LayoutOverflowRole,
     };
 
     explicit PluginListModel(QObject* parent = nullptr);
@@ -61,14 +75,18 @@ public:
     // 插件槽（PluginSlot.qml）上报的自然内容宽度（逻辑像素）；
     // 设置窗口切「手动」宽度时以此作初始值。与 WidthRole（config 定宽）无关。
     Q_INVOKABLE void reportContentWidth(const QString& id, int w);
+    Q_INVOKABLE void setAvailableWidth(int width);
     // 插件代理或 PluginSlot 以稳定字段增量上报；未提供的指标保持原值。
     Q_INVOKABLE void reportHealth(const QString& id, const QVariantMap& update);
     Q_INVOKABLE QVariantMap health(const QString& id) const;
     Q_INVOKABLE bool restartPlugin(const QString& id);
     int contentWidth(const QString& id) const;   // 无记录返回 0
+    QVariantList overflowPlugins() const { return m_overflowPlugins; }
+    int layoutRevision() const { return m_layoutRevision; }
 
 Q_SIGNALS:
     void loadErrorChanged(const QString& id);
+    void responsiveLayoutChanged();
 
 private:
     struct Item {
@@ -80,6 +98,10 @@ private:
         QObject* pluginContext = nullptr;
         int width = 0;
         QStringList capabilities;
+        xuanhub::PluginLayoutPreference layout;
+        int effectiveWidth = 0;
+        bool layoutVisible = true;
+        bool overflowed = false;
         xuanhub::PluginHealth health;
     };
 
@@ -87,9 +109,13 @@ private:
     static bool layoutLess(const Item& a, const Item& b);
     int insertionRow(const Item& item) const;
     int rowForId(const QString& id) const;
+    void recalculateResponsiveLayout();
     QVector<Item> m_items;
     QHash<QString, int> m_contentWidths;
     QHash<QString, QString> m_loadErrors;
+    int m_availableWidth = 0;
+    int m_layoutRevision = 0;
+    QVariantList m_overflowPlugins;
 
     QPointer<PluginFilterModel> m_leftModel;
     QPointer<PluginFilterModel> m_centerModel;

@@ -189,6 +189,44 @@ private Q_SLOTS:
         QVERIFY(!model.removePlugin(QStringLiteral("missing")));
         QCOMPARE(model.rowCount(), 2);
     }
+
+    void exposesResponsiveWidthsAndOverflowWithoutChangingFixedWidth() {
+        PluginManager::LoadedPlugin legacy;
+        legacy.id = QStringLiteral("legacy");
+        legacy.position = QStringLiteral("left");
+        legacy.width = 120;
+        PluginManager::LoadedPlugin adaptive;
+        adaptive.id = QStringLiteral("adaptive");
+        adaptive.position = QStringLiteral("right");
+        adaptive.layout.declared = true;
+        adaptive.layout.minWidth = 50;
+        adaptive.layout.preferredWidth = 100;
+        adaptive.layout.priority = 10;
+        adaptive.layout.overflow = QStringLiteral("menu");
+
+        PluginListModel model;
+        model.setPlugins({legacy, adaptive});
+        model.reportContentWidth(QStringLiteral("legacy"), 80);
+        model.reportContentWidth(QStringLiteral("adaptive"), 100);
+        model.setAvailableWidth(180);
+        QCOMPARE(model.data(model.index(0), PluginListModel::EffectiveWidthRole).toInt(), 120);
+        QCOMPARE(model.data(model.index(1), PluginListModel::EffectiveWidthRole).toInt(), 60);
+        QVERIFY(model.data(model.index(1), PluginListModel::LayoutVisibleRole).toBool());
+
+        model.setAvailableWidth(140);
+        QCOMPARE(model.data(model.index(0), PluginListModel::EffectiveWidthRole).toInt(), 120);
+        QVERIFY(!model.data(model.index(1), PluginListModel::LayoutVisibleRole).toBool());
+        QVERIFY(model.data(model.index(1), PluginListModel::OverflowedRole).toBool());
+        QCOMPARE(model.overflowPlugins().size(), 1);
+        QCOMPARE(model.overflowPlugins().first().toMap().value(QStringLiteral("id")).toString(),
+                 QStringLiteral("adaptive"));
+
+        // availableWidth=0 表示 taskbar/兼容模式，delegate 回退原有自然/固定宽绑定。
+        model.setAvailableWidth(0);
+        QCOMPARE(model.data(model.index(0), PluginListModel::EffectiveWidthRole).toInt(), 0);
+        QVERIFY(model.data(model.index(1), PluginListModel::LayoutVisibleRole).toBool());
+        QVERIFY(model.overflowPlugins().isEmpty());
+    }
 };
 
 QTEST_GUILESS_MAIN(PluginListModelTest)

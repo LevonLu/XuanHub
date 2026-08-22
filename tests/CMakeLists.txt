@@ -110,6 +110,8 @@ add_executable(xuanhub_plugin_model_tests
     ${CMAKE_SOURCE_DIR}/app/src/PluginListModel.h
     ${CMAKE_SOURCE_DIR}/app/src/PluginFilterModel.cpp
     ${CMAKE_SOURCE_DIR}/app/src/PluginFilterModel.h
+    ${CMAKE_SOURCE_DIR}/app/src/ResponsiveLayoutEngine.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/ResponsiveLayoutEngine.h
 )
 set_target_properties(xuanhub_plugin_model_tests PROPERTIES AUTOMOC ON)
 target_include_directories(xuanhub_plugin_model_tests PRIVATE

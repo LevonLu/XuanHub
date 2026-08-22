@@ -49,6 +49,16 @@ QVariant PluginListModel::data(const QModelIndex& index, int role) const {
         case ConsecutiveFailuresRole:return it.health.consecutiveFailures;
         case LoadDurationMsRole:     return it.health.loadDurationMs;
         case QueueDepthRole:         return it.health.queueDepth;
+        case EffectiveWidthRole:     return it.effectiveWidth;
+        case LayoutVisibleRole:      return it.layoutVisible;
+        case OverflowedRole:         return it.overflowed;
+        case LayoutDeclaredRole:     return it.layout.declared;
+        case LayoutMinWidthRole:     return it.layout.minWidth;
+        case LayoutPreferredWidthRole:return it.layout.preferredWidth;
+        case LayoutMaxWidthRole:     return it.layout.maxWidth;
+        case LayoutFlexRole:         return it.layout.flex;
+        case LayoutPriorityRole:     return it.layout.priority;
+        case LayoutOverflowRole:     return it.layout.overflow;
     }
     return {};
 }
@@ -71,6 +81,16 @@ QHash<int, QByteArray> PluginListModel::roleNames() const {
         { ConsecutiveFailuresRole, "consecutiveFailures" },
         { LoadDurationMsRole,      "loadDurationMs" },
         { QueueDepthRole,          "queueDepth" },
+        { EffectiveWidthRole,       "effectiveWidth" },
+        { LayoutVisibleRole,        "layoutVisible" },
+        { OverflowedRole,           "overflowed" },
+        { LayoutDeclaredRole,       "layoutDeclared" },
+        { LayoutMinWidthRole,       "layoutMinWidth" },
+        { LayoutPreferredWidthRole, "layoutPreferredWidth" },
+        { LayoutMaxWidthRole,       "layoutMaxWidth" },
+        { LayoutFlexRole,           "layoutFlex" },
+        { LayoutPriorityRole,       "layoutPriority" },
+        { LayoutOverflowRole,       "layoutOverflow" },
     };
 }
 
@@ -85,6 +105,7 @@ void PluginListModel::setPlugins(const QVector<PluginManager::LoadedPlugin>& ite
     // stable_sort：同 position 同 order 的插件保持加载顺序。
     std::stable_sort(m_items.begin(), m_items.end(), layoutLess);
     endResetModel();
+    recalculateResponsiveLayout();
 }
 
 bool PluginListModel::insertPlugin(const PluginManager::LoadedPlugin& loaded) {
@@ -94,6 +115,7 @@ bool PluginListModel::insertPlugin(const PluginManager::LoadedPlugin& loaded) {
     beginInsertRows({}, row, row);
     m_items.insert(row, item);
     endInsertRows();
+    recalculateResponsiveLayout();
     return true;
 }
 
@@ -104,6 +126,7 @@ bool PluginListModel::removePlugin(const QString& id) {
     m_items.removeAt(row);
     m_contentWidths.remove(id);
     endRemoveRows();
+    recalculateResponsiveLayout();
     return true;
 }
 
@@ -118,6 +141,7 @@ bool PluginListModel::replacePlugin(const PluginManager::LoadedPlugin& loaded) {
     beginInsertRows({}, newRow, newRow);
     m_items.insert(newRow, item);
     endInsertRows();
+    recalculateResponsiveLayout();
     return true;
 }
 
@@ -137,6 +161,7 @@ bool PluginListModel::updateLayout(const QString& id, const QString& position,
         m_items[oldRow] = item;
         const QModelIndex changed = index(oldRow);
         Q_EMIT dataChanged(changed, changed, {WidthRole});
+        recalculateResponsiveLayout();
         return true;
     }
 
@@ -149,6 +174,7 @@ bool PluginListModel::updateLayout(const QString& id, const QString& position,
     beginInsertRows({}, newRow, newRow);
     m_items.insert(newRow, item);
     endInsertRows();
+    recalculateResponsiveLayout();
     return true;
 }
 
@@ -175,6 +201,7 @@ PluginListModel::Item PluginListModel::fromLoaded(
     item.pluginContext = loaded.pluginContext;
     item.width = loaded.width;
     item.capabilities = loaded.capabilities;
+    item.layout = loaded.layout;
     item.health = loaded.health;
     return item;
 }
@@ -205,7 +232,52 @@ QAbstractItemModel* PluginListModel::rightPlugins()  const { return m_rightModel
 
 void PluginListModel::reportContentWidth(const QString& id, int w) {
     if (w <= 0) return;
+    if (m_contentWidths.value(id) == w) return;
     m_contentWidths.insert(id, w);
+    recalculateResponsiveLayout();
+}
+
+void PluginListModel::setAvailableWidth(int width) {
+    const int normalized = qMax(0, width);
+    if (normalized == m_availableWidth) return;
+    m_availableWidth = normalized;
+    recalculateResponsiveLayout();
+}
+
+void PluginListModel::recalculateResponsiveLayout() {
+    QVector<ResponsiveLayoutEngine::Item> input;
+    input.reserve(m_items.size());
+    for (const Item& item : m_items) {
+        input.append({item.id, m_contentWidths.value(item.id), item.width, item.layout});
+    }
+    const QVector<ResponsiveLayoutEngine::Result> allocated =
+        ResponsiveLayoutEngine::allocate(m_availableWidth, input);
+    QVariantList overflow;
+    for (int row = 0; row < m_items.size(); ++row) {
+        Item& item = m_items[row];
+        const auto& result = allocated.at(row);
+        const int effectiveWidth = m_availableWidth > 0 ? result.width : 0;
+        const bool visible = m_availableWidth > 0 ? result.visible : true;
+        const bool overflowed = m_availableWidth > 0 ? result.overflowed : false;
+        if (item.effectiveWidth != effectiveWidth
+            || item.layoutVisible != visible || item.overflowed != overflowed) {
+            item.effectiveWidth = effectiveWidth;
+            item.layoutVisible = visible;
+            item.overflowed = overflowed;
+            const QModelIndex changed = index(row);
+            Q_EMIT dataChanged(changed, changed, {
+                EffectiveWidthRole, LayoutVisibleRole, OverflowedRole});
+        }
+        if (overflowed) {
+            overflow.append(QVariantMap{
+                {QStringLiteral("id"), item.id},
+                {QStringLiteral("position"), item.position},
+            });
+        }
+    }
+    m_overflowPlugins = overflow;
+    ++m_layoutRevision;
+    Q_EMIT responsiveLayoutChanged();
 }
 
 void PluginListModel::reportHealth(const QString& id, const QVariantMap& update) {
