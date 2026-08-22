@@ -21,7 +21,7 @@ bool XuanHubMenuPlugin::init(BarPluginContext* ctx) {
         qWarning() << "[XuanHubMenu] EventBus unavailable";
         return false;
     }
-    m_vm = new XuanHubMenuViewModel(ctx->eventBus);
+    m_vm = new XuanHubMenuViewModel(ctx->eventBus, ctx->eventScope);
     return true;
 }
 

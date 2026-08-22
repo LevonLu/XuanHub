@@ -209,10 +209,10 @@ V1 插件仍可通过原始 EventBus 工作，但宿主应逐步把内置插件�
 
 #### 阶段 C：卸载安全
 
-- [ ] EventBus 订阅增加所有者 Token 或 Scope。
-- [ ] `PluginManager::shutdownAll()` 在 unload 前清除作用域。
-- [ ] 为泄漏 QObject 的测试插件增加回归测试。
-- [ ] 确认 locale/theme 事件在热重载后不会投递给旧对象。
+- [x] EventBus 订阅增加所有者 Token 或 Scope。
+- [x] `PluginManager::shutdownAll()` 在 unload 前清除作用域。
+- [x] 为泄漏 QObject 的测试插件增加回归测试。
+- [x] 确认 locale/theme 事件在热重载后不会投递给旧对象。
 
 ### 主要修改点
 

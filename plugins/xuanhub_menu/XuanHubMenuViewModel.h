@@ -4,7 +4,7 @@
 #include <QString>
 #include <QVariantMap>
 
-namespace xuanhub { class EventBus; }
+namespace xuanhub { class EventBus; class PluginEventScope; }
 
 class XuanHubMenuViewModel : public QObject {
     Q_OBJECT
@@ -13,7 +13,9 @@ class XuanHubMenuViewModel : public QObject {
     Q_PROPERTY(QString themeMode READ themeMode NOTIFY stateChanged)
 
 public:
-    explicit XuanHubMenuViewModel(xuanhub::EventBus* bus, QObject* parent = nullptr);
+    explicit XuanHubMenuViewModel(xuanhub::EventBus* bus,
+                                  xuanhub::PluginEventScope* eventScope,
+                                  QObject* parent = nullptr);
 
     bool autoStartEnabled() const { return m_autoStartEnabled; }
     bool taskbarMode() const { return m_taskbarMode; }

@@ -17,6 +17,7 @@
 
 #include "barplugin/ProcessReaper.h"
 #include "barplugin/EventBus.h"
+#include "barplugin/PluginEventScope.h"
 
 namespace {
 constexpr quint32 kMaxMessageBytes = 4 * 1024 * 1024;
@@ -35,6 +36,7 @@ QString processStatusText(QProcess::ExitStatus status) {
 
 PyWorkerViewModel::PyWorkerViewModel(QString id, QString dirPath, QVariantMap cfg, QString pythonExe,
                                      QString workerScript, xuanhub::EventBus* bus,
+                                     xuanhub::PluginEventScope* eventScope,
                                      QObject* parent)
     : QObject(parent)
     , m_id(std::move(id))
@@ -49,9 +51,14 @@ PyWorkerViewModel::PyWorkerViewModel(QString id, QString dirPath, QVariantMap cf
                                 intervalOk ? configuredInterval : kDefaultUpdateIntervalMs,
                                 kMaxUpdateIntervalMs);
     m_failureClock.start();
-    if (bus) {
+    if (eventScope) {
+        eventScope->subscribe(QStringLiteral("app.locale.changed"), this,
+                              "onLocaleChanged(QVariantMap)");
+    } else if (bus) {
         bus->subscribe(QStringLiteral("app.locale.changed"), this,
                        "onLocaleChanged(QVariantMap)");
+    }
+    if (bus) {
         bus->publish(QStringLiteral("app.locale.request"));
     }
     m_startTimer.setSingleShot(true);

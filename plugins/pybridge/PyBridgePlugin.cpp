@@ -260,7 +260,8 @@ xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const 
     }
 
     auto* viewModel = new PyWorkerViewModel(id, dirPath, cfg, m_pythonExe,
-                                            m_workerScript, m_ctx.eventBus, this);
+                                            m_workerScript, m_ctx.eventBus,
+                                            m_ctx.eventScope, this);
     if (!viewModel->start()) {
         qWarning() << "[PyBridge]" << id << ": cannot start isolated worker";
         delete viewModel;

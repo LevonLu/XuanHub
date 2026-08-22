@@ -1,10 +1,16 @@
 // XuanHubMenuViewModel.cpp — 发布快速菜单命令并接收宿主状态快照
 #include "XuanHubMenuViewModel.h"
 #include "barplugin/EventBus.h"
+#include "barplugin/PluginEventScope.h"
 
-XuanHubMenuViewModel::XuanHubMenuViewModel(xuanhub::EventBus* bus, QObject* parent)
+XuanHubMenuViewModel::XuanHubMenuViewModel(xuanhub::EventBus* bus,
+                                           xuanhub::PluginEventScope* eventScope,
+                                           QObject* parent)
     : QObject(parent), m_bus(bus) {
-    if (m_bus) {
+    if (eventScope) {
+        eventScope->subscribe(QStringLiteral("app.quickMenu.state"), this,
+                              "onState(QVariantMap)");
+    } else if (m_bus) {
         m_bus->subscribe(QStringLiteral("app.quickMenu.state"), this,
                          "onState(QVariantMap)");
     }

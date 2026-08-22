@@ -11,11 +11,15 @@
 #include <QUrl>
 #include <QPluginLoader>
 
+#include <memory>
+#include <vector>
+
 #include "barplugin/IBarPlugin.h"
 #include "barplugin/PluginHealth.h"
 
 struct PluginConfigEntry;
 namespace xuanhub { class EventBus; }
+namespace xuanhub { class PluginEventScope; }
 
 class PluginManager : public QObject {
     Q_OBJECT
@@ -47,6 +51,7 @@ private:
     // host 插件（IBarPluginHost，如 pybridge）：shutdownAll 时最后 shutdown，
     // 其子插件 VM 依赖 host 持有的运行时（如 CPython 解释器）
     QVector<xuanhub::IBarPlugin*> m_hosts;
+    std::vector<std::unique_ptr<xuanhub::PluginEventScope>> m_eventScopes;
     QSet<QString> m_loadedIds;   // 按 metadata.id 去重
     bool m_shut = false;
 };

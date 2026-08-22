@@ -18,7 +18,7 @@
 class QTcpServer;
 class QTcpSocket;
 class PyWorkerViewModelTest;
-namespace xuanhub { class EventBus; }
+namespace xuanhub { class EventBus; class PluginEventScope; }
 
 class PyWorkerViewModel : public QObject {
     Q_OBJECT
@@ -30,6 +30,7 @@ class PyWorkerViewModel : public QObject {
 public:
     PyWorkerViewModel(QString id, QString dirPath, QVariantMap cfg, QString pythonExe,
                       QString workerScript, xuanhub::EventBus* bus,
+                      xuanhub::PluginEventScope* eventScope = nullptr,
                       QObject* parent = nullptr);
     ~PyWorkerViewModel() override;
 

@@ -3,6 +3,7 @@
 #include "ConfigService.h"
 #include "barplugin/EventBus.h"
 #include "barplugin/IBarPluginHost.h"
+#include "barplugin/PluginEventScope.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -100,6 +101,8 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
             ctx.eventBus = m_bus;
             ctx.configDir = m_configDir;
             ctx.pluginConfig = entry->config;
+            auto eventScope = std::make_unique<xuanhub::PluginEventScope>(m_bus);
+            ctx.eventScope = eventScope.get();
             if (!plugin->init(&ctx)) {
                 qWarning() << "[Plugin] init failed:" << meta.id;
                 loader->unload();
@@ -110,6 +113,7 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
             // host 插件（如 pybridge）：自身不进可见列表；
             // 先枚举子插件 id，核心按 config 过滤/去重后再让 host 实例化
             if (auto* host = qobject_cast<xuanhub::IBarPluginHost*>(obj)) {
+                m_eventScopes.push_back(std::move(eventScope));
                 m_loaders.append(loader);
                 m_loadedIds.insert(meta.id);
                 m_hosts.append(plugin);
@@ -172,6 +176,7 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
             lp.health.startedAt = QDateTime::currentDateTimeUtc();
             lp.health.lastHealthyAt = lp.health.startedAt;
 
+            m_eventScopes.push_back(std::move(eventScope));
             m_loaders.append(loader);
             m_loaded.append(lp);
             m_loadedIds.insert(meta.id);
@@ -184,6 +189,9 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
 void PluginManager::shutdownAll() {
     if (m_shut) return;
     m_shut = true;
+    // 先关闭所有作用域：从此拒绝插件新增订阅，并在任何 DLL shutdown/unload
+    // 之前移除跨模块回调，即使插件遗留了仍存活的 QObject 也不会再被投递。
+    for (auto& scope : m_eventScopes) scope->clear();
     // 顺序铁律：先让各插件 shutdown（删光各自 DLL 出身的 QObject），
     // 再 unload —— 根实例由 unload() 删除，随后 FreeLibrary
     for (const auto& lp : m_loaded) {
@@ -203,6 +211,7 @@ void PluginManager::shutdownAll() {
         delete loader;
     }
     m_loaders.clear();
+    m_eventScopes.clear();
     m_loaded.clear();
     m_loadedIds.clear();
 }

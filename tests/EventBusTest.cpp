@@ -52,6 +52,24 @@ private slots:
         bus.publish(QStringLiteral("plugin.leaked"));
         QCOMPARE(receiver.calls, 0);
     }
+
+    void localeAndThemeEventsSkipClearedPluginScope() {
+        xuanhub::EventBus bus;
+        EventReceiver receiver;
+        xuanhub::PluginEventScope scope(&bus);
+        QVERIFY(scope.subscribe(QStringLiteral("app.locale.changed"), &receiver,
+                                "onPayload(QVariantMap)"));
+        QVERIFY(scope.subscribe(QStringLiteral("theme.changed"), &receiver,
+                                "onPayload(QVariantMap)"));
+        bus.publish(QStringLiteral("app.locale.changed"));
+        bus.publish(QStringLiteral("theme.changed"));
+        QCOMPARE(receiver.calls, 2);
+
+        scope.clear();
+        bus.publish(QStringLiteral("app.locale.changed"));
+        bus.publish(QStringLiteral("theme.changed"));
+        QCOMPARE(receiver.calls, 2);
+    }
 };
 
 QTEST_GUILESS_MAIN(EventBusTest)
