@@ -4,6 +4,12 @@
     "version": "0.1.0",
     "author": "XuanHub",
     "apiVersion": 2,
+    "python": {
+        "version": ">=3.12,<4.0",
+        "packages": [
+            { "name": "bleak", "import": "bleak", "version": "*" }
+        ]
+    },
     "capabilities": ["barItem", "settings", "popup"],
     "permissions": [],
     "qml": "HeartRate.qml",

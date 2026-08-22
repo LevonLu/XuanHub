@@ -11,6 +11,7 @@
 #include "barplugin/IBarPluginHostConfigurable.h"
 #include "barplugin/IBarPluginHostConfigMigration.h"
 #include "barplugin/IBarPluginHostConfigValidation.h"
+#include "barplugin/IBarPluginHostDiagnostics.h"
 #include "barplugin/IBarPluginHostEventBus.h"
 #include "barplugin/IBarPluginHostServices.h"
 
@@ -20,6 +21,7 @@ class PyBridgePlugin : public QObject, public xuanhub::IBarPlugin,
                        public xuanhub::IBarPluginHostConfigurable,
                        public xuanhub::IBarPluginHostConfigMigration,
                        public xuanhub::IBarPluginHostConfigValidation,
+                       public xuanhub::IBarPluginHostDiagnostics,
                        public xuanhub::IBarPluginHostEventBus,
                        public xuanhub::IBarPluginHostServices {
     Q_OBJECT
@@ -29,6 +31,7 @@ class PyBridgePlugin : public QObject, public xuanhub::IBarPlugin,
                  xuanhub::IBarPluginHostConfigurable
                  xuanhub::IBarPluginHostConfigMigration
                  xuanhub::IBarPluginHostConfigValidation
+                 xuanhub::IBarPluginHostDiagnostics
                  xuanhub::IBarPluginHostEventBus
                  xuanhub::IBarPluginHostServices)
 public:
@@ -53,6 +56,7 @@ public:
                                    xuanhub::IHostServices* services) override;
     bool bindSubPluginEventScope(const QString& id,
                                  xuanhub::PluginEventScope* eventScope) override;
+    QString subPluginLoadError(const QString& id) const override;
 
 private:
     xuanhub::BarPluginContext m_ctx;   // 拷贝保存（init 传入的 ctx 是核心栈上对象）
@@ -61,5 +65,7 @@ private:
     QHash<QString, int> m_configVersions; // id → config.json 当前版本
     QString m_pythonExe;               // 已验证的 python.exe；worker 由它启动
     QString m_workerScript;             // <exeDir>/plugins_py/bridge_worker.py
+    QString m_doctorScript;             // <exeDir>/plugins_py/dependency_doctor.py
     QHash<QString, QObject*> m_vms;     // id → 隔离代理 VM，可单独销毁或 shutdown 全量回收
+    QHash<QString, QString> m_subPluginErrors; // 实例化前 doctor/Manifest 的确定错误
 };

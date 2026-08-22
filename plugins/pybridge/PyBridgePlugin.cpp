@@ -6,6 +6,7 @@
 
 #include "PyBridgePlugin.h"
 #include "PyWorkerViewModel.h"
+#include "PythonDependencyDoctor.h"
 #include "PythonDependencySpec.h"
 
 #include <QCoreApplication>
@@ -442,6 +443,8 @@ bool PyBridgePlugin::init(xuanhub::BarPluginContext* ctx) {
     m_pythonExe = pyExecutable();
     m_workerScript = QDir(QCoreApplication::applicationDirPath())
                          .absoluteFilePath(QStringLiteral("plugins_py/bridge_worker.py"));
+    m_doctorScript = QDir(QCoreApplication::applicationDirPath())
+                         .absoluteFilePath(QStringLiteral("plugins_py/dependency_doctor.py"));
     if (pyAvailable() && !QFileInfo(m_workerScript).isFile()) {
         qWarning() << "[PyBridge] bridge worker is missing:" << m_workerScript;
         setPyAvailable(false);
@@ -471,8 +474,10 @@ void PyBridgePlugin::shutdown() {
     m_dirs.clear();
     m_manifests.clear();
     m_configVersions.clear();
+    m_subPluginErrors.clear();
     m_pythonExe.clear();
     m_workerScript.clear();
+    m_doctorScript.clear();
 }
 
 QStringList PyBridgePlugin::subPluginIds() {
@@ -480,6 +485,7 @@ QStringList PyBridgePlugin::subPluginIds() {
     m_dirs.clear();
     m_manifests.clear();
     m_configVersions.clear();
+    m_subPluginErrors.clear();
     if (!pyAvailable() || m_pythonExe.isEmpty()) return ids;
     const QDir base(QCoreApplication::applicationDirPath() + QStringLiteral("/plugins_py"));
     if (!base.exists()) {
@@ -510,6 +516,7 @@ QStringList PyBridgePlugin::subPluginIds() {
 
 xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const QVariantMap& cfg) {
     xuanhub::SubPluginInfo info;
+    m_subPluginErrors.remove(id);
     if (m_vms.contains(id)) {
         qWarning() << "[PyBridge] createSubPlugin: already running" << id;
         return info;
@@ -523,12 +530,41 @@ xuanhub::SubPluginInfo PyBridgePlugin::createSubPlugin(const QString& id, const 
     // 发现后到启用前 plugin.json 仍可能被替换，因此启动 worker 前再次完整预检。
     const PythonManifestResult manifest = readPluginJson(directory);
     if (!manifest.ok || manifest.id != id) {
+        m_subPluginErrors.insert(id, manifest.error.isEmpty()
+            ? QStringLiteral("Python plugin manifest identity changed") : manifest.error);
         qWarning() << "[PyBridge] manifest changed or rejected before start:" << id
                    << "->" << manifest.error;
         return info;
     }
     const QJsonObject object = manifest.object;
     const QString viewQml = object.value(QStringLiteral("qml")).toString().trimmed();
+
+    PythonDependencySpec dependencies;
+    QString dependencyParseError;
+    if (!readPythonDependencySpec(object, &dependencies, &dependencyParseError)) {
+        m_subPluginErrors.insert(id, dependencyParseError);
+        return info;
+    }
+    if (dependencies.declared) {
+        const PythonDependencyReport report = PythonDependencyDoctor::run(
+            m_pythonExe, m_doctorScript, dependencies);
+        if (!report.ok) {
+            const QString summary = report.summary().isEmpty()
+                ? QStringLiteral("Python dependency doctor failed") : report.summary();
+            m_subPluginErrors.insert(id, summary);
+            QStringList codes;
+            for (const QVariant& value : report.issues) {
+                const QString code = value.toMap().value(QStringLiteral("code")).toString();
+                if (!code.isEmpty()) codes.append(code);
+            }
+            qWarning() << "[PyBridge] dependency doctor rejected" << id
+                       << "codes=" << codes << "->" << summary;
+            return info;
+        }
+        qDebug() << "[PyBridge] dependency doctor passed" << id
+                 << report.runtime.value(QStringLiteral("version")).toString()
+                 << report.runtime.value(QStringLiteral("machine")).toString();
+    }
 
     const int currentConfigVersion = qMax(1, m_configVersions.value(id, 1));
     const int targetConfigVersion = qMax(
@@ -577,6 +613,10 @@ bool PyBridgePlugin::destroySubPlugin(const QString& id) {
     m_configVersions.remove(id);
     qDebug() << "[PyBridge] destroyed sub-plugin:" << id;
     return true;
+}
+
+QString PyBridgePlugin::subPluginLoadError(const QString& id) const {
+    return m_subPluginErrors.value(id);
 }
 
 bool PyBridgePlugin::canApplySubPluginConfig(const QString& id) const {

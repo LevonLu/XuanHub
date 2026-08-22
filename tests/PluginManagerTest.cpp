@@ -6,6 +6,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTemporaryDir>
@@ -93,6 +94,61 @@ private Q_SLOTS:
                               QStringLiteral("executed"))).exists());
         manager.shutdownAll();
         QVERIFY(QFile::remove(outsideQml));
+    }
+
+    void missingPythonDependencyIsReportedBeforeWorkerStarts() {
+        const QString pythonPlugins = QDir(QCoreApplication::applicationDirPath())
+                                          .filePath(QStringLiteral("plugins_py"));
+        QTemporaryDir pluginDirectory(
+            QDir(pythonPlugins).filePath(QStringLiteral("doctor-test-XXXXXX")));
+        QVERIFY(pluginDirectory.isValid());
+        const QString pluginId = QStringLiteral("py_doctor_missing_test");
+
+        QFile python(QDir(pluginDirectory.path()).filePath(QStringLiteral("main.py")));
+        QVERIFY(python.open(QIODevice::WriteOnly));
+        QVERIFY(python.write(
+            "from pathlib import Path\n"
+            "Path(__file__).with_name('executed').write_text('bad')\n"
+            "def update(): return {}\n") > 0);
+        python.close();
+        QFile qml(QDir(pluginDirectory.path()).filePath(QStringLiteral("Doctor.qml")));
+        QVERIFY(qml.open(QIODevice::WriteOnly));
+        QVERIFY(qml.write("import QtQuick\nItem { property var plugin }") > 0);
+        qml.close();
+        const QJsonObject manifestObject{
+            {QStringLiteral("id"), pluginId},
+            {QStringLiteral("name"), QStringLiteral("Doctor Missing Test")},
+            {QStringLiteral("version"), QStringLiteral("1.0.0")},
+            {QStringLiteral("apiVersion"), 2},
+            {QStringLiteral("qml"), QStringLiteral("Doctor.qml")},
+            {QStringLiteral("python"), QJsonObject{
+                {QStringLiteral("version"), QStringLiteral(">=3.12")},
+                {QStringLiteral("packages"), QJsonArray{QJsonObject{
+                    {QStringLiteral("name"),
+                     QStringLiteral("xuanhub-package-that-does-not-exist")},
+                    {QStringLiteral("import"), QStringLiteral("xuanhub_missing")},
+                    {QStringLiteral("version"), QStringLiteral(">=1.0")},
+                }}},
+            }},
+        };
+        QFile manifest(QDir(pluginDirectory.path()).filePath(QStringLiteral("plugin.json")));
+        QVERIFY(manifest.open(QIODevice::WriteOnly));
+        QVERIFY(manifest.write(QJsonDocument(manifestObject).toJson(
+            QJsonDocument::Compact)) > 0);
+        manifest.close();
+
+        xuanhub::EventBus bus;
+        PluginManager manager(&bus, QDir::tempPath());
+        manager.loadFrom(qEnvironmentVariable("XUANHUB_TEST_PLUGINS"),
+                         {entry(QStringLiteral("pybridge")), entry(pluginId)});
+        QVERIFY(!manager.loadedPlugin(pluginId));
+        const QString loadError = manager.loadError(pluginId);
+        QVERIFY2(loadError.contains(QStringLiteral("xuanhub-package-that-does-not-exist")),
+                 qPrintable(loadError));
+        QVERIFY2(loadError.contains(QStringLiteral("wheel")), qPrintable(loadError));
+        QVERIFY(!QFileInfo(QDir(pluginDirectory.path()).filePath(
+                              QStringLiteral("executed"))).exists());
+        manager.shutdownAll();
     }
 
     void nativePluginCanStopAndReloadWithoutTouchingPeer() {

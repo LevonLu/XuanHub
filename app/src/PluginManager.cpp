@@ -13,6 +13,7 @@
 #include "barplugin/IBarPluginHostConfigurable.h"
 #include "barplugin/IBarPluginHostConfigMigration.h"
 #include "barplugin/IBarPluginHostConfigValidation.h"
+#include "barplugin/IBarPluginHostDiagnostics.h"
 #include "barplugin/IBarPluginHostEventBus.h"
 #include "barplugin/IBarPluginHostServices.h"
 #include "barplugin/PluginEventScope.h"
@@ -482,7 +483,13 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
     if (!sp.viewModel) {
         qWarning() << "[Plugin] host createSubPlugin failed:" << entry.id
                    << "durationMs=" << createDurationMs;
-        recordLoadError(entry.id, QStringLiteral("host failed to create sub-plugin"));
+        QString detail;
+        if (auto* diagnostics = hostObject
+                ? qobject_cast<xuanhub::IBarPluginHostDiagnostics*>(hostObject) : nullptr) {
+            detail = diagnostics->subPluginLoadError(entry.id);
+        }
+        recordLoadError(entry.id, detail.isEmpty()
+            ? QStringLiteral("host failed to create sub-plugin") : detail);
         return false;
     }
     QObject::connect(

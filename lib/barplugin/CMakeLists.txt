@@ -12,6 +12,7 @@ add_library(barplugin SHARED
     include/barplugin/IBarPlugin2.h
     include/barplugin/IBarPluginHostConfigurable.h
     include/barplugin/IBarPluginHostConfigMigration.h
+    include/barplugin/IBarPluginHostDiagnostics.h
     include/barplugin/IBarPluginHostEventBus.h
     include/barplugin/IBarPluginHostLifecycle.h
     include/barplugin/IBarPluginHostServices.h
