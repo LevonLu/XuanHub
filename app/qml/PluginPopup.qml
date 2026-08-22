@@ -13,6 +13,9 @@ Window {
     property bool closeOnBarPress: true
     property bool wasOpenOnBarPress: false
 
+    signal opened()
+    signal closed()
+
     transientParent: null
     visible: false
     opacity: 0
@@ -88,10 +91,12 @@ Window {
     onVisibleChanged: {
         if (visible) {
             placementTimer.restart()
+            opened()
         } else {
             opacity = 0
             if (typeof popupService !== "undefined")
                 popupService.release(popup)
+            closed()
         }
     }
     onWidthChanged: if (visible) placementTimer.restart()
