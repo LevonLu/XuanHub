@@ -152,6 +152,25 @@ QVariant PyWorkerViewModel::call(const QString& name, const QVariantList& args) 
     return QVariantMap{{QStringLiteral("queued"), true}};
 }
 
+bool PyWorkerViewModel::restart() {
+    if (m_stopping) return false;
+
+    // stopWorker 会解除所有旧 IPC/进程回调，再恢复可启动状态。旧进程即使仍在
+    // ProcessReaper 的宽限期内也无法连接新端口或携带新令牌。
+    stopWorker();
+    m_stopping = false;
+    m_restartAttempt = 0;
+    if (!m_failureTimesMs.isEmpty()) {
+        m_failureTimesMs.clear();
+        Q_EMIT consecutiveFailuresChanged();
+    }
+    if (m_circuitOpen) {
+        m_circuitOpen = false;
+        Q_EMIT circuitOpenChanged();
+    }
+    return start();
+}
+
 void PyWorkerViewModel::acceptConnection() {
     if (!m_server) return;
     while (m_server->hasPendingConnections()) {

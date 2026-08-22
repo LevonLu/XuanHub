@@ -41,6 +41,8 @@ public:
 
     // 保持既有 QML API；调用改为排队异步执行，返回值仅表示是否已入队。
     Q_INVOKABLE QVariant call(const QString& name, const QVariantList& args);
+    // 只重建当前插件的 worker；同时解除熔断，供设置页和插件错误界面手动恢复。
+    Q_INVOKABLE bool restart();
 
 public slots:
     void onLocaleChanged(QVariantMap payload);

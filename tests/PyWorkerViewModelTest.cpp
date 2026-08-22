@@ -61,6 +61,17 @@ private Q_SLOTS:
         QVERIFY(!viewModel.circuitOpen());
     }
 
+    void manualRestartClearsOpenCircuit() {
+        PyWorkerViewModel viewModel(QStringLiteral("manual_restart"), {}, {}, {}, {}, nullptr);
+        for (int failure = 1; failure <= 5; ++failure)
+            viewModel.recordWorkerFailure(failure * 1000);
+        QVERIFY(viewModel.circuitOpen());
+
+        QVERIFY(viewModel.restart());
+        QVERIFY(!viewModel.circuitOpen());
+        QCOMPARE(viewModel.consecutiveFailures(), 0);
+    }
+
     void reaperGraceTimerSurvivesEarlyWorkerExit() {
         // 两个 worker 在 750ms 宽限期内先后自行退出，覆盖曾导致热重载闪退的
         // finished/deleteLater 与 grace timer 竞态。旧实现会在这里访问悬空 QProcess。
