@@ -5,7 +5,10 @@ import argparse
 import json
 from pathlib import Path
 
-from plugin_signing import SigningError, write_key_file
+try:
+    from .plugin_signing import SigningError, write_key_file
+except ImportError:
+    from plugin_signing import SigningError, write_key_file
 
 
 def main() -> int:

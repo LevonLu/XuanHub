@@ -12,7 +12,12 @@ import tempfile
 import unicodedata
 import zipfile
 
-from plugin_signing import create_signature, load_key_file, SigningError
+try:
+    # `python -m unittest` 以 scripts.package_plugin 导入；命令行直接执行时
+    # scripts/ 本身才在 sys.path。两种受支持入口分别使用相对/同目录导入。
+    from .plugin_signing import create_signature, load_key_file, SigningError
+except ImportError:
+    from plugin_signing import create_signature, load_key_file, SigningError
 
 
 MAXIMUM_ENTRIES = 2048
