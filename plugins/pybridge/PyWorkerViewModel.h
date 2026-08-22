@@ -4,6 +4,7 @@
 
 #include <QObject>
 #include <QByteArray>
+#include <QElapsedTimer>
 #include <QJsonObject>
 #include <QPointer>
 #include <QProcess>
@@ -14,12 +15,15 @@
 
 class QTcpServer;
 class QTcpSocket;
+class PyWorkerViewModelTest;
 namespace xuanhub { class EventBus; }
 
 class PyWorkerViewModel : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantMap values READ values NOTIFY valuesChanged)
     Q_PROPERTY(bool running READ running NOTIFY runningChanged)
+    Q_PROPERTY(bool circuitOpen READ circuitOpen NOTIFY circuitOpenChanged)
+    Q_PROPERTY(int consecutiveFailures READ consecutiveFailures NOTIFY consecutiveFailuresChanged)
 public:
     PyWorkerViewModel(QString id, QString dirPath, QVariantMap cfg, QString pythonExe,
                       QString workerScript, xuanhub::EventBus* bus,
@@ -28,6 +32,8 @@ public:
 
     QVariantMap values() const { return m_values; }
     bool running() const;
+    bool circuitOpen() const { return m_circuitOpen; }
+    int consecutiveFailures() const { return m_failureTimesMs.size(); }
     int updateIntervalMs() const { return m_updateIntervalMs; }
 
     // 启动监听端与 worker。真正的 import/init 在 worker 连接并通过令牌认证后异步进行。
@@ -42,8 +48,12 @@ public slots:
 Q_SIGNALS:
     void valuesChanged();
     void runningChanged();
+    void circuitOpenChanged();
+    void consecutiveFailuresChanged();
 
 private:
+    friend class PyWorkerViewModelTest;
+
     struct Request {
         QString op;
         QJsonObject data;
@@ -61,6 +71,8 @@ private:
     void handleProcessError();
     void handleProcessFinished(int exitCode, QProcess::ExitStatus status);
     void failWorker(const QString& reason, bool retry);
+    bool recordWorkerFailure(qint64 elapsedMs);
+    void markWorkerHealthy();
     void scheduleRestart();
     void stopWorker();
     void detachProcess(QProcess* process, int gracefulMs = 0);
@@ -79,6 +91,7 @@ private:
     QTimer m_startTimer;
     QTimer m_requestTimer;
     QTimer m_updateTimer;
+    QElapsedTimer m_failureClock;
     QByteArray m_readBuffer;
     QQueue<Request> m_queue;
     Request m_inFlight;
@@ -87,6 +100,8 @@ private:
     QString m_token;
     bool m_authenticated = false;
     bool m_stopping = false;
+    bool m_circuitOpen = false;
+    QQueue<qint64> m_failureTimesMs;
     int m_restartAttempt = 0;
     int m_updateIntervalMs = 1000;
 };

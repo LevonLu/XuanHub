@@ -33,6 +33,34 @@ private Q_SLOTS:
         QCOMPARE(invalid.updateIntervalMs(), 1000);
     }
 
+    void opensCircuitAfterFiveFailuresWithinWindow() {
+        PyWorkerViewModel viewModel(QStringLiteral("circuit"), {}, {}, {}, {}, nullptr);
+
+        for (int failure = 1; failure < 5; ++failure) {
+            QVERIFY(!viewModel.recordWorkerFailure(failure * 1000));
+            QCOMPARE(viewModel.consecutiveFailures(), failure);
+            QVERIFY(!viewModel.circuitOpen());
+        }
+        QVERIFY(viewModel.recordWorkerFailure(5000));
+        QCOMPARE(viewModel.consecutiveFailures(), 5);
+        QVERIFY(viewModel.circuitOpen());
+        QVERIFY(!viewModel.start());
+    }
+
+    void expiresOldFailuresAndClearsFailuresAfterSuccess() {
+        PyWorkerViewModel viewModel(QStringLiteral("failure_window"), {}, {}, {}, {}, nullptr);
+
+        QVERIFY(!viewModel.recordWorkerFailure(0));
+        QVERIFY(!viewModel.recordWorkerFailure(10 * 60 * 1000 + 1));
+        QCOMPARE(viewModel.consecutiveFailures(), 1);
+
+        QVERIFY(!viewModel.recordWorkerFailure(10 * 60 * 1000 + 2));
+        QCOMPARE(viewModel.consecutiveFailures(), 2);
+        viewModel.markWorkerHealthy();
+        QCOMPARE(viewModel.consecutiveFailures(), 0);
+        QVERIFY(!viewModel.circuitOpen());
+    }
+
     void reaperGraceTimerSurvivesEarlyWorkerExit() {
         // 两个 worker 在 750ms 宽限期内先后自行退出，覆盖曾导致热重载闪退的
         // finished/deleteLater 与 grace timer 竞态。旧实现会在这里访问悬空 QProcess。

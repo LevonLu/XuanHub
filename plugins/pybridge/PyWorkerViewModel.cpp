@@ -24,6 +24,8 @@ constexpr int kRequestTimeoutMs = 15000;
 constexpr int kDefaultUpdateIntervalMs = 1000;
 constexpr int kMinUpdateIntervalMs = 100;
 constexpr int kMaxUpdateIntervalMs = 60000;
+constexpr int kCircuitFailureLimit = 5;
+constexpr qint64 kCircuitFailureWindowMs = 10 * 60 * 1000;
 
 QString processStatusText(QProcess::ExitStatus status) {
     return status == QProcess::CrashExit ? QStringLiteral("crash") : QStringLiteral("normal");
@@ -45,6 +47,7 @@ PyWorkerViewModel::PyWorkerViewModel(QString id, QString dirPath, QVariantMap cf
     m_updateIntervalMs = qBound(kMinUpdateIntervalMs,
                                 intervalOk ? configuredInterval : kDefaultUpdateIntervalMs,
                                 kMaxUpdateIntervalMs);
+    m_failureClock.start();
     if (bus) {
         bus->subscribe(QStringLiteral("app.locale.changed"), this,
                        "onLocaleChanged(QVariantMap)");
@@ -82,7 +85,7 @@ bool PyWorkerViewModel::running() const {
 }
 
 bool PyWorkerViewModel::start() {
-    if (m_stopping || m_process || m_server) return false;
+    if (m_stopping || m_circuitOpen || m_process || m_server) return false;
     auto* server = new QTcpServer(this);
     if (!server->listen(QHostAddress::LocalHost, 0)) {
         qWarning() << "[PyBridge]" << m_id << ": cannot listen for worker:" << server->errorString();
@@ -252,7 +255,7 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
             }
             // 仅在真正完成一次 update 后认定 worker 已恢复，避免初始化成功但随即
             // 崩溃的插件绕过退避；健康运行后下一次故障从 1 秒重新尝试。
-            m_restartAttempt = 0;
+            markWorkerHealthy();
         }
     }
 
@@ -371,7 +374,33 @@ void PyWorkerViewModel::failWorker(const QString& reason, bool retry) {
         detachProcess(process);
     }
     Q_EMIT runningChanged();
-    if (retry) scheduleRestart();
+    if (retry && !recordWorkerFailure(m_failureClock.elapsed())) scheduleRestart();
+}
+
+bool PyWorkerViewModel::recordWorkerFailure(qint64 elapsedMs) {
+    while (!m_failureTimesMs.isEmpty()
+           && elapsedMs - m_failureTimesMs.head() > kCircuitFailureWindowMs) {
+        m_failureTimesMs.dequeue();
+    }
+    m_failureTimesMs.enqueue(elapsedMs);
+    Q_EMIT consecutiveFailuresChanged();
+    if (m_failureTimesMs.size() < kCircuitFailureLimit) return false;
+
+    if (!m_circuitOpen) {
+        m_circuitOpen = true;
+        qWarning() << "[PyBridge]" << m_id
+                   << ": worker circuit opened after" << m_failureTimesMs.size()
+                   << "failures within" << kCircuitFailureWindowMs << "ms";
+        Q_EMIT circuitOpenChanged();
+    }
+    return true;
+}
+
+void PyWorkerViewModel::markWorkerHealthy() {
+    m_restartAttempt = 0;
+    if (m_failureTimesMs.isEmpty()) return;
+    m_failureTimesMs.clear();
+    Q_EMIT consecutiveFailuresChanged();
 }
 
 void PyWorkerViewModel::scheduleRestart() {
