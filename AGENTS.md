@@ -7,7 +7,7 @@
 **玄枢（XuanHub）** 是一个基于 **Qt6 / QML 的 Windows 插件化状态栏框架**（对标 polybar / waybar / Rainmeter），当前版本 0.2.1。
 
 - `XuanHub.exe`：无边框、置顶、`Qt::Tool` 的 `QQuickView`，两种形态（`bar.mode`）：`appbar`（默认，Win32 AppBar 占住主屏顶部/底部工作区）；`taskbar`（`SetParent` 嵌入原生任务栏左侧，透明、不占工作区）。
-- 插件是独立 DLL（`QPluginLoader` 加载），自带 QML 界面，框架只负责发现、加载、布局。内置示例插件：`clock`、`sysinfo`。
+- 原生插件是独立 DLL（`QPluginLoader` 加载），Python 插件由 pybridge 托管；两者都使用 QML 界面。内置原生插件包括 `clock`、`sysinfo`、`xuanhub_menu` 和 host 插件 `pybridge`。
 - 仅支持 Windows，直接用 Win32 API，不做跨平台抽象。
 - `pybridge` 桥接插件为 `plugins_py/` 下每个 Python 子插件启动独立的 `python.exe` worker，并以受随机令牌认证的 loopback IPC 连接 QML 代理；Python 崩溃、GIL 卡死或扩展模块异常不会进入宿主。分发默认依赖用户自装 CPython ≥3.12，打包脚本可选 Bundle 策略带上解释器与标准库（见 §5、§8）。
 
@@ -19,7 +19,7 @@
 | UI | Qt 6.9.3 — Qt Quick / QML（另有 Widgets、Network） |
 | 编译器 | **MSVC 2022（VS 17，x64）**；不支持 MinGW 工具链 |
 | 构建 | CMake ≥ 3.21 + `CMakePresets.json`，VS 17 2022 生成器 |
-| 插件加载 | `QPluginLoader` + `Q_PLUGIN_METADATA`（IID `xuanhub.BarPlugin/1.0`；host 插件另有 `xuanhub.BarPluginHost/1.0`） |
+| 插件加载 | `QPluginLoader` + `Q_PLUGIN_METADATA`；新插件使用 `xuanhub.BarPlugin/2.0`，V1 与 host IID 保持兼容 |
 | Python 桥接 | Qt `QTcpServer/QTcpSocket` + 每子插件独立 `python.exe` worker；4 字节长度前缀 JSON、一次性随机令牌认证，仅绑定 `127.0.0.1` |
 | 系统 API | Win32：`SHAppBarMessage`、`GetIfTable2`、注册表 Run 键、`RegisterWindowMessage("TaskbarCreated")` |
 | 配置 | JSON（`QJsonDocument`），热重载（`QFileSystemWatcher`） |
@@ -49,8 +49,7 @@ XuanHub/
 ├── CMakeLists.txt / CMakePresets.json   # 顶层工程与预设
 ├── config/config.json                   # 开发用示例配置（手动拷贝到 dist）
 ├── lib/barplugin/                       # 插件接口共享库 barplugin.dll（SHARED）
-│   └── include/barplugin/               # IBarPlugin / IBarPluginHost / BarPluginContext
-│                                        # / PluginMetadata / EventBus
+│   └── include/barplugin/               # V1/V2 插件接口、HostServices、EventBus、运行时模型
 ├── app/                                 # XuanHub.exe 宿主
 │   ├── src/                             # main.cpp、BarWindow、AppBarWin32、WorkAreaGuard、TaskbarEmbed、
 │   │                                    # ConfigService、ConfigHotReloader、Settings*（设置窗口）、
@@ -60,10 +59,14 @@ XuanHub/
 │   │                                    # / SettingsWindow.qml / Ui*.qml（设计令牌 + 自绘控件库）
 │   └── resources/default_config.json    # qrc 内置默认配置（首运行播种用）
 ├── plugins/
-│   ├── clock/  sysinfo/                 # 两个示例插件（各含 Plugin + ViewModel + QML）
-│   └── pybridge/                        # PyBridgePlugin 外壳 + PyWorkerViewModel（无 CPython 链接）
+│   ├── clock/  sysinfo/  xuanhub_menu/  # 内置可见原生插件
+│   └── pybridge/                        # Python host + PyWorkerViewModel（无 CPython 链接）
 ├── plugins_py/                          # Python 子插件 + bridge_worker.py（README 即开发契约）
 ├── themes/                              # 主题包（ThemeRegistry 扫描；README 即开发契约；xuanhub-default 兜底勿删）
+├── docs/                                # 统一导航、SDK、路线图、i18n、插件包与更新契约
+├── scripts/xuanhub_plugin.py            # 插件 create/validate/test/run/doctor/package 统一 CLI
+├── examples/plugins/v2_demo/            # 不依赖宿主内部目标的 C++ SDK V2 示例
+├── tests/                               # CTest、Python Worker 与 CLI 回归测试
 └── LICENSE                              # BSD-3-Clause；源码与二进制分发均须保留
 ```
 
@@ -74,20 +77,23 @@ XuanHub/
 ```
 QML 渲染层 (app/qml)     main.qml → Bar.qml（三栏）→ PluginSlot.qml（Loader）
 插件适配层 (app/src)     PluginManager · PluginListModel · ConfigService · ThemeManager · TrayIcon
-横切服务 (lib/barplugin) IBarPlugin · BarPluginContext · EventBus · PluginMetadata
+横切服务 (lib/barplugin) IBarPlugin2/V1 · PluginContext2 · HostServices · EventBus V2/V1
 Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaGuard · TaskbarEmbed
                          ↑ 加载 ↑   plugins/<id>/<id>.dll + <Id>.qml（+ plugins_py/ 经 pybridge）
 ```
 
 ### 插件加载流程（`PluginManager::loadFrom`）
 
-扫描 `<exeDir>/plugins/*/` 的 `*.dll` → 校验 IID → `instance()` + `qobject_cast<IBarPlugin*>` → 按 id 去重 → 与 config 比对（未启用则跳过并 unload）→ `init(ctx)` 注入 `BarPluginContext`（EventBus、configDir、本插件配置段）→ position 校验（非法回落 `right`）→ 收入 `PluginListModel`。
+扫描 `<exeDir>/plugins/*/metadata.json` 与 DLL → 在执行代码前校验 Manifest、路径、宿主范围、
+SDK、架构、依赖和权限 → 加载 DLL 并按 IID 选择 `IBarPlugin2` 或 V1 适配器 → 按依赖拓扑与配置
+初始化 → 注入作用域化事件、HostServices、语言、主题和插件配置 → 收入 `PluginListModel`。V2 的
+sidecar 与运行时 Descriptor 必须一致；V1 继续兼容，但新插件契约以 `docs/plugin-sdk-v2.md` 为准。
 
 **host 插件分支**：`init` 后若命中 `IBarPluginHost`（如 pybridge），自身不进可见列表，走两阶段契约：`subPluginIds()` 枚举 → 核心按 config 过滤 → `createSubPlugin(id, cfg)` 实例化。子插件以 `iface=nullptr` 收入模型（生命周期归 host）；`shutdownAll()` 中 host **最后** shutdown（子插件 VM 依赖 host 持有的运行时），随后统一 `unload()`。
 
 ### QML 契约（写插件时必须遵守）
 
-- `IBarPlugin` 只返回 `QObject* viewModel()` 与 `QUrl qmlUrl()`，**绝不返回 `QWidget*`/`QQuickItem*`**；QML 实例化由核心统一做。
+- V1/V2 插件只向宿主提供 ViewModel 和 QML URL，**绝不返回 `QWidget*`/`QQuickItem*`**；QML 实例化由核心统一做。
 - 每个插件 QML 的**根 `Item` 必须声明 `property var plugin`**；`PluginSlot.qml` 会把 viewModel 注入该属性。插件内用 `plugin ? plugin.x : fallback` 防御空值。
 - 槽位（`PluginSlot`）`clip: true`：插件根 Item 声明的 width 即其占位宽度，**任何超出槽位边界的绘制都会被裁掉**（ListView 只裁整列不裁单个 delegate，槽位不裁剪时溢出内容会直接画到相邻插件上）。插件必须保证根 Item 宽度 ≥ 实际内容宽度；固定宽模式下被截断属预期行为，由插件自行处理对齐。
 - Manifest 可声明 `layout.region/minWidth/preferredWidth/maxWidth/flex/priority/overflow`。appbar 按全栏预算先收缩低 priority，再执行 `hide/menu`；`menu` 进入末尾 overflow 弹窗。未声明者、taskbar 紧凑模式和 config `width > 0` 保持旧语义，完整契约见 `docs/plugin-sdk-v2.md`。
@@ -126,6 +132,9 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 ### EventBus（插件间通信）
 
 `xuanhub::EventBus`（宿主 main 栈上单例，经 `BarPluginContext` 下发）：`subscribe(topic, receiver, slot)` / `publish(topic, QVariantMap)`，slot 形如 `onPayload(QVariantMap)`；订阅者以 `QPointer` 持有防悬空；同 (receiver, slot) 重复订阅会被去重忽略（publish 不重复投递）。插件间不直接互调。新插件订阅应优先使用 `BarPluginContext::eventScope->subscribe(...)`；宿主在 `shutdown()` 前关闭作用域并在 DLL unload 前强制清除其全部订阅，即使插件遗漏销毁接收者也不会再投递到已卸载代码。`eventScope` 为空时才回退 V1 `EventBus::subscribe()`，且 V1 插件仍须在 `shutdown()` 中销毁所有订阅对象。现有 topic：`theme.changed`；`app.notify`（插件 → 托盘气泡，为此 `TrayIcon` 在 `loadFrom` **之前**创建——订阅必须先于发布）。`EventBus.h` 用 `Q_SIGNALS` 而非 `signals`（`QT_NO_KEYWORDS` 插件也要包含它）。
+
+V2 的命名空间、异步投递、保留状态、请求响应、权限和背压规则以
+`docs/plugin-sdk-v2.md` 的“EventBus V2”为准；不要从上述 V1 topic 示例推导新协议。
 
 ### 主题系统（多主题包 × 双模式）
 
@@ -169,7 +178,24 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 
 ## 7. 测试与验证
 
-**项目没有自动化测试框架。** 验证方式为手动验收：
+项目使用 CTest 统一编排 C++、QML Smoke、Python Worker、CLI、Manifest、插件包和内置插件
+Validator 回归。Release 构建后先运行：
+
+```bash
+ctest --test-dir build/default -C Release --output-on-failure
+```
+
+查看当前测试清单使用 `ctest --test-dir build/default -C Release -N`，不要在文档中固定测试数量。
+只改插件时还应使用统一开发者 CLI；准确参数以 `--help` 为准：
+
+```bash
+python scripts/xuanhub_plugin.py validate <插件目录>
+python scripts/xuanhub_plugin.py test <Python 插件目录>
+python scripts/xuanhub_plugin.py run <插件目录>
+python scripts/xuanhub_plugin.py doctor <插件目录或运行时目录>
+```
+
+自动测试不能覆盖 Win32 shell、真实 DPI、窗口层级和视觉效果，以下项目仍需手动验收：
 
 - 窗口与工作区：贴顶置顶；最大化其他窗口不遮挡；正常退出立即归还工作区（强杀依赖系统延迟清理，已知行为）。
 - 插件加载：增删 `plugins/<id>/` 后重启验证出现/消失与日志 `[Plugin] loaded: <id>`；IID 不符的 DLL 应 qWarning 跳过不崩溃。
@@ -189,6 +215,9 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 - 已知无害告警：`VCINSTALLDIR is not set`——只是不复制 MSVC 运行时 DLL，绿色分发包需自行带上 `vcruntime140.dll` 等。
 - 手动重新部署：`pixi run deploy`（`scripts/deploy_qt.ps1`，windeployqt 自动定位，不写死 Qt 路径）。
 - 插件目录结构即安装结构：`plugins/<id>/<id>.dll + <Id>.qml + metadata.json`。
+- **插件分发**：`python scripts/xuanhub_plugin.py package <插件目录> --output <文件.xuanplugin>`
+  复用安装器的 Manifest、路径、凭据、哈希和签名安全门禁。格式见 `docs/xuanplugin-format.md`，
+  更新源见 `docs/xuanplugin-update-index.md`；不得手工改扩展名或直接压缩插件目录冒充安装包。
 - **便携分发打包**：`scripts/package_portable.ps1` 把只读构建输出复制到全新的 `dist/XuanHub-v<版本>-portable-x64/` staging，再加工并打 zip；绝不直接压缩运行过的 build dist。脚本收集 MSVC 运行时 DLL；`-PythonStrategy` 两策略——`None`（默认，不内置 Python）/ `Bundle`（拷 `python.exe`、`Lib/`（排除 site-packages）、`DLLs/`（`_socket`/`_ssl` 等编译扩展）和 `python3*.dll`，使隔离 worker 免安装运行）；统一排除 VCS 元数据、删除 `__pycache__`/`*.pyc`，只复制内置默认配置，并在压缩前 fail-closed 检查 `.git/.hg/.svn`、`secrets.json`、锁/日志/数据库/密钥文件、高置信凭据形状及本机用户路径；创建 `portable` 标记文件；裁剪 translations/、qmltooling/、非 Basic 样式（**`qml/QtQuick/Controls/impl/` 必须保留**——Basic 样式自身依赖它）；`-NoZip` 只准备通过同一安全检查的 staging。注意：该脚本含中文注释，**必须保存为 UTF-8 with BOM**（PowerShell 5.1 对无 BOM 脚本按 GBK 误读）。
 
 ## 9. 安全与注意事项（改代码前必读）
@@ -204,7 +233,9 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 
 ## 10. 关键文件索引
 
-- 插件接口：`lib/barplugin/include/barplugin/IBarPlugin.h`（含 IID）；host 契约 `IBarPluginHost.h`
+- 文档总入口：`docs/README.md`；框架路线图：`docs/plugin-framework-roadmap.md`
+- 插件接口：`lib/barplugin/include/barplugin/IBarPlugin2.h`（V2）与 `IBarPlugin.h`（V1 兼容）；host 契约 `IBarPluginHost.h`
+- V2 上下文与服务：`IBarPlugin2.h` 中的 `PluginContext2`、`HostServices.h`、`PluginEventScope.h`；公开契约 `docs/plugin-sdk-v2.md`
 - 插件扫描/生命周期：`app/src/PluginManager.cpp`；QML 注入契约：`app/qml/PluginSlot.qml`
 - 三栏布局：`app/qml/Bar.qml`；模型：`app/src/PluginListModel.h` + `PluginFilterModel`
 - 配置解析：`app/src/ConfigService.cpp`；热重载：`app/src/ConfigHotReloader.{h,cpp}`
@@ -213,3 +244,4 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 - 线程范式样例：`plugins/sysinfo/SysInfoWorker.{h,cpp}`；新插件 CMake 模板：`plugins/clock/CMakeLists.txt`
 - Python 桥接：`plugins/pybridge/PyBridgePlugin.{h,cpp}`（发现/运行时）、`PyWorkerViewModel.{h,cpp}`（异步 IPC 代理）、`plugins_py/bridge_worker.py`（隔离执行器）、`lib/barplugin/ProcessReaper.{h,cpp}`（跨 DLL 进程回收）
 - Python 子插件契约：`plugins_py/README.md`；示例 `hello/`（参考样例）、`intime/`（定时提醒）、`usage_hub/`（用量看板）
+- 开发者 CLI：`scripts/xuanhub_plugin.py`；测试入口：`tests/` 与顶层 `CMakeLists.txt`
