@@ -119,6 +119,7 @@ QVariantMap PyWorkerViewModel::health() const {
         {QStringLiteral("consecutiveFailures"), consecutiveFailures()},
         {QStringLiteral("loadDurationMs"), m_health.loadDurationMs},
         {QStringLiteral("queueDepth"), m_queue.size() + (m_inFlightId != 0 ? 1 : 0)},
+        {QStringLiteral("processId"), m_process ? m_process->processId() : 0},
         {QStringLiteral("protocolVersion"), m_protocolVersion},
         {QStringLiteral("protocolCapabilities"), m_protocolCapabilities},
         {QStringLiteral("usesPushValues"), m_usesPushValues},

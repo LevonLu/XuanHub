@@ -34,6 +34,7 @@ private Q_SLOTS:
         plugin.health.consecutiveFailures = 5;
         plugin.health.loadDurationMs = 27;
         plugin.health.queueDepth = 2;
+        plugin.health.processId = 4242;
 
         PluginListModel model;
         model.setPlugins({plugin});
@@ -52,6 +53,7 @@ private Q_SLOTS:
         QCOMPARE(model.data(index, PluginListModel::ConsecutiveFailuresRole).toInt(), 5);
         QCOMPARE(model.data(index, PluginListModel::LoadDurationMsRole).toLongLong(), 27);
         QCOMPARE(model.data(index, PluginListModel::QueueDepthRole).toInt(), 2);
+        QCOMPARE(model.data(index, PluginListModel::ProcessIdRole).toLongLong(), 4242);
         QCOMPARE(model.data(index, PluginListModel::CapabilitiesRole).toStringList(),
                  plugin.capabilities);
         QCOMPARE(model.data(index, PluginListModel::PluginContextRole).value<QObject*>(),
@@ -61,6 +63,7 @@ private Q_SLOTS:
         QCOMPARE(roles.value(PluginListModel::HealthStateRole), QByteArray("healthState"));
         QCOMPARE(roles.value(PluginListModel::LastErrorRole), QByteArray("lastError"));
         QCOMPARE(roles.value(PluginListModel::QueueDepthRole), QByteArray("queueDepth"));
+        QCOMPARE(roles.value(PluginListModel::ProcessIdRole), QByteArray("processId"));
         QCOMPARE(roles.value(PluginListModel::CapabilitiesRole), QByteArray("capabilities"));
         QCOMPARE(roles.value(PluginListModel::PluginContextRole), QByteArray("pluginContext"));
     }
@@ -81,6 +84,7 @@ private Q_SLOTS:
             {QStringLiteral("lastHealthyAt"), healthyAt},
             {QStringLiteral("restartCount"), 3},
             {QStringLiteral("queueDepth"), 1},
+            {QStringLiteral("processId"), 9876},
         });
 
         QCOMPARE(changedSpy.count(), 1);
@@ -92,6 +96,7 @@ private Q_SLOTS:
         QCOMPARE(model.data(index, PluginListModel::LastHealthyAtRole).toDateTime(), healthyAt);
         QCOMPARE(model.data(index, PluginListModel::RestartCountRole).toInt(), 3);
         QCOMPARE(model.data(index, PluginListModel::QueueDepthRole).toInt(), 1);
+        QCOMPARE(model.data(index, PluginListModel::ProcessIdRole).toLongLong(), 9876);
         QCOMPARE(model.data(index, PluginListModel::StartedAtRole).toDateTime(),
                  plugin.health.startedAt);
     }

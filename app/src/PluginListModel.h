@@ -42,6 +42,7 @@ public:
         ConsecutiveFailuresRole,
         LoadDurationMsRole,
         QueueDepthRole,
+        ProcessIdRole,
         EffectiveWidthRole,
         LayoutVisibleRole,
         OverflowedRole,

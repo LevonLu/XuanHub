@@ -51,6 +51,7 @@ QVariant PluginListModel::data(const QModelIndex& index, int role) const {
         case ConsecutiveFailuresRole:return it.health.consecutiveFailures;
         case LoadDurationMsRole:     return it.health.loadDurationMs;
         case QueueDepthRole:         return it.health.queueDepth;
+        case ProcessIdRole:          return it.health.processId;
         case EffectiveWidthRole:     return it.effectiveWidth;
         case LayoutVisibleRole:      return it.layoutVisible;
         case OverflowedRole:         return it.overflowed;
@@ -83,6 +84,7 @@ QHash<int, QByteArray> PluginListModel::roleNames() const {
         { ConsecutiveFailuresRole, "consecutiveFailures" },
         { LoadDurationMsRole,      "loadDurationMs" },
         { QueueDepthRole,          "queueDepth" },
+        { ProcessIdRole,           "processId" },
         { EffectiveWidthRole,       "effectiveWidth" },
         { LayoutVisibleRole,        "layoutVisible" },
         { OverflowedRole,           "overflowed" },
@@ -316,12 +318,14 @@ void PluginListModel::reportHealth(const QString& id, const QVariantMap& update)
         health.loadDurationMs = update.value(QStringLiteral("loadDurationMs")).toLongLong();
     if (update.contains(QStringLiteral("queueDepth")))
         health.queueDepth = update.value(QStringLiteral("queueDepth")).toInt();
+    if (update.contains(QStringLiteral("processId")))
+        health.processId = update.value(QStringLiteral("processId")).toLongLong();
 
     const QModelIndex changed = index(row);
     Q_EMIT dataChanged(changed, changed, {
         HealthStateRole, LastErrorRole, LastErrorAtRole, StartedAtRole,
         LastHealthyAtRole, RestartCountRole, ConsecutiveFailuresRole,
-        LoadDurationMsRole, QueueDepthRole,
+        LoadDurationMsRole, QueueDepthRole, ProcessIdRole,
     });
 }
 
@@ -338,6 +342,7 @@ QVariantMap PluginListModel::health(const QString& id) const {
             {QStringLiteral("consecutiveFailures"), item.health.consecutiveFailures},
             {QStringLiteral("loadDurationMs"), item.health.loadDurationMs},
             {QStringLiteral("queueDepth"), item.health.queueDepth},
+            {QStringLiteral("processId"), item.health.processId},
         };
     }
     const QString loadError = m_loadErrors.value(id);

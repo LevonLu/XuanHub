@@ -60,6 +60,7 @@ struct PluginHealth {
     int consecutiveFailures = 0;
     qint64 loadDurationMs = 0;
     int queueDepth = 0;
+    qint64 processId = 0;
 };
 
 } // namespace xuanhub

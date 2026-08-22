@@ -646,6 +646,12 @@ Pane {
         if (state === "disabled") return trText("已停用")
         return trText("等待启动")
     }
+    function healthTime(value) {
+        if (value === undefined || value === null || value === "") return trText("暂无")
+        const date = new Date(value)
+        if (isNaN(date.getTime())) return trText("暂无")
+        return date.toLocaleString(Qt.locale(i18n.activeLocale), Locale.ShortFormat)
+    }
     function permissionListText(values) {
         return values && values.length > 0 ? values.join(", ") : trText("无")
     }
@@ -1715,6 +1721,27 @@ Pane {
                                                     onClicked: dependencyConfirm.ask(
                                                         pluginList.currentId,
                                                         detailPanel.rowData.dependencyPlan)
+                                                }
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                color: root.c.muted
+                                                font.pixelSize: UiMetrics.fontTiny
+                                                wrapMode: Text.Wrap
+                                                text: {
+                                                    const health = detailPanel.rowData.health || ({})
+                                                    const parts = [
+                                                        root.trText("启动耗时：%1 ms").arg(
+                                                            Number(health.loadDurationMs || 0)),
+                                                        root.trText("最近成功：%1").arg(
+                                                            root.healthTime(health.lastHealthyAt))
+                                                    ]
+                                                    if (detailPanel.rowData.kind === "python"
+                                                            && Number(health.processId || 0) > 0) {
+                                                        parts.push(root.trText("Python PID：%1").arg(
+                                                            Number(health.processId)))
+                                                    }
+                                                    return parts.join(" · ")
                                                 }
                                             }
                                             ColumnLayout {
