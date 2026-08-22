@@ -95,12 +95,15 @@ def invoke(name, args):  # 可选。QML 里 plugin.call(name, args) 的入口
 def stop():          # 可选。卸载/热重载前调用，用来停后台线程（见下节）
 ```
 
-- 刷新节拍：`config.intervalMs`（毫秒，缺省 1000）。
+- 刷新节拍：`config.intervalMs`（毫秒，缺省 1000，合法范围 100–60000；越界值会被钳制，
+  非数字回退缺省值）。下一次 `update()` 从上一次完成后开始计时，慢请求不会积压多个刷新任务。
 - `invoke()` 会异步排队；worker 返回后框架立即再拉一次 `update()`，交互反馈不用等下个 tick。
   `plugin.call()` 的同步返回值仅表示是否成功入队，不能依赖 Python `invoke()` 的返回值。
 - `update()` 返回的 dict 值支持：str / int / float / bool / list / dict（嵌套），其他类型转字符串。
 - main.py 所在目录会追加到 `sys.path` 末尾，可导入同目录的辅助模块。
 - 抛异常不会拖垮宿主：traceback 记入日志，UI 保留上一次的值。
+- Worker/IPC 在 10 分钟内连续失败 5 次会进入熔断状态并停止自动重启；用户可在设置页查看
+  最近错误、重启次数和队列深度，并只重启本插件。手动重启会清除熔断计数，其他插件不受影响。
 - 固定界面文字应由 QML 通过 `qsTranslate("plugin.<id>.<page>", "中文源码")` 翻译；
   Python 后端返回状态码和动态明细。完整语言包、上下文隔离与回退规则见
   `docs/i18n.md`。
@@ -162,6 +165,9 @@ Item {
 
 - 数据：`plugin.values.<key>`（dict 属性袋，整体替换触发刷新）。
 - 行为：`plugin.call(name, args)` → 异步 IPC → main.py 的 `invoke(name, args)`；不要依赖其同步返回值。
+- 健康：`plugin.health` 提供稳定的 `state`、`lastError`、`lastErrorAt`、`startedAt`、
+  `lastHealthyAt`、`restartCount`、`consecutiveFailures`、`loadDurationMs` 和 `queueDepth` 字段。
+  展示诊断信息时应容忍未来新增字段，不要根据错误文本驱动业务逻辑。
 
 ## 调试
 

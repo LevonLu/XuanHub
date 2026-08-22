@@ -105,7 +105,7 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 
 - 目录契约：`<exeDir>/plugins_py/<name>/plugin.json + main.py + X.qml`；开发契约全文见 `plugins_py/README.md`。
 - `main.py` 约定不变：`update() -> dict`（必需）、`init(config)`、`invoke(name, args)`、`stop()`（可选）。每个子插件拥有独立解释器进程；`update/invoke` 都经异步 IPC 串行执行，QML 的 `plugin.call()` 只能表示请求是否入队，不能依赖 Python 返回值。
-- worker 只连随机端口的 `127.0.0.1`，先以一次性 256-bit token 认证，再收取 `init` 配置；API Key 等敏感 config 不放进 worker 命令行。协议用 4 字节长度前缀 JSON，单包上限 4 MiB、请求超时 15 秒。崩溃/超时仅重启本插件 worker，UI 保留旧值。
+- worker 只连随机端口的 `127.0.0.1`，先以一次性 256-bit token 认证，再收取 `init` 配置；API Key 等敏感 config 不放进 worker 命令行。协议用 4 字节长度前缀 JSON，单包上限 4 MiB、请求超时 15 秒。`config.intervalMs` 缺省 1000ms 并钳制到 100–60000ms，下一次刷新从上次完成后计时，不积压 `update`。崩溃/超时仅重启本插件 worker，UI 保留旧值；10 分钟内连续 5 次 Worker/IPC 故障后熔断，设置页可观察健康指标并手动清除熔断、只重启目标插件。
 - 卸载时代理先断开 IPC，worker 在 EOF 的 `finally` 中尽力调用 `stop()`；宽限后由常驻 `barplugin` 的 `ProcessReaper` 终止并兜底 kill。**不可**在 pybridge DLL 留下异步 lambda 回调给已卸载对象，必须交给 `ProcessReaper`。
 - 标准库定位顺序：exe 旁 Bundle（`python.exe` + `Lib/`）→ 用户 `PYTHONHOME` → cache 变量 `XUANHUB_PYTHON_HOME_FALLBACK` → 注册表 `PythonCore` → `py -3` → PATH。全部未命中时 `subPluginIds()` 返回空并经 EventBus `app.notify` 托盘提示。调试钩子 `XUANHUB_DISABLE_PYTHON=1` 强制停用；检测结果仍存 qApp 动态属性以跨 pybridge 热重载保持。
 
@@ -122,7 +122,7 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 
 ### EventBus（插件间通信）
 
-`xuanhub::EventBus`（宿主 main 栈上单例，经 `BarPluginContext` 下发）：`subscribe(topic, receiver, slot)` / `publish(topic, QVariantMap)`，slot 形如 `onPayload(QVariantMap)`；订阅者以 `QPointer` 持有防悬空；同 (receiver, slot) 重复订阅会被去重忽略（publish 不重复投递）。插件间不直接互调。**插件 `shutdown()` 必须删光自己订阅过 EventBus 的对象**——泄漏的订阅对象在 DLL unload 后 QPointer 仍非空，下次 publish 会对已卸载代码 invoke → 宿主崩溃。现有 topic：`theme.changed`；`app.notify`（插件 → 托盘气泡，为此 `TrayIcon` 在 `loadFrom` **之前**创建——订阅必须先于发布）。`EventBus.h` 用 `Q_SIGNALS` 而非 `signals`（`QT_NO_KEYWORDS` 插件也要包含它）。
+`xuanhub::EventBus`（宿主 main 栈上单例，经 `BarPluginContext` 下发）：`subscribe(topic, receiver, slot)` / `publish(topic, QVariantMap)`，slot 形如 `onPayload(QVariantMap)`；订阅者以 `QPointer` 持有防悬空；同 (receiver, slot) 重复订阅会被去重忽略（publish 不重复投递）。插件间不直接互调。新插件订阅应优先使用 `BarPluginContext::eventScope->subscribe(...)`；宿主在 `shutdown()` 前关闭作用域并在 DLL unload 前强制清除其全部订阅，即使插件遗漏销毁接收者也不会再投递到已卸载代码。`eventScope` 为空时才回退 V1 `EventBus::subscribe()`，且 V1 插件仍须在 `shutdown()` 中销毁所有订阅对象。现有 topic：`theme.changed`；`app.notify`（插件 → 托盘气泡，为此 `TrayIcon` 在 `loadFrom` **之前**创建——订阅必须先于发布）。`EventBus.h` 用 `Q_SIGNALS` 而非 `signals`（`QT_NO_KEYWORDS` 插件也要包含它）。
 
 ### 主题系统（多主题包 × 双模式）
 

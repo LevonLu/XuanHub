@@ -242,10 +242,10 @@ V1 插件仍可通过原始 EventBus 工作，但宿主应逐步把内置插件�
 ### 完成定义
 
 - [ ] 所有测试与人工验收通过。
-- [ ] Python 刷新契约与文档一致。
-- [ ] 设置页能观察和恢复单插件故障。
-- [ ] EventBus 卸载回归测试稳定通过。
-- [ ] `plugins_py/README.md` 和 `AGENTS.md` 已更新。
+- [x] Python 刷新契约与文档一致。
+- [x] 设置页能观察和恢复单插件故障。
+- [x] EventBus 卸载回归测试稳定通过。
+- [x] `plugins_py/README.md` 和 `AGENTS.md` 已更新。
 
 ---
 
