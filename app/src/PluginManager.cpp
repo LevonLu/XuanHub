@@ -1,6 +1,7 @@
 // PluginManager.cpp
 #include "PluginManager.h"
 #include "ConfigService.h"
+#include "PluginManifest.h"
 #include "barplugin/EventBus.h"
 #include "barplugin/IBarPluginHost.h"
 #include "barplugin/IBarPluginHostLifecycle.h"
@@ -62,11 +63,33 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
         return;
     }
     const auto subdirs = base.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    const PluginValidationEnvironment validationEnvironment =
+        PluginValidationEnvironment::current();
     for (const QString& sub : subdirs) {
         QDir d(base.filePath(sub));
         const auto dlls = d.entryList({QStringLiteral("*.dll")}, QDir::Files);
         for (const QString& dllName : dlls) {
             const QString path = d.absoluteFilePath(dllName);
+            // sidecar 是发现阶段的信任边界：必须在构造 QPluginLoader 前完成
+            // 解析和路径/ABI 校验，失败插件的 DLL 代码完全不进入宿主进程。
+            const PluginManifestResult manifest = PluginManifest::load(
+                d.absolutePath(), dllName, validationEnvironment);
+            if (!manifest.ok) {
+                qWarning() << "[Plugin] manifest rejected:" << path << "->"
+                           << manifest.error;
+                continue;
+            }
+            const QString manifestId = manifest.descriptor.id;
+            if (m_loadedIds.contains(manifestId)) {
+                qWarning() << "[Plugin] duplicate manifest id, skip:"
+                           << manifestId << "->" << path;
+                continue;
+            }
+            const PluginConfigEntry* entry = enabledMap.value(manifestId, nullptr);
+            if (!entry) {
+                qDebug() << "[Plugin] not enabled in config, skip:" << manifestId;
+                continue;
+            }
             auto* loader = new QPluginLoader(path);
             // 清掉 Qt 默认的 PreventUnloadHint，使 unload() 真正卸载 DLL
             //（热重载/插件升级的前提；代价是必须严格先 shutdown 再 unload）
@@ -94,6 +117,14 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             }
 
             const auto meta = plugin->metadata();
+            if (meta.id != manifestId || meta.version != manifest.descriptor.version) {
+                qWarning() << "[Plugin] sidecar/runtime identity mismatch:" << path
+                           << "manifest=" << manifestId << manifest.descriptor.version
+                           << "runtime=" << meta.id << meta.version;
+                loader->unload();
+                delete loader;
+                continue;
+            }
             // 按 id 去重：同名插件（多目录/多 DLL 副本）只加载第一份
             if (m_loadedIds.contains(meta.id)) {
                 qWarning() << "[Plugin] duplicate id, skip:" << meta.id << "->" << path;
@@ -101,14 +132,6 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                 delete loader;
                 continue;
             }
-            const PluginConfigEntry* entry = enabledMap.value(meta.id, nullptr);
-            if (!entry) {
-                qDebug() << "[Plugin] not enabled in config, skip:" << meta.id;
-                loader->unload();
-                delete loader;
-                continue;
-            }
-
             xuanhub::BarPluginContext ctx;
             ctx.eventBus = m_bus;
             ctx.configDir = m_configDir;

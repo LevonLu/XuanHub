@@ -4,6 +4,8 @@
 #include "barplugin/EventBus.h"
 
 #include <QDir>
+#include <QFile>
+#include <QTemporaryDir>
 #include <QtTest>
 
 namespace {
@@ -20,6 +22,30 @@ class PluginManagerTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void initTestCase() {
+        QCoreApplication::setApplicationVersion(QStringLiteral("0.2.1"));
+    }
+
+    void malformedManifestIsRejectedBeforePluginLoad() {
+        const QString sourceRoot = qEnvironmentVariable("XUANHUB_TEST_PLUGINS");
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        const QString pluginDir = QDir(root.path()).filePath(QStringLiteral("clock"));
+        QVERIFY(QDir().mkpath(pluginDir));
+        QVERIFY(QFile::copy(QDir(sourceRoot).filePath(QStringLiteral("clock/clock.dll")),
+                            QDir(pluginDir).filePath(QStringLiteral("clock.dll"))));
+        QFile manifest(QDir(pluginDir).filePath(QStringLiteral("metadata.json")));
+        QVERIFY(manifest.open(QIODevice::WriteOnly));
+        QCOMPARE(manifest.write("{"), qint64(1));
+        manifest.close();
+
+        xuanhub::EventBus bus;
+        PluginManager manager(&bus, QDir::tempPath());
+        manager.loadFrom(root.path(), {entry(QStringLiteral("clock"))});
+        QVERIFY(!manager.loadedPlugin(QStringLiteral("clock")));
+        manager.shutdownAll();
+    }
+
     void nativePluginCanStopAndReloadWithoutTouchingPeer() {
         const QString pluginsDir = qEnvironmentVariable("XUANHUB_TEST_PLUGINS");
         QVERIFY2(!pluginsDir.isEmpty(), "XUANHUB_TEST_PLUGINS is required");
