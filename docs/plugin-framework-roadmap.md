@@ -900,10 +900,10 @@ C++ V2 提供等价接口。迁移在临时副本执行，全部成功后再原�
 
 #### 阶段 C：通用密钥路径
 
-- [ ] 用 schema 遍历替代 `py_usage_hub` 特判。
-- [ ] 密钥 ID 使用插件 ID + JSON Pointer + 稳定 itemKey。
-- [ ] DPAPI 写入与 config 原子提交形成可回滚事务。
-- [ ] 删除数组项时清理对应孤儿密钥。
+- [x] 用 schema 遍历替代 `py_usage_hub` 特判。
+- [x] 密钥 ID 使用插件 ID + JSON Pointer + 稳定 itemKey。
+- [x] DPAPI 写入与 config 原子提交形成可回滚事务。
+- [x] 删除数组项时清理对应孤儿密钥。
 
 #### 阶段 D：内置迁移
 
@@ -933,6 +933,9 @@ C++ V2 提供等价接口。迁移在临时副本执行，全部成功后再原�
 - 2026-08-22：阶段 B 完成。已加载的原生 V1/V2 插件和提供 `validate_config()` 的 Python
   插件均在写文件前执行只读终校；Python 经隔离 IPC 验证并设 5 秒上限，拒绝或超时不会调用
   `applyConfig/set_config`，也不会修改配置文件。
+- 2026-08-22：阶段 C 完成。ConfigSecretProcessor 按 schema 递归处理 object/array 密钥，
+  使用插件 ID + RFC 6901 JSON Pointer + 稳定 itemKey；config 与 DPAPI 由可回滚事务协调，
+  数组重排、恶意跨项引用、删除孤儿和旧点号 ID 迁移均有回归覆盖，宿主不再特判 usage_hub。
 
 ### 风险与回滚
 
