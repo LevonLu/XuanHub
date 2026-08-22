@@ -494,8 +494,8 @@ public:
 
 #### 阶段 B：V2 接口和适配器
 
-- [ ] 新增独立 IID `xuanhub.BarPlugin/2.0`。
-- [ ] 实现 V1 到内部 Runtime 的适配器。
+- [x] 新增独立 IID `xuanhub.BarPlugin/2.0`。
+- [x] 实现 V1 到内部 Runtime 的适配器。
 - [ ] 迁移一个简单内置插件作为参考。
 - [ ] 验证 V1/V2 混合加载和卸载。
 

@@ -2,10 +2,10 @@
 #include "PluginManager.h"
 #include "ConfigService.h"
 #include "PluginManifest.h"
+#include "PluginRuntime.h"
 #include "barplugin/EventBus.h"
 #include "barplugin/IBarPluginHost.h"
 #include "barplugin/IBarPluginHostLifecycle.h"
-#include "barplugin/IBarPluginConfigurable.h"
 #include "barplugin/IBarPluginHostConfigurable.h"
 #include "barplugin/PluginEventScope.h"
 
@@ -97,7 +97,8 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
 
             // IID 校验
             const QString iid = loader->metaData().value(QStringLiteral("IID")).toString();
-            if (iid != QStringLiteral("xuanhub.BarPlugin/1.0")) {
+            if (iid != QStringLiteral("xuanhub.BarPlugin/1.0")
+                && iid != QStringLiteral("xuanhub.BarPlugin/2.0")) {
                 qWarning() << "[Plugin] skip (IID mismatch):" << path << "->" << iid;
                 delete loader;
                 continue;
@@ -108,26 +109,30 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                 delete loader;
                 continue;
             }
-            auto* plugin = qobject_cast<xuanhub::IBarPlugin*>(obj);
-            if (!plugin) {
-                qWarning() << "[Plugin] qobject_cast<IBarPlugin*> failed:" << path;
+            QString runtimeError;
+            std::unique_ptr<PluginRuntime> runtime =
+                PluginRuntime::create(obj, iid, &runtimeError);
+            if (!runtime) {
+                qWarning() << "[Plugin] runtime adapter failed:" << path
+                           << "->" << runtimeError;
                 loader->unload();
                 delete loader;
                 continue;
             }
 
-            const auto meta = plugin->metadata();
-            if (meta.id != manifestId || meta.version != manifest.descriptor.version) {
-                qWarning() << "[Plugin] sidecar/runtime identity mismatch:" << path
+            const auto descriptor = runtime->descriptor();
+            if (!runtime->descriptorMatches(manifest.descriptor, &runtimeError)) {
+                qWarning() << "[Plugin] sidecar/runtime descriptor mismatch:" << path
                            << "manifest=" << manifestId << manifest.descriptor.version
-                           << "runtime=" << meta.id << meta.version;
+                           << "runtime=" << descriptor.id << descriptor.version
+                           << "->" << runtimeError;
                 loader->unload();
                 delete loader;
                 continue;
             }
             // 按 id 去重：同名插件（多目录/多 DLL 副本）只加载第一份
-            if (m_loadedIds.contains(meta.id)) {
-                qWarning() << "[Plugin] duplicate id, skip:" << meta.id << "->" << path;
+            if (m_loadedIds.contains(descriptor.id)) {
+                qWarning() << "[Plugin] duplicate id, skip:" << descriptor.id << "->" << path;
                 loader->unload();
                 delete loader;
                 continue;
@@ -140,33 +145,36 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
             ctx.eventScope = eventScope.get();
             QElapsedTimer initTimer;
             initTimer.start();
-            const bool initialized = plugin->init(&ctx);
+            const bool initialized = runtime->initialize(&ctx, &runtimeError);
             const qint64 initDurationMs = initTimer.elapsed();
             if (!initialized) {
-                qWarning() << "[Plugin] init failed:" << meta.id
-                           << "durationMs=" << initDurationMs;
+                qWarning() << "[Plugin] init failed:" << descriptor.id
+                           << "durationMs=" << initDurationMs << "->" << runtimeError;
                 loader->unload();
                 delete loader;
                 continue;
             }
-            qDebug() << "[Plugin] initialized:" << meta.id
+            qDebug() << "[Plugin] initialized:" << descriptor.id
                      << "durationMs=" << initDurationMs;
+
+            PluginRuntime* runtimePtr = runtime.get();
 
             // host 插件（如 pybridge）：自身不进可见列表；
             // 先枚举子插件 id，核心按 config 过滤/去重后再让 host 实例化
             if (auto* host = qobject_cast<xuanhub::IBarPluginHost*>(obj)) {
-                m_loaderById.insert(meta.id, loader);
-                m_ifaceById.insert(meta.id, plugin);
-                m_hostById.insert(meta.id, host);
-                m_scopeById.insert(meta.id, eventScope.get());
+                m_loaderById.insert(descriptor.id, loader);
+                m_runtimeById.insert(descriptor.id, runtimePtr);
+                m_hostById.insert(descriptor.id, host);
+                m_scopeById.insert(descriptor.id, eventScope.get());
+                m_runtimes.push_back(std::move(runtime));
                 m_eventScopes.push_back(std::move(eventScope));
                 m_loaders.append(loader);
-                m_loadedIds.insert(meta.id);
-                m_hosts.append(plugin);
-                qDebug() << "[Plugin] loaded host:" << meta.id;
+                m_loadedIds.insert(descriptor.id);
+                m_hosts.append(runtimePtr);
+                qDebug() << "[Plugin] loaded host:" << descriptor.id;
                 const QStringList subIds = host->subPluginIds();
                 if (subIds.isEmpty())
-                    qDebug() << "[Plugin] host" << meta.id << "found no sub-plugins";
+                    qDebug() << "[Plugin] host" << descriptor.id << "found no sub-plugins";
                 for (const QString& sid : subIds) {
                     if (m_loadedIds.contains(sid)) {
                         qWarning() << "[Plugin] duplicate id (sub-plugin), skip:" << sid;
@@ -177,41 +185,52 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                         qDebug() << "[Plugin] sub-plugin not enabled in config, skip:" << sid;
                         continue;
                     }
-                    createHostedPlugin(meta.id, host, *se);
+                    createHostedPlugin(descriptor.id, host, *se);
                 }
                 continue;
             }
 
-            const QString pos = sanitizePosition(entry->position, meta.id);
+            const QString pos = sanitizePosition(entry->position, descriptor.id);
 
             // qmlUrl：契约是相对 DLL 目录的文件名，拼成绝对 file URL；
             // 绝对 URL 原样采用——旧实现对 file:///C:/... 取 rel.path() 得到带
             // 前导斜杠的 "/C:/..."，再 fromLocalFile 会拼出损坏路径静默红占位
-            const QUrl rel = plugin->qmlUrl();
+            const QUrl rel = runtime->qmlUrl();
+            if (runtime->isV2()
+                && (!rel.isRelative()
+                    || QDir::cleanPath(rel.path())
+                        != QDir::cleanPath(manifest.descriptor.entry.qml))) {
+                qWarning() << "[Plugin] V2 qmlUrl differs from manifest:" << descriptor.id
+                           << rel << manifest.descriptor.entry.qml;
+                runtime->shutdown();
+                loader->unload();
+                delete loader;
+                continue;
+            }
             const QUrl qmlUrl = rel.isRelative()
                 ? QUrl::fromLocalFile(d.absoluteFilePath(rel.path()))
                 : rel;
             LoadedPlugin lp;
-            lp.id = meta.id;
+            lp.id = descriptor.id;
             lp.position = pos;
             lp.order = entry->order;
             lp.width = entry->width;
-            lp.viewModel = plugin->viewModel();
+            lp.viewModel = runtime->viewModel();
             lp.qmlUrl = qmlUrl;
-            lp.iface = plugin;
             lp.health.state = xuanhub::PluginState::Running;
             lp.health.startedAt = QDateTime::currentDateTimeUtc();
             lp.health.lastHealthyAt = lp.health.startedAt;
             lp.health.loadDurationMs = initDurationMs;
 
             m_eventScopes.push_back(std::move(eventScope));
+            m_runtimes.push_back(std::move(runtime));
             m_loaders.append(loader);
-            m_loaderById.insert(meta.id, loader);
-            m_ifaceById.insert(meta.id, plugin);
-            m_scopeById.insert(meta.id, m_eventScopes.back().get());
+            m_loaderById.insert(descriptor.id, loader);
+            m_runtimeById.insert(descriptor.id, runtimePtr);
+            m_scopeById.insert(descriptor.id, m_eventScopes.back().get());
             m_loaded.append(lp);
-            m_loadedIds.insert(meta.id);
-            qDebug() << "[Plugin] loaded:" << meta.id
+            m_loadedIds.insert(descriptor.id);
+            qDebug() << "[Plugin] loaded:" << descriptor.id
                      << "pos=" << lp.position << "qml=" << qmlUrl.toString();
         }
     }
@@ -237,7 +256,6 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
     lp.width = entry.width;
     lp.viewModel = sp.viewModel;
     lp.qmlUrl = QUrl::fromLocalFile(QDir(sp.dirPath).absoluteFilePath(sp.qmlFilePath));
-    lp.iface = nullptr;
     lp.health.state = xuanhub::PluginState::Running;
     lp.health.startedAt = QDateTime::currentDateTimeUtc();
     lp.health.lastHealthyAt = lp.health.startedAt;
@@ -283,8 +301,8 @@ QStringList PluginManager::dependentPluginIds(const QString& id) const {
 bool PluginManager::stopOne(const QString& id) {
     const QString hostId = m_subPluginHostId.value(id);
     if (!hostId.isEmpty()) {
-        auto* hostIface = m_ifaceById.value(hostId);
-        auto* hostObject = dynamic_cast<QObject*>(hostIface);
+        auto* hostRuntime = m_runtimeById.value(hostId);
+        auto* hostObject = hostRuntime ? hostRuntime->instance() : nullptr;
         auto* lifecycle = hostObject
             ? qobject_cast<xuanhub::IBarPluginHostLifecycle*>(hostObject) : nullptr;
         if (!lifecycle) {
@@ -303,9 +321,9 @@ bool PluginManager::stopOne(const QString& id) {
         return true;
     }
 
-    auto* iface = m_ifaceById.value(id);
+    auto* runtime = m_runtimeById.value(id);
     auto* loader = m_loaderById.value(id);
-    if (!iface || !loader) return false;
+    if (!runtime || !loader) return false;
 
     // host 自身停止前先销毁全部子实例；调用方必须先从 QML 模型移除这些 id。
     for (const QString& childId : dependentPluginIds(id)) {
@@ -320,12 +338,12 @@ bool PluginManager::stopOne(const QString& id) {
 
     QElapsedTimer timer;
     timer.start();
-    iface->shutdown();
+    runtime->shutdown();
     qDebug() << "[Plugin] shutdown one:" << id << "durationMs=" << timer.elapsed();
 
-    m_hosts.removeAll(iface);
+    m_hosts.removeAll(runtime);
     m_hostById.remove(id);
-    m_ifaceById.remove(id);
+    m_runtimeById.remove(id);
     m_loaderById.remove(id);
     m_loaders.removeAll(loader);
     for (int i = 0; i < m_loaded.size(); ++i) {
@@ -335,6 +353,7 @@ bool PluginManager::stopOne(const QString& id) {
         }
     }
     m_loadedIds.remove(id);
+    removeRuntime(runtime);
     if (!loader->unload()) {
         qWarning() << "[Plugin] unload one failed:" << loader->fileName()
                    << loader->errorString();
@@ -364,8 +383,8 @@ PluginManager::ConfigApplyResult PluginManager::applyConfig(
     const PluginConfigEntry& entry) {
     const QString hostId = m_subPluginHostId.value(entry.id);
     if (!hostId.isEmpty()) {
-        auto* hostIface = m_ifaceById.value(hostId);
-        auto* hostObject = dynamic_cast<QObject*>(hostIface);
+        auto* hostRuntime = m_runtimeById.value(hostId);
+        auto* hostObject = hostRuntime ? hostRuntime->instance() : nullptr;
         auto* configurable = hostObject
             ? qobject_cast<xuanhub::IBarPluginHostConfigurable*>(hostObject) : nullptr;
         if (!configurable || !configurable->canApplySubPluginConfig(entry.id))
@@ -378,18 +397,15 @@ PluginManager::ConfigApplyResult PluginManager::applyConfig(
         qDebug() << "[Plugin] hosted config applied in place:" << entry.id;
         return ConfigApplyResult::Applied;
     }
-    auto* iface = m_ifaceById.value(entry.id);
-    auto* object = dynamic_cast<QObject*>(iface);
-    auto* configurable = object
-        ? qobject_cast<xuanhub::IBarPluginConfigurable*>(object) : nullptr;
-    if (!configurable) return ConfigApplyResult::Unsupported;
-    const QString error = configurable->validateConfig(entry.config);
-    if (!error.isEmpty()) {
-        qWarning() << "[Plugin] config rejected:" << entry.id << error;
-        return ConfigApplyResult::Rejected;
+    auto* runtime = m_runtimeById.value(entry.id);
+    if (!runtime) return ConfigApplyResult::Unsupported;
+    const PluginRuntime::ApplyResult result = runtime->applyConfig(entry.config);
+    if (result.status == PluginRuntime::ApplyStatus::Unsupported
+        || result.status == PluginRuntime::ApplyStatus::RequiresRestart) {
+        return ConfigApplyResult::Unsupported;
     }
-    if (!configurable->applyConfig(entry.config)) {
-        qWarning() << "[Plugin] applyConfig failed:" << entry.id;
+    if (result.status == PluginRuntime::ApplyStatus::Rejected) {
+        qWarning() << "[Plugin] config rejected:" << entry.id << result.error;
         return ConfigApplyResult::Rejected;
     }
     qDebug() << "[Plugin] config applied in place:" << entry.id;
@@ -405,23 +421,28 @@ void PluginManager::shutdownAll() {
     // 顺序铁律：先让各插件 shutdown（删光各自 DLL 出身的 QObject），
     // 再 unload —— 根实例由 unload() 删除，随后 FreeLibrary
     for (const auto& lp : m_loaded) {
-        if (!lp.iface) continue;
+        auto* runtime = m_runtimeById.value(lp.id);
+        if (!runtime) continue;
         QElapsedTimer timer;
         timer.start();
-        lp.iface->shutdown();
+        runtime->shutdown();
         qDebug() << "[Plugin] shutdown:" << lp.id
                  << "durationMs=" << timer.elapsed();
     }
     // host 最后 shutdown：其子插件 VM 依赖 host 持有的运行时（如 CPython 解释器）
-    for (auto* h : m_hosts) {
-        const QString id = h->metadata().id;
+    for (auto* runtime : m_hosts) {
+        const QString id = runtime->descriptor().id;
         QElapsedTimer timer;
         timer.start();
-        h->shutdown();
+        runtime->shutdown();
         qDebug() << "[Plugin] shutdown host:" << id
                  << "durationMs=" << timer.elapsed();
     }
     m_hosts.clear();
+    // 适配器只保存接口指针，仍应在 QPluginLoader 删除根 QObject 前释放，
+    // 防止以后给适配器增加析构逻辑时误触已卸载代码。
+    m_runtimeById.clear();
+    m_runtimes.clear();
     for (auto* loader : m_loaders) {
         // unload 失败（如插件残留存活对象）时 DLL 实际未卸载——框架已清空
         // m_loaded 认为卸了，下次 loadFrom 会加载第二份，必须告警
@@ -433,10 +454,15 @@ void PluginManager::shutdownAll() {
     m_loaders.clear();
     m_eventScopes.clear();
     m_loaderById.clear();
-    m_ifaceById.clear();
     m_hostById.clear();
     m_subPluginHostId.clear();
     m_scopeById.clear();
     m_loaded.clear();
     m_loadedIds.clear();
+}
+
+void PluginManager::removeRuntime(PluginRuntime* runtime) {
+    const auto it = std::find_if(m_runtimes.begin(), m_runtimes.end(),
+        [runtime](const auto& owned) { return owned.get() == runtime; });
+    if (it != m_runtimes.end()) m_runtimes.erase(it);
 }

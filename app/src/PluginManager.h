@@ -22,6 +22,7 @@ struct PluginConfigEntry;
 namespace xuanhub { class EventBus; }
 namespace xuanhub { class PluginEventScope; }
 namespace xuanhub { class IBarPluginHost; }
+class PluginRuntime;
 
 class PluginManager : public QObject {
     Q_OBJECT
@@ -34,7 +35,6 @@ public:
         int width = 0;               // 插件宽度（像素，0=跟随内容自适应）
         QObject* viewModel = nullptr;
         QUrl qmlUrl;                 // 绝对 file URL
-        xuanhub::IBarPlugin* iface = nullptr;
         xuanhub::PluginHealth health;
     };
 
@@ -58,6 +58,7 @@ private:
                       bool allowExisting);
     bool createHostedPlugin(const QString& hostId, xuanhub::IBarPluginHost* host,
                             const PluginConfigEntry& entry);
+    void removeRuntime(PluginRuntime* runtime);
 
     xuanhub::EventBus* m_bus;
     QString m_configDir;
@@ -65,10 +66,11 @@ private:
     QVector<QPluginLoader*> m_loaders;
     // host 插件（IBarPluginHost，如 pybridge）：shutdownAll 时最后 shutdown，
     // 其子插件 VM 依赖 host 持有的运行时（如 CPython 解释器）
-    QVector<xuanhub::IBarPlugin*> m_hosts;
+    QVector<PluginRuntime*> m_hosts;
+    std::vector<std::unique_ptr<PluginRuntime>> m_runtimes;
     std::vector<std::unique_ptr<xuanhub::PluginEventScope>> m_eventScopes;
     QHash<QString, QPluginLoader*> m_loaderById;             // 原生插件/host id → loader
-    QHash<QString, xuanhub::IBarPlugin*> m_ifaceById;        // 原生插件/host id → 接口
+    QHash<QString, PluginRuntime*> m_runtimeById;            // 原生插件/host id → V1/V2 适配
     QHash<QString, xuanhub::IBarPluginHost*> m_hostById;     // host id → host 接口
     QHash<QString, QString> m_subPluginHostId;               // 子插件 id → host id
     QHash<QString, xuanhub::PluginEventScope*> m_scopeById;  // 原生插件/host id → 作用域

@@ -234,6 +234,8 @@ if(Python_Interpreter_FOUND)
         ${CMAKE_SOURCE_DIR}/app/src/PluginManifest.cpp
         ${CMAKE_SOURCE_DIR}/app/src/SemanticVersion.h
         ${CMAKE_SOURCE_DIR}/app/src/SemanticVersion.cpp
+        ${CMAKE_SOURCE_DIR}/app/src/PluginRuntime.h
+        ${CMAKE_SOURCE_DIR}/app/src/PluginRuntime.cpp
     )
     set_target_properties(xuanhub_plugin_manager_tests PROPERTIES AUTOMOC ON)
     target_include_directories(xuanhub_plugin_manager_tests PRIVATE
