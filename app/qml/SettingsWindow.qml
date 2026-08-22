@@ -109,6 +109,239 @@ Pane {
         }
     }
 
+    Popup {
+        id: packageInstallConfirm
+        property var info: ({})
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: Math.min(620, root.width - UiMetrics.space6 * 2)
+        x: Math.max(0, (root.width - width) / 2)
+        y: Math.max(0, (root.height - height) / 2)
+        padding: UiMetrics.space5
+        palette.window: root.c.bg
+        palette.windowText: root.c.fg
+        palette.base: root.c.bg
+        palette.text: root.c.fg
+        palette.button: root.c.panel
+        palette.buttonText: root.c.fg
+        palette.highlight: root.c.accent
+        palette.highlightedText: root.c.onAccent
+        palette.mid: root.c.muted
+        background: Rectangle {
+            color: root.c.panel
+            radius: UiMetrics.radiusL
+            border.width: 1
+            border.color: root.c.border
+        }
+        contentItem: ColumnLayout {
+            spacing: UiMetrics.space3
+            Text {
+                Layout.fillWidth: true
+                color: root.c.fg
+                font.pixelSize: UiMetrics.fontL
+                font.weight: Font.DemiBold
+                text: packageInstallConfirm.info.isUpdate === true
+                    ? root.trText("更新插件包？") : root.trText("安装插件包？")
+            }
+            Text {
+                Layout.fillWidth: true
+                color: root.c.fg
+                font.pixelSize: UiMetrics.fontM
+                wrapMode: Text.Wrap
+                text: root.trText("%1（%2） · v%3 · %4")
+                    .arg(String(packageInstallConfirm.info.name || packageInstallConfirm.info.id || ""))
+                    .arg(String(packageInstallConfirm.info.id || ""))
+                    .arg(String(packageInstallConfirm.info.version || ""))
+                    .arg(String(packageInstallConfirm.info.runtime || ""))
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: packageInstallConfirm.info.isUpdate === true
+                color: root.c.muted
+                font.pixelSize: UiMetrics.fontS
+                text: root.trText("当前版本：%1").arg(
+                    String(packageInstallConfirm.info.currentVersion || root.trText("无")))
+            }
+            Text {
+                Layout.fillWidth: true
+                color: root.c.muted
+                font.pixelSize: UiMetrics.fontS
+                wrapMode: Text.Wrap
+                text: root.trText("发布者：%1").arg(
+                    String(packageInstallConfirm.info.publisher || root.trText("未声明")))
+            }
+            Text {
+                Layout.fillWidth: true
+                color: root.c.muted
+                font.pixelSize: UiMetrics.fontTiny
+                wrapMode: Text.WrapAnywhere
+                text: root.trText("包 SHA-256：%1").arg(
+                    String(packageInstallConfirm.info.packageHash || ""))
+            }
+            Text {
+                Layout.fillWidth: true
+                color: root.c.fg
+                font.pixelSize: UiMetrics.fontS
+                wrapMode: Text.Wrap
+                text: root.trText("声明权限：%1").arg(root.permissionListText(
+                    packageInstallConfirm.info.declaredPermissions))
+            }
+            Text {
+                Layout.fillWidth: true
+                color: root.c.fg
+                font.pixelSize: UiMetrics.fontS
+                wrapMode: Text.Wrap
+                text: root.trText("已授予权限：%1").arg(root.permissionListText(
+                    packageInstallConfirm.info.grantedPermissions))
+            }
+            Text {
+                Layout.fillWidth: true
+                color: root.c.warning
+                font.pixelSize: UiMetrics.fontTiny
+                wrapMode: Text.Wrap
+                text: root.trText("当前版本尚未校验发布者签名。原生插件与宿主同进程运行，请只安装可信来源的包。")
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                spacing: UiMetrics.space2
+                UiButton {
+                    variant: "ghost"
+                    text: root.trText("取消")
+                    onClicked: packageInstallConfirm.close()
+                }
+                UiButton {
+                    variant: "primary"
+                    text: packageInstallConfirm.info.isUpdate === true
+                        ? root.trText("确认更新") : root.trText("确认安装")
+                    onClicked: {
+                        const id = String(packageInstallConfirm.info.id || "")
+                        const result = settingsVM.installPluginPackage(
+                            String(packageInstallConfirm.info.path || ""))
+                        packageInstallConfirm.close()
+                        if (result.ok === true) {
+                            pluginList.currentId = id
+                            pluginList.ensureSelection()
+                            detailPanel.refresh()
+                        }
+                    }
+                }
+            }
+        }
+
+        function ask(packageInfo) {
+            info = packageInfo || ({})
+            open()
+        }
+    }
+
+    Popup {
+        id: packageActionConfirm
+        property string operation: ""
+        property var info: ({})
+        property bool deleteUserData: false
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: Math.min(540, root.width - UiMetrics.space6 * 2)
+        x: Math.max(0, (root.width - width) / 2)
+        y: Math.max(0, (root.height - height) / 2)
+        padding: UiMetrics.space5
+        palette.window: root.c.bg
+        palette.windowText: root.c.fg
+        palette.base: root.c.bg
+        palette.text: root.c.fg
+        palette.button: root.c.panel
+        palette.buttonText: root.c.fg
+        palette.highlight: root.c.accent
+        palette.highlightedText: root.c.onAccent
+        palette.mid: root.c.muted
+        background: Rectangle {
+            color: root.c.panel
+            radius: UiMetrics.radiusL
+            border.width: 1
+            border.color: root.c.border
+        }
+        contentItem: ColumnLayout {
+            spacing: UiMetrics.space3
+            Text {
+                Layout.fillWidth: true
+                color: root.c.fg
+                font.pixelSize: UiMetrics.fontL
+                font.weight: Font.DemiBold
+                text: packageActionConfirm.operation === "rollback"
+                    ? root.trText("回滚插件包？") : root.trText("卸载插件包？")
+            }
+            Text {
+                Layout.fillWidth: true
+                color: root.c.muted
+                font.pixelSize: UiMetrics.fontS
+                wrapMode: Text.Wrap
+                text: packageActionConfirm.operation === "rollback"
+                    ? root.trText("将 %1 从 v%2 切换回 v%3。运行中的插件会安全停止并重新加载。")
+                        .arg(String(packageActionConfirm.info.id || ""))
+                        .arg(String(packageActionConfirm.info.version || ""))
+                        .arg(String(packageActionConfirm.info.previousVersion || ""))
+                    : root.trText("将移除 %1 的全部受管版本。若存在同 id 的内置插件，将自动恢复使用内置版本。")
+                        .arg(String(packageActionConfirm.info.id || ""))
+            }
+            UiSwitch {
+                visible: packageActionConfirm.operation === "uninstall"
+                checked: packageActionConfirm.deleteUserData
+                text: root.trText("同时删除插件用户数据")
+                onToggled: packageActionConfirm.deleteUserData = checked
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: packageActionConfirm.operation === "uninstall"
+                         && packageActionConfirm.deleteUserData
+                color: root.c.warning
+                font.pixelSize: UiMetrics.fontTiny
+                wrapMode: Text.Wrap
+                text: root.trText("插件配置、私有环境和运行数据也会删除，此操作不可撤销。")
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                spacing: UiMetrics.space2
+                UiButton {
+                    variant: "ghost"
+                    text: root.trText("取消")
+                    onClicked: packageActionConfirm.close()
+                }
+                UiButton {
+                    variant: "primary"
+                    text: packageActionConfirm.operation === "rollback"
+                        ? root.trText("确认回滚") : root.trText("确认卸载")
+                    onClicked: {
+                        const id = String(packageActionConfirm.info.id || "")
+                        const result = packageActionConfirm.operation === "rollback"
+                            ? settingsVM.rollbackPluginPackage(id)
+                            : settingsVM.uninstallPluginPackage(id,
+                                  packageActionConfirm.deleteUserData)
+                        packageActionConfirm.close()
+                        if (result.ok === true) {
+                            pluginList.ensureSelection()
+                            detailPanel.refresh()
+                        }
+                    }
+                }
+            }
+        }
+
+        function askRollback(packageInfo) {
+            operation = "rollback"
+            info = packageInfo || ({})
+            deleteUserData = false
+            open()
+        }
+        function askUninstall(packageInfo) {
+            operation = "uninstall"
+            info = packageInfo || ({})
+            deleteUserData = false
+            open()
+        }
+    }
+
     // 色板别名：统一从 themeManager.colors 取（M9 数据驱动主题）。Basic 样式经
     // palette 继承传给所有子控件，故把 colors 灌进 palette.* 让 QtQuick.Controls
     // 的表单控件也跟随主题。自绘控件（Ui*.qml）内部只引用 palette。
@@ -663,6 +896,17 @@ Pane {
                                     Layout.fillWidth: true
                                     placeholderText: root.trText("搜索插件…")
                                 }
+                                UiButton {
+                                    Layout.fillWidth: true
+                                    variant: "outline"
+                                    text: root.trText("安装插件包…")
+                                    onClicked: {
+                                        const path = settingsCtl.choosePluginPackage()
+                                        if (!path || path.length === 0) return
+                                        const info = settingsVM.inspectPluginPackage(path)
+                                        if (info.ok === true) packageInstallConfirm.ask(info)
+                                    }
+                                }
 
                                 ListView {
                                     id: pluginList
@@ -862,7 +1106,8 @@ Pane {
                                         "migrationError": m.roleValue(currentRow, "migrationError"),
                                         "layoutPreference": m.roleValue(currentRow, "layoutPreference"),
                                         "health": settingsVM.pluginHealth(pluginList.currentId),
-                                        "dependencyPlan": settingsVM.pluginDependencyPlan(pluginList.currentId)
+                                        "dependencyPlan": settingsVM.pluginDependencyPlan(pluginList.currentId),
+                                        "managedInfo": settingsVM.managedPluginInfo(pluginList.currentId)
                                     }
                                 }
                                 _refreshing = false
@@ -1006,6 +1251,62 @@ Pane {
                                                 variant: "outline"
                                                 text: root.trText("采用迁移结果")
                                                 onClicked: settingsVM.acceptPluginMigration(pluginList.currentId)
+                                            }
+                                        }
+                                    }
+
+                                    UiCard {
+                                        Layout.fillWidth: true
+                                        visible: (detailPanel.rowData.managedInfo || {}).managed === true
+                                        title: root.trText("插件包管理")
+                                        description: root.trText("查看已安装版本并执行安全回滚或卸载")
+
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: UiMetrics.space2
+                                            Text {
+                                                Layout.fillWidth: true
+                                                color: root.c.fg
+                                                font.pixelSize: UiMetrics.fontS
+                                                wrapMode: Text.Wrap
+                                                text: root.trText("当前版本：%1").arg(String(
+                                                    (detailPanel.rowData.managedInfo || {}).version || ""))
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                color: root.c.muted
+                                                font.pixelSize: UiMetrics.fontTiny
+                                                wrapMode: Text.Wrap
+                                                text: root.trText("来源：%1 · 发布者：%2")
+                                                    .arg(String((detailPanel.rowData.managedInfo || {}).sourceName
+                                                        || root.trText("本地文件")))
+                                                    .arg(String((detailPanel.rowData.managedInfo || {}).publisher
+                                                        || root.trText("未声明")))
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                color: root.c.muted
+                                                font.pixelSize: UiMetrics.fontTiny
+                                                wrapMode: Text.WrapAnywhere
+                                                text: root.trText("包 SHA-256：%1").arg(String(
+                                                    (detailPanel.rowData.managedInfo || {}).packageHash || ""))
+                                            }
+                                            RowLayout {
+                                                spacing: UiMetrics.space2
+                                                UiButton {
+                                                    visible: (detailPanel.rowData.managedInfo || {}).rollbackAvailable === true
+                                                    variant: "outline"
+                                                    text: root.trText("回滚到 v%1").arg(String(
+                                                        (detailPanel.rowData.managedInfo || {}).previousVersion || ""))
+                                                    onClicked: packageActionConfirm.askRollback(
+                                                        detailPanel.rowData.managedInfo)
+                                                }
+                                                UiButton {
+                                                    variant: "outline"
+                                                    text: root.trText("卸载插件包")
+                                                    onClicked: packageActionConfirm.askUninstall(
+                                                        detailPanel.rowData.managedInfo)
+                                                }
                                             }
                                         }
                                     }

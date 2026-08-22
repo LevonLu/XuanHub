@@ -139,10 +139,11 @@ bool SettingsViewModel::acceptPluginMigration(const QString& id) {
     return m_pluginModel->acceptMigration(id);
 }
 
-QVariantMap SettingsViewModel::inspectPluginPackage(const QString& packagePath) const {
+QVariantMap SettingsViewModel::inspectPluginPackage(const QString& packagePath) {
     const PluginPackageValidationResult package =
         PluginPackageValidator::validateAndExtract(packagePath);
     if (!package.ok) {
+        setErrorMessage(package.error);
         return {
             {QStringLiteral("ok"), false},
             {QStringLiteral("error"), package.error},
@@ -152,6 +153,7 @@ QVariantMap SettingsViewModel::inspectPluginPackage(const QString& packagePath) 
     const QString configDirectory = QFileInfo(m_config->activePath()).absolutePath();
     const ManagedPluginVersion current =
         PluginPackageStore(configDirectory).current(package.descriptor.id);
+    setErrorMessage({});
     return {
         {QStringLiteral("ok"), true},
         {QStringLiteral("path"), packagePath},

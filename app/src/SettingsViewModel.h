@@ -82,7 +82,7 @@ public:
     Q_INVOKABLE QVariantMap pluginDependencyPlan(const QString& id) const;
     Q_INVOKABLE bool installPluginDependencies(const QString& id);
     Q_INVOKABLE bool acceptPluginMigration(const QString& id);
-    Q_INVOKABLE QVariantMap inspectPluginPackage(const QString& packagePath) const;
+    Q_INVOKABLE QVariantMap inspectPluginPackage(const QString& packagePath);
     Q_INVOKABLE QVariantMap installPluginPackage(const QString& packagePath);
     Q_INVOKABLE QVariantMap managedPluginInfo(const QString& id) const;
     Q_INVOKABLE QVariantMap rollbackPluginPackage(const QString& id);
