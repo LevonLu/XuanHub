@@ -77,6 +77,13 @@ private Q_SLOTS:
         QVERIFY2(v2Result.ok, qPrintable(v2Result.error));
         QCOMPARE(v2Result.descriptor.id, QStringLiteral("com.example.demo"));
         QCOMPARE(v2Result.descriptor.apiVersion, 2);
+        QCOMPARE(v2Result.descriptor.configVersion, 1);
+
+        auto versioned = validV2Manifest();
+        versioned[QStringLiteral("configVersion")] = 4;
+        const auto versionedResult = loadManifest(versioned);
+        QVERIFY2(versionedResult.ok, qPrintable(versionedResult.error));
+        QCOMPARE(versionedResult.descriptor.configVersion, 4);
     }
 
     void rejectsInvalidIdentityAndVersion() {
@@ -89,6 +96,9 @@ private Q_SLOTS:
         manifest = validV2Manifest();
         manifest[QStringLiteral("apiVersion")] = 3;
         QVERIFY(!loadManifest(manifest).ok);
+        manifest = validV2Manifest();
+        manifest[QStringLiteral("configVersion")] = 0;
+        QVERIFY(loadManifest(manifest).error.contains(QStringLiteral("configVersion")));
     }
 
     void rejectsHostAndNativeAbiMismatch() {

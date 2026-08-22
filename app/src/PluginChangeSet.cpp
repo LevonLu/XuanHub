@@ -34,7 +34,10 @@ QMap<QString, PluginConfigEntry> byId(const QList<PluginConfigEntry>& entries) {
 namespace PluginConfigDiff {
 
 QString backendFingerprint(const PluginConfigEntry& entry) {
-    return compactHash(QJsonObject::fromVariantMap(entry.config));
+    return compactHash(QJsonObject{
+        {QStringLiteral("configVersion"), entry.configVersion},
+        {QStringLiteral("config"), QJsonObject::fromVariantMap(entry.config)},
+    });
 }
 
 QString layoutFingerprint(const PluginConfigEntry& entry) {
@@ -48,6 +51,7 @@ QString entriesFingerprint(const QList<PluginConfigEntry>& entries) {
         normalized.append(QJsonObject{
             {QStringLiteral("id"), it.key()},
             {QStringLiteral("layout"), layoutObject(it.value())},
+            {QStringLiteral("configVersion"), it.value().configVersion},
             {QStringLiteral("config"), QJsonObject::fromVariantMap(it.value().config)},
         });
     }

@@ -77,6 +77,15 @@ private Q_SLOTS:
         QVERIFY(changes.isEmpty());
         QCOMPARE(changes.unchanged, QStringList{QStringLiteral("clock")});
     }
+
+    void configVersionChangeIsABackendChange() {
+        PluginConfigEntry before = entry(QStringLiteral("versioned"));
+        PluginConfigEntry after = before;
+        after.configVersion = 2;
+        const PluginChangeSet changes = PluginConfigDiff::calculate({before}, {after});
+        QCOMPARE(changes.configChanged, QStringList{QStringLiteral("versioned")});
+        QVERIFY(changes.unchanged.isEmpty());
+    }
 };
 
 QTEST_GUILESS_MAIN(PluginChangeSetTest)

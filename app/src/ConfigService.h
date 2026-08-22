@@ -11,6 +11,7 @@
 
 struct PluginConfigEntry {
     QString id;             // 与插件 metadata().id 匹配
+    int configVersion = 1;  // 插件私有配置版本；旧配置缺失时视为 1
     QString position;       // "left"/"center"/"right"，空则默认
     int order = 0;          // 同 position 内排序，越小越靠左
     int width = 0;          // 插件在状态栏的宽度（像素，0=跟随内容自适应）

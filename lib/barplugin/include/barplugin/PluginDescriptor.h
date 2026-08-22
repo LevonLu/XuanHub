@@ -31,6 +31,7 @@ struct PluginDescriptor {
     QString displayName;
     QString version;
     int apiVersion = 1;
+    int configVersion = 1;
     QString minHostVersion;
     QString maxHostVersion;
     QString author;

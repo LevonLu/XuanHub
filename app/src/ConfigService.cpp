@@ -203,6 +203,17 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
         const auto o = pv.toObject();
         PluginConfigEntry e;
         e.id = o.value("id").toString();
+        const QJsonValue configVersion = o.value(QStringLiteral("configVersion"));
+        if (!configVersion.isUndefined()) {
+            if (configVersion.isDouble()
+                && configVersion.toDouble() == configVersion.toInt()
+                && configVersion.toInt() >= 1) {
+                e.configVersion = configVersion.toInt();
+            } else {
+                qWarning() << "[Config] invalid configVersion for" << e.id
+                           << "-> use 1";
+            }
+        }
         e.position = o.value("position").toString();
         e.order = qMax(0, o.value("order").toInt(0));   // 负 order 无意义，防手写越界
         // 插件宽度（像素，0=跟随内容自适应）；钳到合理范围防手写越界撑爆状态栏

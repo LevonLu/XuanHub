@@ -22,6 +22,7 @@ bool sameV2Descriptor(const xuanhub::PluginDescriptor& left,
                       const xuanhub::PluginDescriptor& right) {
     if (left.id != right.id || left.displayName != right.displayName
         || left.version != right.version || left.apiVersion != right.apiVersion
+        || left.configVersion != right.configVersion
         || left.minHostVersion != right.minHostVersion
         || left.maxHostVersion != right.maxHostVersion
         || left.author != right.author

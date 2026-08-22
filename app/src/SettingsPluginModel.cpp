@@ -268,6 +268,9 @@ QVariant SettingsPluginModel::data(const QModelIndex& index, int role) const {
         case DeclaredPermissionsRole:    return r.declaredPermissions;
         case GrantedPermissionsRole:     return r.grantedPermissions;
         case TrustLevelRole:             return r.trustLevel;
+        case ConfigVersionRole:          return r.configVersion;
+        case TargetConfigVersionRole:    return r.targetConfigVersion;
+        case MigrationAvailableRole:     return r.targetConfigVersion > r.configVersion;
     }
     return {};
 }
@@ -344,6 +347,9 @@ QHash<int, QByteArray> SettingsPluginModel::roleNames() const {
         { DeclaredPermissionsRole, "declaredPermissions" },
         { GrantedPermissionsRole, "grantedPermissions" },
         { TrustLevelRole, "trustLevel" },
+        { ConfigVersionRole, "configVersion" },
+        { TargetConfigVersionRole, "targetConfigVersion" },
+        { MigrationAvailableRole, "migrationAvailable" },
     };
 }
 
@@ -367,6 +373,8 @@ void SettingsPluginModel::reload(const QList<PluginConfigEntry>& entries,
         if (e.id == QStringLiteral("pybridge")) continue;
         Row r;
         r.id = e.id;
+        r.configVersion = e.configVersion;
+        r.targetConfigVersion = e.configVersion;
         r.enabled = true;
         r.position = e.position.isEmpty() ? QStringLiteral("right") : e.position;
         r.order = e.order;
@@ -401,6 +409,8 @@ void SettingsPluginModel::mergeDiscovered(const QJsonObject& meta, const QString
     // sidecar 声明的设置 schema 与自绘设置页（均可空）
     const QJsonArray schema = meta.value(QStringLiteral("settings")).toArray();
     const int apiVersion = meta.value(QStringLiteral("apiVersion")).toInt(1);
+    const int targetConfigVersion = qMax(
+        1, meta.value(QStringLiteral("configVersion")).toInt(1));
     QStringList capabilities;
     for (const QJsonValue& value : meta.value(QStringLiteral("capabilities")).toArray())
         if (value.isString()) capabilities.append(value.toString());
@@ -431,6 +441,7 @@ void SettingsPluginModel::mergeDiscovered(const QJsonObject& meta, const QString
             r.schema = schema;
             r.settingsQml = settingsQml;
             r.apiVersion = apiVersion;
+            r.targetConfigVersion = targetConfigVersion;
             r.capabilities = capabilities;
             r.declaredPermissions = declaredPermissions;
             r.grantedPermissions = grantedPermissions;
@@ -448,6 +459,8 @@ void SettingsPluginModel::mergeDiscovered(const QJsonObject& meta, const QString
     r.schema = schema;
     r.settingsQml = settingsQml;
     r.apiVersion = apiVersion;
+    r.configVersion = targetConfigVersion;
+    r.targetConfigVersion = targetConfigVersion;
     r.capabilities = capabilities;
     r.declaredPermissions = declaredPermissions;
     r.grantedPermissions = grantedPermissions;
@@ -584,6 +597,7 @@ bool SettingsPluginModel::toPluginEntriesJson(QJsonArray* out, QString* err) con
         }
         if (!protectUsageHubVendorSecrets(r.id, &config, rawConfig, secrets, err)) return false;
         o[QStringLiteral("id")] = r.id;
+        o[QStringLiteral("configVersion")] = r.configVersion;
         o[QStringLiteral("position")] = r.position;
         o[QStringLiteral("order")] = r.order;
         o[QStringLiteral("width")] = r.width;   // 0=自适应，>0 固定像素宽

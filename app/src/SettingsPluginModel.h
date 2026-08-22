@@ -31,7 +31,10 @@ public:
         CapabilitiesRole,
         DeclaredPermissionsRole,
         GrantedPermissionsRole,
-        TrustLevelRole
+        TrustLevelRole,
+        ConfigVersionRole,
+        TargetConfigVersionRole,
+        MigrationAvailableRole
     };
 
     explicit SettingsPluginModel(QObject* parent = nullptr);
@@ -82,6 +85,8 @@ private:
         QJsonArray schema;         // sidecar "settings"（可空）
         QUrl settingsQml;          // sidecar "settingsQml"（可空）
         int apiVersion = 1;
+        int configVersion = 1;       // 当前 config.json 条目版本
+        int targetConfigVersion = 1; // sidecar 声明的最新版本
         QStringList capabilities;
         QStringList declaredPermissions;
         QStringList grantedPermissions;

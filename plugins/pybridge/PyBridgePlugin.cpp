@@ -194,6 +194,14 @@ PythonManifestResult readPluginJson(const QDir& directory) {
         result.error = QStringLiteral("unsupported apiVersion");
         return result;
     }
+    const QJsonValue configVersion = result.object.value(QStringLiteral("configVersion"));
+    if (!configVersion.isUndefined()
+        && (!configVersion.isDouble()
+            || configVersion.toDouble() != configVersion.toInt()
+            || configVersion.toInt() < 1)) {
+        result.error = QStringLiteral("configVersion must be a positive integer");
+        return result;
+    }
     const QRegularExpression declarationPattern(
         QStringLiteral(R"(^[A-Za-z0-9._:*-]{1,128}$)"));
     for (const QString& key : {QStringLiteral("capabilities"),

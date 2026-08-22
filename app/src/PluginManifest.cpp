@@ -255,6 +255,16 @@ PluginManifestResult PluginManifest::load(
     if (descriptor.apiVersion != 1 && descriptor.apiVersion != 2)
         return failed(QStringLiteral("unsupported apiVersion: %1").arg(descriptor.apiVersion));
 
+    const QJsonValue configVersion = object.value(QStringLiteral("configVersion"));
+    if (!configVersion.isUndefined()) {
+        if (!configVersion.isDouble()
+            || configVersion.toDouble() != configVersion.toInt()
+            || configVersion.toInt() < 1) {
+            return failed(QStringLiteral("configVersion must be a positive integer"));
+        }
+        descriptor.configVersion = configVersion.toInt();
+    }
+
     if (!optionalString(object, QStringLiteral("minHostVersion"),
                         &descriptor.minHostVersion, &error)
         || !optionalString(object, QStringLiteral("maxHostVersion"),

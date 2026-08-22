@@ -40,6 +40,63 @@ class ConfigServiceTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void pluginConfigVersionDefaultsAndIsPreservedBySettingsDraft() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QJsonObject versioned = plugin(QStringLiteral("versioned"));
+        versioned[QStringLiteral("configVersion")] = 3;
+        QJsonObject malformed = plugin(QStringLiteral("malformed"));
+        malformed[QStringLiteral("configVersion")] = 0;
+        QVERIFY(writeJson(dir.path(), QJsonDocument(configWithPlugins(
+            {plugin(QStringLiteral("legacy")), versioned, malformed}))));
+
+        ConfigService service;
+        QVERIFY(service.load(dir.path(), dir.path()));
+        QCOMPARE(service.pluginEntries().size(), 3);
+        QCOMPARE(service.pluginEntries().at(0).configVersion, 1);
+        QCOMPARE(service.pluginEntries().at(1).configVersion, 3);
+        QCOMPARE(service.pluginEntries().at(2).configVersion, 1);
+
+        const QString sidecarDir = dir.filePath(QStringLiteral("plugins/versioned"));
+        QVERIFY(QDir().mkpath(sidecarDir));
+        QFile sidecar(sidecarDir + QStringLiteral("/metadata.json"));
+        QVERIFY(sidecar.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        sidecar.write(QJsonDocument(QJsonObject{
+            {QStringLiteral("id"), QStringLiteral("versioned")},
+            {QStringLiteral("configVersion"), 5},
+        }).toJson(QJsonDocument::Compact));
+        sidecar.close();
+
+        SettingsPluginModel model;
+        model.reload(service.pluginEntries(), service.rawConfig()
+                         .value(QStringLiteral("plugins")).toArray(),
+                     dir.path(), dir.filePath(QStringLiteral("config.json")));
+        int versionedRow = -1;
+        for (int row = 0; row < model.rowCount(); ++row) {
+            if (model.data(model.index(row), SettingsPluginModel::IdRole).toString()
+                == QStringLiteral("versioned")) {
+                versionedRow = row;
+                break;
+            }
+        }
+        QVERIFY(versionedRow >= 0);
+        QCOMPARE(model.data(model.index(versionedRow),
+                            SettingsPluginModel::ConfigVersionRole).toInt(), 3);
+        QCOMPARE(model.data(model.index(versionedRow),
+                            SettingsPluginModel::TargetConfigVersionRole).toInt(), 5);
+        QVERIFY(model.data(model.index(versionedRow),
+                           SettingsPluginModel::MigrationAvailableRole).toBool());
+
+        QJsonArray exported;
+        QString error;
+        QVERIFY2(model.toPluginEntriesJson(&exported, &error), qPrintable(error));
+        for (const QJsonValue& value : exported) {
+            const QJsonObject object = value.toObject();
+            if (object.value(QStringLiteral("id")).toString() == QStringLiteral("versioned"))
+                QCOMPARE(object.value(QStringLiteral("configVersion")).toInt(), 3);
+        }
+    }
+
     void nonObjectRootKeepsCurrentState() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
