@@ -7,5 +7,23 @@
     "capabilities": ["barItem", "settings", "popup"],
     "permissions": [],
     "qml": "UsageHub.qml",
-    "settingsQml": "UsageSettings.qml"
+    "settingsQml": "UsageSettings.qml",
+    "settings": [
+        {
+            "group": "厂商账户",
+            "fields": [
+                {
+                    "key": "vendors",
+                    "type": "array",
+                    "itemKey": "secretId",
+                    "items": {
+                        "type": "object",
+                        "fields": [
+                            {"key": "apiKey", "type": "string", "secret": true}
+                        ]
+                    }
+                }
+            ]
+        }
+    ]
 }

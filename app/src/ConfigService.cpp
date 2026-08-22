@@ -1,5 +1,6 @@
 // ConfigService.cpp
 #include "ConfigService.h"
+#include "ConfigSecretProcessor.h"
 #include "SecretStore.h"
 #include <QDir>
 #include <QFile>
@@ -10,39 +11,6 @@
 #include <QJsonArray>
 #include <QSet>
 #include <QDebug>
-
-namespace {
-// 用量中心的厂商凭据位于 vendors 数组中，不能只按顶层字段名解密。
-// secretId 是设置模型生成的随机稳定标识；重排厂商不会把 A 的凭据给 B。
-void hydrateUsageHubVendorSecrets(PluginConfigEntry* entry, const QJsonObject& config,
-                                  const SecretStore& secrets) {
-    if (!entry || entry->id != QLatin1String("py_usage_hub")) return;
-    const QJsonArray rawVendors = config.value(QStringLiteral("vendors")).toArray();
-    QVariantList vendors = entry->config.value(QStringLiteral("vendors")).toList();
-    for (qsizetype index = 0; index < rawVendors.size() && index < vendors.size(); ++index) {
-        const QJsonObject rawVendor = rawVendors.at(index).toObject();
-        const QString token = rawVendor.value(QStringLiteral("secretId")).toString();
-        const QString reference = SecretStore::referenceId(
-            rawVendor.value(QStringLiteral("apiKey")));
-        if (reference.isEmpty()) continue;
-
-        QVariantMap vendor = vendors.at(index).toMap();
-        const QString expected = SecretStore::idForPluginField(
-            entry->id, QStringLiteral("vendors.%1.apiKey").arg(token));
-        if (token.isEmpty() || reference != expected) {
-            qWarning() << "[Config] invalid usage-hub vendor secret reference at" << index;
-            vendor.remove(QStringLiteral("apiKey"));
-        } else if (const auto plaintext = secrets.read(reference)) {
-            vendor.insert(QStringLiteral("apiKey"), *plaintext);
-        } else {
-            // 解密失败时绝不把引用对象交给 Python worker，避免被当作字符串凭据使用。
-            vendor.remove(QStringLiteral("apiKey"));
-        }
-        vendors[index] = vendor;
-    }
-    entry->config.insert(QStringLiteral("vendors"), vendors);
-}
-} // namespace
 
 ConfigService::ConfigService(QObject* parent) : QObject(parent) {}
 
@@ -235,7 +203,11 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
             if (plaintext) e.config.insert(it.key(), *plaintext);
             else e.config.remove(it.key());
         }
-        hydrateUsageHubVendorSecrets(&e, configObject, secrets);
+        // 嵌套 object/array 密钥由 sidecar settings schema 驱动；即使 schema 缺失，
+        // 也会递归剥离引用对象，绝不把密钥引用本身交给插件当作普通配置使用。
+        ConfigSecretProcessor::hydrate(
+            e.id, ConfigSecretProcessor::loadSchema(exeDir, e.id),
+            configObject, &e.config, secrets);
         if (!e.id.isEmpty()) m_pluginEntries.append(e);
     }
 

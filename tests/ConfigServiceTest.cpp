@@ -13,6 +13,8 @@
 #include <QTemporaryDir>
 #include <QtTest>
 
+#include <utility>
+
 namespace {
 bool writeJson(const QString& directory, const QJsonDocument& doc) {
     QFile file(directory + QStringLiteral("/config.json"));
@@ -431,18 +433,48 @@ private Q_SLOTS:
     void usageHubVendorSecretMigratesAndHydrates() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
+        const QJsonArray settings{QJsonObject{
+            {QStringLiteral("group"), QStringLiteral("账户")},
+            {QStringLiteral("fields"), QJsonArray{QJsonObject{
+                {QStringLiteral("key"), QStringLiteral("vendors")},
+                {QStringLiteral("type"), QStringLiteral("array")},
+                {QStringLiteral("itemKey"), QStringLiteral("secretId")},
+                {QStringLiteral("items"), QJsonObject{
+                    {QStringLiteral("type"), QStringLiteral("object")},
+                    {QStringLiteral("fields"), QJsonArray{QJsonObject{
+                        {QStringLiteral("key"), QStringLiteral("apiKey")},
+                        {QStringLiteral("type"), QStringLiteral("string")},
+                        {QStringLiteral("secret"), true}
+                    }}}
+                }}
+            }}}
+        }};
+        const QString pluginDir = dir.filePath(QStringLiteral("plugins_py/usage_hub"));
+        QVERIFY(QDir().mkpath(pluginDir));
+        QFile sidecar(QDir(pluginDir).filePath(QStringLiteral("plugin.json")));
+        QVERIFY(sidecar.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        QVERIFY(sidecar.write(QJsonDocument(QJsonObject{
+            {QStringLiteral("id"), QStringLiteral("py_usage_hub")},
+            {QStringLiteral("settings"), settings}
+        }).toJson(QJsonDocument::Compact)) > 0);
+        sidecar.close();
         const QJsonObject vendor{{QStringLiteral("id"), QStringLiteral("deepseek")},
                                  {QStringLiteral("name"), QStringLiteral("DeepSeek")},
                                  {QStringLiteral("apiKey"), QStringLiteral("plain-key")}};
+        const QJsonObject vendor2{{QStringLiteral("id"), QStringLiteral("glm")},
+                                  {QStringLiteral("name"), QStringLiteral("GLM")},
+                                  {QStringLiteral("apiKey"), QStringLiteral("second-key")}};
         const QJsonObject rawEntry = plugin(QStringLiteral("py_usage_hub"),
-                                            {{QStringLiteral("vendors"), QJsonArray{vendor}}});
+                                            {{QStringLiteral("vendors"),
+                                              QJsonArray{vendor, vendor2}}});
         PluginConfigEntry entry;
         entry.id = QStringLiteral("py_usage_hub");
         entry.position = QStringLiteral("right");
         entry.config = rawEntry.value(QStringLiteral("config")).toObject().toVariantMap();
 
         SettingsPluginModel model;
-        model.reload({entry}, QJsonArray{rawEntry}, {}, dir.filePath(QStringLiteral("config.json")));
+        model.reload({entry}, QJsonArray{rawEntry}, dir.path(),
+                     dir.filePath(QStringLiteral("config.json")));
         QJsonArray exported;
         QString error;
         SecretStore store(dir.path());
@@ -450,24 +482,107 @@ private Q_SLOTS:
         QVERIFY2(model.toPluginEntriesJson(&exported, &error, &transaction), qPrintable(error));
 
         const QJsonObject saved = exported.first().toObject();
-        const QJsonObject savedVendor = saved.value(QStringLiteral("config")).toObject()
-                                           .value(QStringLiteral("vendors")).toArray().first().toObject();
+        const QJsonArray savedVendors = saved.value(QStringLiteral("config")).toObject()
+                                            .value(QStringLiteral("vendors")).toArray();
+        const QJsonObject savedVendor = savedVendors.first().toObject();
+        const QJsonObject savedVendor2 = savedVendors.at(1).toObject();
         const QString token = savedVendor.value(QStringLiteral("secretId")).toString();
+        const QString token2 = savedVendor2.value(QStringLiteral("secretId")).toString();
         QVERIFY(!token.isEmpty());
-        const QString secretId = SecretStore::idForPluginField(
-            QStringLiteral("py_usage_hub"), QStringLiteral("vendors.%1.apiKey").arg(token));
+        QVERIFY(!token2.isEmpty());
+        QVERIFY(token != token2);
+        const QString secretId = SecretStore::idForPluginPointer(
+            QStringLiteral("py_usage_hub"),
+            QStringLiteral("/vendors/%1/apiKey").arg(token));
+        const QString secretId2 = SecretStore::idForPluginPointer(
+            QStringLiteral("py_usage_hub"),
+            QStringLiteral("/vendors/%1/apiKey").arg(token2));
         QCOMPARE(SecretStore::referenceId(savedVendor.value(QStringLiteral("apiKey"))), secretId);
+        QCOMPARE(SecretStore::referenceId(savedVendor2.value(QStringLiteral("apiKey"))), secretId2);
         QVERIFY(!store.read(secretId).has_value());
 
         QVERIFY(transaction.commit());
         QVERIFY(writeJson(dir.path(), QJsonDocument(configWithPlugins({saved}))));
         transaction.finalize();
         QCOMPARE(store.read(secretId).value_or({}), QStringLiteral("plain-key"));
+        QCOMPARE(store.read(secretId2).value_or({}), QStringLiteral("second-key"));
         ConfigService service;
         QVERIFY(service.load(dir.path(), dir.path()));
-        const QVariantMap hydrated = service.pluginEntries().first().config
-                                         .value(QStringLiteral("vendors")).toList().first().toMap();
-        QCOMPARE(hydrated.value(QStringLiteral("apiKey")).toString(), QStringLiteral("plain-key"));
+        QVariantList hydrated = service.pluginEntries().first().config
+                                    .value(QStringLiteral("vendors")).toList();
+        QCOMPARE(hydrated.first().toMap().value(QStringLiteral("apiKey")).toString(),
+                 QStringLiteral("plain-key"));
+        QCOMPARE(hydrated.at(1).toMap().value(QStringLiteral("apiKey")).toString(),
+                 QStringLiteral("second-key"));
+
+        // 重排使用稳定 itemKey，而不是数组下标；两份凭据不得串位。
+        std::swap(hydrated[0], hydrated[1]);
+        PluginConfigEntry reordered = service.pluginEntries().first();
+        reordered.config.insert(QStringLiteral("vendors"), hydrated);
+        SettingsPluginModel reorderedModel;
+        reorderedModel.reload({reordered}, QJsonArray{saved}, dir.path(), service.activePath());
+        QJsonArray reorderedExport;
+        auto reorderTransaction = store.beginTransaction();
+        QVERIFY2(reorderedModel.toPluginEntriesJson(
+                     &reorderedExport, &error, &reorderTransaction), qPrintable(error));
+        const QJsonObject reorderedSaved = reorderedExport.first().toObject();
+        const QJsonArray reorderedVendors = reorderedSaved.value(QStringLiteral("config"))
+                                                .toObject().value(QStringLiteral("vendors")).toArray();
+        QCOMPARE(reorderedVendors.first().toObject()
+                     .value(QStringLiteral("secretId")).toString(), token2);
+        QCOMPARE(SecretStore::referenceId(reorderedVendors.first().toObject()
+                                              .value(QStringLiteral("apiKey"))), secretId2);
+        QVERIFY(reorderTransaction.commit());
+
+        QJsonArray tamperedVendors = reorderedVendors;
+        QJsonObject tamperedFirst = tamperedVendors.at(0).toObject();
+        QJsonObject tamperedSecond = tamperedVendors.at(1).toObject();
+        const QJsonValue firstReference = tamperedFirst.value(QStringLiteral("apiKey"));
+        tamperedFirst[QStringLiteral("apiKey")] = tamperedSecond.value(QStringLiteral("apiKey"));
+        tamperedSecond[QStringLiteral("apiKey")] = firstReference;
+        tamperedVendors[0] = tamperedFirst;
+        tamperedVendors[1] = tamperedSecond;
+        QJsonObject tamperedSaved = reorderedSaved;
+        QJsonObject tamperedConfig = tamperedSaved.value(QStringLiteral("config")).toObject();
+        tamperedConfig[QStringLiteral("vendors")] = tamperedVendors;
+        tamperedSaved[QStringLiteral("config")] = tamperedConfig;
+        QVERIFY(writeJson(dir.path(), QJsonDocument(configWithPlugins({tamperedSaved}))));
+        ConfigService tamperedService;
+        QVERIFY(tamperedService.load(dir.path(), dir.path()));
+        const QVariantList tamperedHydrated = tamperedService.pluginEntries().first().config
+                                                  .value(QStringLiteral("vendors")).toList();
+        QVERIFY(!tamperedHydrated.at(0).toMap().contains(QStringLiteral("apiKey")));
+        QVERIFY(!tamperedHydrated.at(1).toMap().contains(QStringLiteral("apiKey")));
+
+        QVERIFY(writeJson(dir.path(), QJsonDocument(configWithPlugins({reorderedSaved}))));
+        reorderTransaction.finalize();
+
+        ConfigService reorderedService;
+        QVERIFY(reorderedService.load(dir.path(), dir.path()));
+        const QVariantList reorderedHydrated = reorderedService.pluginEntries().first().config
+                                                   .value(QStringLiteral("vendors")).toList();
+        QCOMPARE(reorderedHydrated.first().toMap()
+                     .value(QStringLiteral("apiKey")).toString(), QStringLiteral("second-key"));
+        QCOMPARE(reorderedHydrated.at(1).toMap()
+                     .value(QStringLiteral("apiKey")).toString(), QStringLiteral("plain-key"));
+
+        // 删除第二项时，配置与密钥库在同一事务中清掉对应孤儿密钥。
+        PluginConfigEntry shortened = reorderedService.pluginEntries().first();
+        shortened.config.insert(QStringLiteral("vendors"),
+                                QVariantList{reorderedHydrated.first()});
+        SettingsPluginModel shortenedModel;
+        shortenedModel.reload({shortened}, QJsonArray{reorderedSaved}, dir.path(),
+                              reorderedService.activePath());
+        QJsonArray shortenedExport;
+        auto deleteTransaction = store.beginTransaction();
+        QVERIFY2(shortenedModel.toPluginEntriesJson(
+                     &shortenedExport, &error, &deleteTransaction), qPrintable(error));
+        QVERIFY(deleteTransaction.commit());
+        QVERIFY(writeJson(dir.path(), QJsonDocument(configWithPlugins(
+                                            {shortenedExport.first().toObject()}))));
+        deleteTransaction.finalize();
+        QCOMPARE(store.read(secretId2).value_or({}), QStringLiteral("second-key"));
+        QVERIFY(!store.read(secretId).has_value());
     }
 
     void pluginMoveKeepsRegionsSeparateAndNormalizesOrder() {

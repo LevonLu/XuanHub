@@ -141,7 +141,16 @@ bool SecretStore::Transaction::rollback() {
 }
 
 QString SecretStore::idForPluginField(const QString& pluginId, const QString& fieldKey) {
-    return QStringLiteral("plugin/") + pluginId + QLatin1Char('/') + fieldKey;
+    QString escaped = fieldKey;
+    escaped.replace(QLatin1Char('~'), QStringLiteral("~0"));
+    escaped.replace(QLatin1Char('/'), QStringLiteral("~1"));
+    return idForPluginPointer(pluginId, QLatin1Char('/') + escaped);
+}
+
+QString SecretStore::idForPluginPointer(const QString& pluginId,
+                                        const QString& jsonPointer) {
+    if (pluginId.isEmpty() || !jsonPointer.startsWith(QLatin1Char('/'))) return {};
+    return QStringLiteral("plugin/") + pluginId + jsonPointer;
 }
 
 QJsonValue SecretStore::referenceValue(const QString& secretId) {

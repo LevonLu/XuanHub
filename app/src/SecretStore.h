@@ -39,6 +39,9 @@ public:
 
     // secretId 固定为 plugin/<plugin-id>/<field-key>，避免插件互相引用密钥。
     static QString idForPluginField(const QString& pluginId, const QString& fieldKey);
+    // JSON Pointer 以 / 开头并按 RFC 6901 转义；数组段使用 schema.itemKey 的稳定值。
+    static QString idForPluginPointer(const QString& pluginId,
+                                      const QString& jsonPointer);
     static QJsonValue referenceValue(const QString& secretId);
     static QString referenceId(const QJsonValue& value);
 

@@ -2,6 +2,7 @@
   "locale": "en-US",
   "contexts": {
     "plugin.py_usage_hub.metadata": { "用量中心": "Usage Hub" },
+    "plugin.py_usage_hub.settings": { "厂商账户": "Provider accounts" },
     "plugin.py_usage_hub.settingsPage": {
       "余额": "Balance", "暂无厂商，点击下方按钮添加": "No providers. Use the button below to add one.",
       "已启用": "Enabled", "已停用": "Disabled", "显示名称": "Display name",

@@ -5,6 +5,8 @@ add_executable(xuanhub_config_tests
     ${CMAKE_SOURCE_DIR}/app/src/ConfigService.cpp
     ${CMAKE_SOURCE_DIR}/app/src/SecretStore.h
     ${CMAKE_SOURCE_DIR}/app/src/SecretStore.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/ConfigSecretProcessor.h
+    ${CMAKE_SOURCE_DIR}/app/src/ConfigSecretProcessor.cpp
     ${CMAKE_SOURCE_DIR}/app/src/SettingsPluginModel.h
     ${CMAKE_SOURCE_DIR}/app/src/SettingsPluginModel.cpp
     ${CMAKE_SOURCE_DIR}/app/src/SettingsPluginSortModel.h

@@ -29,6 +29,9 @@ qt_add_executable(XuanHub WIN32
     src/SecretStore.h
     src/SecretStore.cpp
 
+    src/ConfigSecretProcessor.h
+    src/ConfigSecretProcessor.cpp
+
     src/ConfigHotReloader.h
     src/ConfigHotReloader.cpp
 

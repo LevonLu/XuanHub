@@ -2,6 +2,7 @@
   "locale": "zh-CN",
   "contexts": {
     "plugin.py_usage_hub.metadata": { "用量中心": "用量中心" },
+    "plugin.py_usage_hub.settings": { "厂商账户": "厂商账户" },
     "plugin.py_usage_hub.settingsPage": {
       "余额": "余额", "暂无厂商，点击下方按钮添加": "暂无厂商，点击下方按钮添加",
       "已启用": "已启用", "已停用": "已停用", "显示名称": "显示名称",
