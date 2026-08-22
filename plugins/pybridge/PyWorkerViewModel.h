@@ -14,12 +14,17 @@
 #include <QTimer>
 #include <QVariantMap>
 
+#include "barplugin/IBarPluginHostConfigValidation.h"
 #include "barplugin/PluginHealth.h"
 
 class QTcpServer;
 class QTcpSocket;
 class PyWorkerViewModelTest;
-namespace xuanhub { class EventBus; class PluginEventScope; class IHostServices; }
+namespace xuanhub {
+class EventBus;
+class PluginEventScope;
+class IHostServices;
+}
 
 class PyWorkerViewModel : public QObject {
     Q_OBJECT
@@ -41,6 +46,7 @@ public:
     int consecutiveFailures() const { return m_failureTimesMs.size(); }
     int updateIntervalMs() const { return m_updateIntervalMs; }
     bool supportsHotConfig() const { return m_supportsHotConfig; }
+    bool supportsConfigValidation() const { return m_supportsConfigValidation; }
     QVariantMap health() const;
 
     // 启动监听端与 worker。真正的 import/init 在 worker 连接并通过令牌认证后异步进行。
@@ -50,6 +56,8 @@ public:
     Q_INVOKABLE QVariant call(const QString& name, const QVariantList& args);
     // 只重建当前插件的 worker；同时解除熔断，供设置页和插件错误界面手动恢复。
     Q_INVOKABLE bool restart();
+    xuanhub::HostedPluginConfigValidationResult validateConfig(
+        const QVariantMap& config, int timeoutMs);
     bool applyConfig(const QVariantMap& config);
     void setConfigVersions(int currentVersion, int targetVersion);
     void setHostServices(xuanhub::IHostServices* services) { m_hostServices = services; }
@@ -72,6 +80,7 @@ Q_SIGNALS:
                               int targetVersion, const QVariantMap& config);
     void configMigrationFailed(const QString& id, int currentVersion,
                                int targetVersion, const QString& error);
+    void configValidationFinished(bool valid, const QString& error);
 
 private:
     friend class PyWorkerViewModelTest;
@@ -134,6 +143,8 @@ private:
     bool m_stopping = false;
     bool m_circuitOpen = false;
     bool m_supportsHotConfig = false;
+    bool m_supportsConfigValidation = false;
+    bool m_validationWaiting = false;
     QQueue<qint64> m_failureTimesMs;
     xuanhub::PluginHealth m_health;
     int m_restartAttempt = 0;

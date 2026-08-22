@@ -10,6 +10,7 @@
 #include "barplugin/IBarPluginHostLifecycle.h"
 #include "barplugin/IBarPluginHostConfigurable.h"
 #include "barplugin/IBarPluginHostConfigMigration.h"
+#include "barplugin/IBarPluginHostConfigValidation.h"
 #include "barplugin/IBarPluginHostEventBus.h"
 #include "barplugin/IBarPluginHostServices.h"
 
@@ -18,6 +19,7 @@ class PyBridgePlugin : public QObject, public xuanhub::IBarPlugin,
                        public xuanhub::IBarPluginHostLifecycle,
                        public xuanhub::IBarPluginHostConfigurable,
                        public xuanhub::IBarPluginHostConfigMigration,
+                       public xuanhub::IBarPluginHostConfigValidation,
                        public xuanhub::IBarPluginHostEventBus,
                        public xuanhub::IBarPluginHostServices {
     Q_OBJECT
@@ -26,6 +28,7 @@ class PyBridgePlugin : public QObject, public xuanhub::IBarPlugin,
                  xuanhub::IBarPluginHostLifecycle
                  xuanhub::IBarPluginHostConfigurable
                  xuanhub::IBarPluginHostConfigMigration
+                 xuanhub::IBarPluginHostConfigValidation
                  xuanhub::IBarPluginHostEventBus
                  xuanhub::IBarPluginHostServices)
 public:
@@ -44,6 +47,8 @@ public:
     bool applySubPluginConfig(const QString& id, const QVariantMap& config) override;
     void setSubPluginConfigVersion(const QString& id,
                                    int currentVersion) override;
+    xuanhub::HostedPluginConfigValidationResult validateSubPluginConfig(
+        const QString& id, const QVariantMap& config, int timeoutMs) override;
     bool bindSubPluginHostServices(const QString& id,
                                    xuanhub::IHostServices* services) override;
     bool bindSubPluginEventScope(const QString& id,

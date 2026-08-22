@@ -12,6 +12,7 @@
 #include "barplugin/IBarPluginHostLifecycle.h"
 #include "barplugin/IBarPluginHostConfigurable.h"
 #include "barplugin/IBarPluginHostConfigMigration.h"
+#include "barplugin/IBarPluginHostConfigValidation.h"
 #include "barplugin/IBarPluginHostEventBus.h"
 #include "barplugin/IBarPluginHostServices.h"
 #include "barplugin/PluginEventScope.h"
@@ -673,9 +674,18 @@ bool PluginManager::updateLayout(const PluginConfigEntry& entry) {
 
 PluginManager::ConfigValidationResult PluginManager::validateConfig(
     const QString& id, const QVariantMap& config) const {
-    // host 子插件的验证需要一次隔离 Worker 往返，后续由异步桥接补齐；这里不能
-    // 偷用 applySubPluginConfig，否则点击保存前就会修改正在运行的插件状态。
-    if (m_subPluginHostId.contains(id)) return {};
+    const QString hostId = m_subPluginHostId.value(id);
+    if (!hostId.isEmpty()) {
+        auto* hostRuntime = m_runtimeById.value(hostId);
+        auto* hostObject = hostRuntime ? hostRuntime->instance() : nullptr;
+        auto* validationHost = hostObject
+            ? qobject_cast<xuanhub::IBarPluginHostConfigValidation*>(hostObject)
+            : nullptr;
+        if (!validationHost) return {};
+        // 嵌套事件循环继续处理 IPC/宿主服务，但屏蔽用户输入，避免保存过程重入。
+        const auto result = validationHost->validateSubPluginConfig(id, config, 5000);
+        return {result.supported, result.valid, result.error};
+    }
     auto* runtime = m_runtimeById.value(id);
     if (!runtime) return {};
     const PluginRuntime::ValidationResult result = runtime->validateConfig(config);

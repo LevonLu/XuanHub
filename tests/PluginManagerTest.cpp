@@ -255,6 +255,14 @@ private Q_SLOTS:
         QCOMPARE(suggestion->config.value(QStringLiteral("prefix")).toString(),
                  QStringLiteral("migrated"));
         QCOMPARE(suggestion->config.value(QStringLiteral("fromVersion")).toInt(), 1);
+        const auto accepted = manager.validateConfig(pluginId, suggestion->config);
+        QVERIFY(accepted.supported);
+        QVERIFY(accepted.valid);
+        const auto rejected = manager.validateConfig(
+            pluginId, {{QStringLiteral("prefix"), QStringLiteral("blocked")}});
+        QVERIFY(rejected.supported);
+        QVERIFY(!rejected.valid);
+        QVERIFY(!rejected.error.isEmpty());
         manager.shutdownAll();
     }
 };

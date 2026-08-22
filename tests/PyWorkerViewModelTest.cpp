@@ -140,6 +140,9 @@ def set_locale(locale):
     state["locale"] = locale
 def set_config(config):
     state["prefix"] = config.get("prefix", "")
+def validate_config(config):
+    ok = config.get("prefix") != "blocked"
+    return {"ok": ok, "errors": [] if ok else ["prefix blocked"]}
 def update():
     return {"count": state["count"], "prefix": state["prefix"], "locale": state["locale"]}
 def invoke(name, args):
@@ -165,6 +168,18 @@ def stop():
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("locale")).toString(),
                                       QStringLiteral("zh-CN"), 5000);
             QTRY_VERIFY_WITH_TIMEOUT(viewModel.supportsHotConfig(), 5000);
+            QTRY_VERIFY_WITH_TIMEOUT(viewModel.supportsConfigValidation(), 5000);
+            const auto accepted = viewModel.validateConfig(
+                {{QStringLiteral("prefix"), QStringLiteral("allowed")}}, 5000);
+            QVERIFY(accepted.supported);
+            QVERIFY(accepted.valid);
+            const auto rejected = viewModel.validateConfig(
+                {{QStringLiteral("prefix"), QStringLiteral("blocked")}}, 5000);
+            QVERIFY(rejected.supported);
+            QVERIFY(!rejected.valid);
+            QCOMPARE(rejected.error, QStringLiteral("prefix blocked"));
+            QCOMPARE(viewModel.values().value(QStringLiteral("prefix")).toString(),
+                     QStringLiteral("isolated"));
             QVERIFY(viewModel.applyConfig({
                 {QStringLiteral("prefix"), QStringLiteral("hot")},
                 {QStringLiteral("stopFile"), stopFile},

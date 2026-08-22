@@ -69,6 +69,12 @@ class BridgeWorkerTests(unittest.TestCase):
                 "def migrate_config(old_version, config):\n"
                 "    return []\n"
             )
+        elif self._testMethodName == "test_validate_config_does_not_apply_it":
+            migration_code = (
+                "def validate_config(config):\n"
+                "    ok = config.get('prefix') == 'allowed'\n"
+                "    return {'ok': ok, 'errors': [] if ok else ['prefix rejected']}\n"
+            )
         if self._testMethodName == "test_host_services_are_available_during_init":
             host_import = "from xuanhub_host import log, notify\n"
             host_init = (
@@ -260,6 +266,22 @@ class BridgeWorkerTests(unittest.TestCase):
         })
         self.assertFalse(initialized["ok"])
         self.assertIn("migrate_config() must return a dict", initialized["error"])
+
+    def test_validate_config_does_not_apply_it(self) -> None:
+        initialized = self.request("init", {
+            "config": {"prefix": "allowed"}, "locale": "en-US",
+        })
+        self.assertTrue(initialized["ok"], initialized.get("error"))
+        self.assertIn("validate_config", initialized["result"]["capabilities"])
+        accepted = self.request("validate_config", {"config": {"prefix": "allowed"}})
+        self.assertEqual(accepted["result"], {
+            "supported": True, "valid": True, "error": "",
+        })
+        rejected = self.request("validate_config", {"config": {"prefix": "blocked"}})
+        self.assertEqual(rejected["result"], {
+            "supported": True, "valid": False, "error": "prefix rejected",
+        })
+        self.assertEqual(self.request("update", {})["result"]["prefix"], "allowed")
 
 
 if __name__ == "__main__":

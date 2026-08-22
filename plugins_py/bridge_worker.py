@@ -217,6 +217,32 @@ def _import_plugin(plugin_dir: Path, plugin_id: str,
     return module
 
 
+def _validation_result(module: Any, config: dict[str, Any]) -> dict[str, Any]:
+    validator = getattr(module, "validate_config", None)
+    if not callable(validator):
+        return {"supported": False, "valid": True, "error": ""}
+    verdict = validator(dict(config))
+    if isinstance(verdict, bool):
+        return {
+            "supported": True,
+            "valid": verdict,
+            "error": "" if verdict else "validate_config() rejected the configuration",
+        }
+    if isinstance(verdict, dict):
+        valid = bool(verdict.get("ok", False))
+        errors = verdict.get("errors", [])
+        if isinstance(errors, list):
+            detail = "; ".join(str(item) for item in errors)
+        else:
+            detail = str(errors)
+        return {
+            "supported": True,
+            "valid": valid,
+            "error": "" if valid else (detail or "validate_config() rejected the configuration"),
+        }
+    raise TypeError("validate_config() must return bool or {ok, errors}")
+
+
 def _prepare_config(module: Any, current_version: int, target_version: int,
                     config: dict[str, Any]) -> dict[str, Any]:
     declared_version = getattr(module, "CONFIG_VERSION", target_version)
@@ -239,22 +265,9 @@ def _prepare_config(module: Any, current_version: int, target_version: int,
         if not isinstance(migrated, dict):
             raise TypeError("migrate_config() must return a dict")
 
-    validator = getattr(module, "validate_config", None)
-    if callable(validator):
-        verdict = validator(dict(migrated))
-        if isinstance(verdict, bool):
-            if not verdict:
-                raise ValueError("validate_config() rejected the configuration")
-        elif isinstance(verdict, dict):
-            if not bool(verdict.get("ok", False)):
-                errors = verdict.get("errors", [])
-                if isinstance(errors, list):
-                    detail = "; ".join(str(item) for item in errors)
-                else:
-                    detail = str(errors)
-                raise ValueError(detail or "validate_config() rejected the configuration")
-        else:
-            raise TypeError("validate_config() must return bool or {ok, errors}")
+    validation = _validation_result(module, migrated)
+    if not validation["valid"]:
+        raise ValueError(validation["error"])
     return migrated
 
 
@@ -334,6 +347,8 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
                         capabilities = []
                         if hasattr(module, "set_config"):
                             capabilities.append("set_config")
+                        if callable(getattr(module, "validate_config", None)):
+                            capabilities.append("validate_config")
                         capabilities.append("host_services.v1")
                         capabilities.append("event_bus.v2")
                         capabilities.append("config_migration.v1")
@@ -372,6 +387,11 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
                             raise RuntimeError("plugin does not support set_config")
                         module.set_config(config)
                         result = None
+                    elif op == "validate_config":
+                        config = data.get("config", {})
+                        if not isinstance(config, dict):
+                            raise ValueError("validate_config config must be an object")
+                        result = _validation_result(module, config)
                     elif op == "stop":
                         _stop_plugin(module)
                         stop_called = True

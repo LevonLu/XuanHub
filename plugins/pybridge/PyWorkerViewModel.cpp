@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDebug>
+#include <QEventLoop>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonParseError>
@@ -19,6 +20,7 @@
 #include "barplugin/ProcessReaper.h"
 #include "barplugin/EventBus.h"
 #include "barplugin/HostServices.h"
+#include "barplugin/IBarPluginHostConfigValidation.h"
 #include "barplugin/PluginEventScope.h"
 
 namespace {
@@ -211,6 +213,37 @@ bool PyWorkerViewModel::restart() {
     return start();
 }
 
+xuanhub::HostedPluginConfigValidationResult PyWorkerViewModel::validateConfig(
+    const QVariantMap& config, int timeoutMs) {
+    if (!m_authenticated || !m_supportsConfigValidation || m_stopping)
+        return {};
+    if (m_validationWaiting) {
+        return {true, false,
+                QStringLiteral("another config validation is already running")};
+    }
+
+    m_validationWaiting = true;
+    xuanhub::HostedPluginConfigValidationResult result{
+        true, false, QStringLiteral("config validation timed out")};
+    QEventLoop loop;
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    connect(this, &PyWorkerViewModel::configValidationFinished, &loop,
+            [&result, &loop](bool valid, const QString& error) {
+                result.valid = valid;
+                result.error = error;
+                loop.quit();
+            });
+    enqueue({QStringLiteral("validate_config"), {
+        {QStringLiteral("config"), QJsonObject::fromVariantMap(config)}
+    }}, true);
+    timeout.start(qBound(100, timeoutMs, kRequestTimeoutMs));
+    loop.exec(QEventLoop::ExcludeUserInputEvents);
+    m_validationWaiting = false;
+    return result;
+}
+
 bool PyWorkerViewModel::applyConfig(const QVariantMap& config) {
     if (!m_authenticated || !m_supportsHotConfig || m_stopping) return false;
     enqueue({QStringLiteral("set_config"), {
@@ -339,7 +372,10 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
     if (!ok) {
         qWarning().noquote() << "[PyBridge]" << m_id << op << "failed:"
                              << message.value(QStringLiteral("error")).toString();
-        if (op == QLatin1String("init")) {
+        if (op == QLatin1String("validate_config")) {
+            Q_EMIT configValidationFinished(
+                false, message.value(QStringLiteral("error")).toString());
+        } else if (op == QLatin1String("init")) {
             if (m_configVersion != m_targetConfigVersion) {
                 Q_EMIT configMigrationFailed(
                     m_id, m_configVersion, m_targetConfigVersion,
@@ -354,6 +390,8 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
                                             .value(QStringLiteral("capabilities"))
                                             .toArray();
         m_supportsHotConfig = capabilities.contains(QStringLiteral("set_config"));
+        m_supportsConfigValidation = capabilities.contains(
+            QStringLiteral("validate_config"));
         const QJsonObject migration = initResult.value(QStringLiteral("migration")).toObject();
         if (migration.value(QStringLiteral("required")).toBool(false)) {
             const QVariantMap migratedConfig = migration.value(QStringLiteral("config"))
@@ -362,6 +400,11 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
             Q_EMIT configMigrationReady(
                 m_id, m_configVersion, m_targetConfigVersion, migratedConfig);
         }
+    } else if (op == QLatin1String("validate_config")) {
+        const QJsonObject validation = message.value(QStringLiteral("result")).toObject();
+        Q_EMIT configValidationFinished(
+            validation.value(QStringLiteral("valid")).toBool(false),
+            validation.value(QStringLiteral("error")).toString());
     } else if (op == QLatin1String("set_config")) {
         m_cfg = requestData.value(QStringLiteral("config")).toObject().toVariantMap();
         bool intervalOk = false;
@@ -697,6 +740,7 @@ void PyWorkerViewModel::failWorker(const QString& reason, bool retry) {
     m_updateTimer.stop();
     m_authenticated = false;
     m_supportsHotConfig = false;
+    m_supportsConfigValidation = false;
     m_queue.clear();
     m_eventQueue.clear();
     m_eventRequestIds.clear();
@@ -788,6 +832,7 @@ void PyWorkerViewModel::stopWorker() {
     m_requestTimer.stop();
     m_updateTimer.stop();
     m_supportsHotConfig = false;
+    m_supportsConfigValidation = false;
     m_queue.clear();
     m_eventQueue.clear();
     m_eventRequestIds.clear();

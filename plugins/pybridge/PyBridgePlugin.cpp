@@ -431,6 +431,15 @@ bool PyBridgePlugin::applySubPluginConfig(const QString& id,
     return viewModel && viewModel->applyConfig(config);
 }
 
+xuanhub::HostedPluginConfigValidationResult
+PyBridgePlugin::validateSubPluginConfig(const QString& id,
+                                        const QVariantMap& config,
+                                        int timeoutMs) {
+    auto* viewModel = qobject_cast<PyWorkerViewModel*>(m_vms.value(id));
+    return viewModel ? viewModel->validateConfig(config, timeoutMs)
+                     : xuanhub::HostedPluginConfigValidationResult{};
+}
+
 void PyBridgePlugin::setSubPluginConfigVersion(const QString& id,
                                                 int currentVersion) {
     if (!id.isEmpty()) m_configVersions.insert(id, qMax(1, currentVersion));
