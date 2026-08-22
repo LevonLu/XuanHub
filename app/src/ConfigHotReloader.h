@@ -7,7 +7,8 @@
 #include <QTimer>
 #include <QFileSystemWatcher>
 
-class ConfigService;
+#include "ConfigService.h"
+
 class ThemeManager;
 class ThemeRegistry;
 class PluginManager;
@@ -46,4 +47,5 @@ private:
     // 高度等无关项）则跳过插件全量重载，不再无谓摧毁插件状态（弹窗、计时、
     // Python 子插件运行时）；托盘手动重载走 forceReload 无条件全量
     QString m_pluginsFingerprint;
+    QList<PluginConfigEntry> m_pluginEntries;
 };

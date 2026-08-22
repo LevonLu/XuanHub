@@ -324,6 +324,17 @@ bool PluginManager::restartOne(const QString& pluginsDir,
     return loadOne(pluginsDir, entry);
 }
 
+bool PluginManager::updateLayout(const PluginConfigEntry& entry) {
+    for (auto& plugin : m_loaded) {
+        if (plugin.id != entry.id) continue;
+        plugin.position = sanitizePosition(entry.position, entry.id);
+        plugin.order = entry.order;
+        plugin.width = entry.width;
+        return true;
+    }
+    return false;
+}
+
 void PluginManager::shutdownAll() {
     if (m_shut) return;
     m_shut = true;

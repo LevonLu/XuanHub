@@ -44,6 +44,7 @@ public:
     bool loadOne(const QString& pluginsDir, const PluginConfigEntry& entry);
     bool stopOne(const QString& id);
     bool restartOne(const QString& pluginsDir, const PluginConfigEntry& entry);
+    bool updateLayout(const PluginConfigEntry& entry);
     QStringList dependentPluginIds(const QString& id) const;
     const LoadedPlugin* loadedPlugin(const QString& id) const;
 
