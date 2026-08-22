@@ -1,0 +1,104 @@
+# test_xuanhub_plugin_cli.py — 开发者 CLI 静态校验与 JSON 协议测试
+from __future__ import annotations
+
+import importlib.util
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+
+REPOSITORY = Path(__file__).resolve().parents[1]
+CLI_PATH = REPOSITORY / "scripts" / "xuanhub_plugin.py"
+SPEC = importlib.util.spec_from_file_location("xuanhub_plugin", CLI_PATH)
+assert SPEC and SPEC.loader
+CLI = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = CLI
+SPEC.loader.exec_module(CLI)
+
+
+def write_plugin(root: Path, *, plugin_id: str = "py_demo") -> None:
+    (root / "plugin.json").write_text(json.dumps({
+        "id": plugin_id,
+        "name": "Demo",
+        "version": "1.2.3",
+        "apiVersion": 2,
+        "capabilities": ["barItem", "settings"],
+        "permissions": [],
+        "qml": "Demo.qml",
+        "settings": [{"group": "通用", "fields": [{
+            "key": "mode", "type": "enum", "default": "daily",
+            "options": [{"value": "daily", "label": "每日"}],
+        }]}],
+    }, ensure_ascii=False), encoding="utf-8")
+    (root / "main.py").write_text("def update():\n    return {}\n", encoding="utf-8")
+    (root / "Demo.qml").write_text(
+        "import QtQuick\nItem { property var plugin; width: 40; height: 40 }\n",
+        encoding="utf-8",
+    )
+    i18n = root / "i18n"
+    i18n.mkdir()
+    contexts = {f"plugin.{plugin_id}.metadata": {"Demo": "Demo"}}
+    for locale in ("zh-CN", "en-US"):
+        (i18n / f"{locale}.json").write_text(json.dumps({
+            "locale": locale, "contexts": contexts,
+        }, ensure_ascii=False), encoding="utf-8")
+
+
+class ValidatorTest(unittest.TestCase):
+    def test_valid_plugin_and_json_protocol(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_plugin(root)
+            completed = subprocess.run(
+                [sys.executable, str(CLI_PATH), "validate", str(root), "--json"],
+                check=False, capture_output=True, text=True, encoding="utf-8",
+            )
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            result = json.loads(completed.stdout)
+            self.assertEqual(result["schemaVersion"], 1)
+            self.assertEqual(result["command"], "validate")
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["plugin"]["id"], "py_demo")
+
+    def test_reports_stable_codes_for_contract_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_plugin(root, plugin_id="py_bad")
+            (root / "Demo.qml").write_text("import QtQuick\nItem { height: 40 }\n", encoding="utf-8")
+            manifest = json.loads((root / "plugin.json").read_text(encoding="utf-8"))
+            manifest["settings"][0]["fields"][0]["default"] = "missing"
+            (root / "plugin.json").write_text(json.dumps(manifest), encoding="utf-8")
+            result = CLI.Validator(root).validate()
+            codes = {item["code"] for item in result["diagnostics"]}
+            self.assertFalse(result["ok"])
+            self.assertIn("qml.plugin_property_missing", codes)
+            self.assertIn("settings.enum_default", codes)
+
+    def test_rejects_duplicate_json_keys_and_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "plugin.json").write_text('{"id":"py_a","id":"py_b"}', encoding="utf-8")
+            (root / "debug.log").write_text("token", encoding="utf-8")
+            result = CLI.Validator(root).validate()
+            codes = {item["code"] for item in result["diagnostics"]}
+            self.assertIn("manifest.duplicate_key", codes)
+            self.assertIn("tree.forbidden_artifact", codes)
+
+    def test_rejects_context_escape_and_user_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_plugin(root)
+            bad = {"locale": "en-US", "contexts": {"xuanhub.settings": {"A": "B"}}}
+            (root / "i18n" / "en-US.json").write_text(json.dumps(bad), encoding="utf-8")
+            (root / "README.md").write_text("C:\\Users\\developer\\secret", encoding="utf-8")
+            result = CLI.Validator(root).validate()
+            codes = {item["code"] for item in result["diagnostics"]}
+            self.assertIn("i18n.context_escape", codes)
+            self.assertIn("tree.user_absolute_path", codes)
+
+
+if __name__ == "__main__":
+    unittest.main()

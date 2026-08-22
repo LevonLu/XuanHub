@@ -443,6 +443,33 @@ add_custom_command(TARGET xuanhub_plugin_host_services_tests POST_BUILD
 add_test(NAME xuanhub_plugin_host_services_tests COMMAND xuanhub_plugin_host_services_tests)
 
 if(Python_Interpreter_FOUND)
+    add_test(NAME xuanhub_plugin_cli_tests
+        COMMAND "${Python_EXECUTABLE}" -B -m unittest discover
+            -s tests -p test_xuanhub_plugin_cli.py -v)
+    set_tests_properties(xuanhub_plugin_cli_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+
+    # 每个内置插件都通过同一公开 CLI；单独注册测试便于 CI 直接定位到具体插件。
+    set(XUANHUB_BUILTIN_PLUGIN_DIRS
+        plugins/clock
+        plugins/pybridge
+        plugins/sysinfo
+        plugins/xuanhub_menu
+        plugins_py/countdown
+        plugins_py/heartrate
+        plugins_py/hello
+        plugins_py/intime
+        plugins_py/todo
+        plugins_py/usage_hub
+    )
+    foreach(plugin_dir IN LISTS XUANHUB_BUILTIN_PLUGIN_DIRS)
+        string(REPLACE "/" "_" plugin_test_name "${plugin_dir}")
+        add_test(NAME "xuanhub_validate_${plugin_test_name}"
+            COMMAND "${Python_EXECUTABLE}" -B
+                "${CMAKE_SOURCE_DIR}/scripts/xuanhub_plugin.py"
+                validate "${CMAKE_SOURCE_DIR}/${plugin_dir}" --json)
+    endforeach()
+
     add_test(NAME xuanhub_pyworker_tests
         COMMAND "${Python_EXECUTABLE}" -B -m unittest discover -s plugins_py/tests -v)
     set_tests_properties(xuanhub_pyworker_tests PROPERTIES
