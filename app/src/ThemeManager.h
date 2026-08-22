@@ -1,6 +1,6 @@
 // ThemeManager.h — 主题管理（多主题包 × 双模式）
 // Q_PROPERTY: themeId（主题包 id）、mode（dark/light）、colors（当前模式色板，QML 直接消费）。
-// 切换经 EventBus 发 "theme.changed"（payload: themeId/mode）。
+// 当前状态保留在 EventBus "app.theme"；兼容期仍发 "theme.changed"。
 // 设计取舍：colors 返回 QVariantMap（11 字段语义色，已 fallback 填满），QML 用
 // themeManager.colors.bg 取色。每次主题变化整包 NOTIFY 触发 QML 绑定刷新，非每帧开销。
 #pragma once
@@ -40,6 +40,7 @@ signals:
 private:
     // 从 registry 解析当前 themeId+mode 的完整色板（缺失字段 fallback 到默认主题）
     QVariantMap resolveColors(const QString& themeId, const QString& mode) const;
+    void publishTheme();
 
     xuanhub::EventBus* m_bus;
     ThemeRegistry* m_registry;

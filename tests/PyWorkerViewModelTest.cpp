@@ -136,6 +136,8 @@ def stop():
 
         {
             xuanhub::EventBus bus;
+            QVERIFY(bus.setState(QStringLiteral("app.locale"),
+                                 {{QStringLiteral("locale"), QStringLiteral("zh-CN")}}));
             PyWorkerViewModel viewModel(QStringLiteral("py_worker_test"), pluginDir,
                                         {{QStringLiteral("prefix"), QStringLiteral("isolated")},
                                          {QStringLiteral("stopFile"), stopFile}},
@@ -145,7 +147,7 @@ def stop():
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("prefix")).toString(),
                                       QStringLiteral("isolated"), 5000);
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("locale")).toString(),
-                                      QStringLiteral("en-US"), 5000);
+                                      QStringLiteral("zh-CN"), 5000);
             QTRY_VERIFY_WITH_TIMEOUT(viewModel.supportsHotConfig(), 5000);
             QVERIFY(viewModel.applyConfig({
                 {QStringLiteral("prefix"), QStringLiteral("hot")},
@@ -155,10 +157,10 @@ def stop():
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("prefix")).toString(),
                                       QStringLiteral("hot"), 5000);
             QCOMPARE(viewModel.updateIntervalMs(), 250);
-            bus.publish(QStringLiteral("app.locale.changed"),
-                        {{QStringLiteral("locale"), QStringLiteral("zh-CN")}});
+            bus.setState(QStringLiteral("app.locale"),
+                         {{QStringLiteral("locale"), QStringLiteral("en-US")}});
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("locale")).toString(),
-                                      QStringLiteral("zh-CN"), 5000);
+                                      QStringLiteral("en-US"), 5000);
             QCOMPARE(viewModel.call(QStringLiteral("bump"), {3}).toMap()
                          .value(QStringLiteral("queued")).toBool(), true);
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("count")).toInt(), 3, 5000);

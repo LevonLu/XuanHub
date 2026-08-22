@@ -93,8 +93,11 @@ void LocaleManager::onLocaleRequest(QVariantMap) { publishLocale(); }
 
 void LocaleManager::publishLocale() {
     if (!m_bus) return;
-    m_bus->publish(QStringLiteral("app.locale.changed"), {
+    const QVariantMap state{
         {QStringLiteral("locale"), m_activeLocale},
         {QStringLiteral("requestedLanguage"), m_requestedLanguage}
-    });
+    };
+    m_bus->setState(QStringLiteral("app.locale"), state);
+    // V1 兼容广播保留一个周期；新代码订阅 retained 的 app.locale。
+    m_bus->publish(QStringLiteral("app.locale.changed"), state);
 }

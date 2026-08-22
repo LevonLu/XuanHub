@@ -1,6 +1,7 @@
 // LocaleTest.cpp — JSON 语言包隔离、回退和系统语言解析回归测试
 #include "JsonTranslator.h"
 #include "LocaleManager.h"
+#include "barplugin/EventBus.h"
 
 #include <QDir>
 #include <QFile>
@@ -73,6 +74,24 @@ private Q_SLOTS:
         JsonTranslator translator;
         QVERIFY(!translator.loadLocale(QStringLiteral("zh-CN"), dir.path()));
         QVERIFY(translator.translate("plugin.demo.main", "你好").isEmpty());
+    }
+
+    void localeManagerPublishesRetainedState() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        xuanhub::EventBus bus;
+        LocaleManager manager(&bus, dir.path());
+        manager.setRequestedLanguage(QStringLiteral("en-US"));
+
+        const QVariantMap envelope = bus.state(QStringLiteral("app.locale"));
+        QCOMPARE(envelope.value(QStringLiteral("kind")).toString(),
+                 QStringLiteral("state"));
+        QCOMPARE(envelope.value(QStringLiteral("source")).toString(),
+                 QStringLiteral("app"));
+        const QVariantMap data = envelope.value(QStringLiteral("data")).toMap();
+        QCOMPARE(data.value(QStringLiteral("locale")).toString(), QStringLiteral("en-US"));
+        QCOMPARE(data.value(QStringLiteral("requestedLanguage")).toString(),
+                 QStringLiteral("en-US"));
     }
 };
 

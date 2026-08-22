@@ -52,15 +52,17 @@ PyWorkerViewModel::PyWorkerViewModel(QString id, QString dirPath, QVariantMap cf
                                 intervalOk ? configuredInterval : kDefaultUpdateIntervalMs,
                                 kMaxUpdateIntervalMs);
     m_failureClock.start();
+    xuanhub::EventSubscriptionOptions localeOptions;
+    localeOptions.replayRetained = true;
+    // Worker 可能在下一轮事件循环前立即启动；先同步读取一次 retained state，
+    // 确保 init/set_locale 使用当前语言，再订阅后续热切换。
+    if (bus) onLocaleChanged(bus->state(QStringLiteral("app.locale")));
     if (eventScope) {
-        eventScope->subscribe(QStringLiteral("app.locale.changed"), this,
-                              "onLocaleChanged(QVariantMap)");
+        eventScope->subscribeV2(QStringLiteral("app.locale"), this,
+                                "onLocaleChanged(QVariantMap)", localeOptions);
     } else if (bus) {
-        bus->subscribe(QStringLiteral("app.locale.changed"), this,
-                       "onLocaleChanged(QVariantMap)");
-    }
-    if (bus) {
-        bus->publish(QStringLiteral("app.locale.request"));
+        bus->subscribeV2(QStringLiteral("app.locale"), this,
+                         "onLocaleChanged(QVariantMap)", localeOptions);
     }
     m_startTimer.setSingleShot(true);
     m_requestTimer.setSingleShot(true);
@@ -75,7 +77,9 @@ PyWorkerViewModel::PyWorkerViewModel(QString id, QString dirPath, QVariantMap cf
 }
 
 void PyWorkerViewModel::onLocaleChanged(QVariantMap payload) {
-    const QString locale = payload.value(QStringLiteral("locale")).toString();
+    const QVariantMap data = payload.value(QStringLiteral("data")).toMap();
+    const QString locale = (data.isEmpty() ? payload : data)
+                               .value(QStringLiteral("locale")).toString();
     if (locale.isEmpty() || locale == m_locale) return;
     m_locale = locale;
     if (m_authenticated) {

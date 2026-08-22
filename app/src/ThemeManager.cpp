@@ -11,6 +11,7 @@ ThemeManager::ThemeManager(xuanhub::EventBus* bus, ThemeRegistry* registry,
     : QObject(parent), m_bus(bus), m_registry(registry),
       m_themeId(themeId), m_mode(mode) {
     m_colors = resolveColors(m_themeId, m_mode);
+    publishTheme();
 }
 
 QVariantMap ThemeManager::resolveColors(const QString& themeId, const QString& mode) const {
@@ -60,9 +61,7 @@ void ThemeManager::applyTheme(const QString& themeId, const QString& mode) {
     m_colors = resolveColors(m_themeId, m_mode);
     qDebug() << "[Theme] applied" << m_themeId << m_mode;
     emit themeChanged();
-    if (m_bus) m_bus->publish(QStringLiteral("theme.changed"),
-                              {{QStringLiteral("themeId"), m_themeId},
-                               {QStringLiteral("mode"),    m_mode}});
+    publishTheme();
 }
 
 void ThemeManager::refresh() {
@@ -73,7 +72,17 @@ void ThemeManager::refresh() {
     m_colors = c;
     qDebug() << "[Theme] refreshed" << m_themeId << m_mode;
     emit themeChanged();
-    if (m_bus) m_bus->publish(QStringLiteral("theme.changed"),
-                              {{QStringLiteral("themeId"), m_themeId},
-                               {QStringLiteral("mode"),    m_mode}});
+    publishTheme();
+}
+
+void ThemeManager::publishTheme() {
+    if (!m_bus) return;
+    const QVariantMap state{
+        {QStringLiteral("themeId"), m_themeId},
+        {QStringLiteral("mode"), m_mode},
+        {QStringLiteral("colors"), m_colors},
+    };
+    m_bus->setState(QStringLiteral("app.theme"), state);
+    // V1 兼容广播保留一个周期；新代码订阅 retained 的 app.theme。
+    m_bus->publish(QStringLiteral("theme.changed"), state);
 }
