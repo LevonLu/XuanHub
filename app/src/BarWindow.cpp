@@ -6,6 +6,7 @@
 #include "PluginListModel.h"
 #include "ThemeManager.h"
 #include "LocaleManager.h"
+#include "PopupService.h"
 
 #include <QScreen>
 #include <QGuiApplication>
@@ -19,7 +20,7 @@
 BarWindow::BarWindow(ConfigService* config, PluginListModel* model,
                        ThemeManager* theme, LocaleManager* locale, QWindow* parent)
     : QQuickView(parent), m_config(config), m_guard(new WorkAreaGuard(this)),
-      m_embed(new TaskbarEmbed(this)) {
+      m_embed(new TaskbarEmbed(this)), m_popupService(new PopupService(this)) {
     if (model) engine()->rootContext()->setContextProperty("pluginModel", model);
     if (theme) engine()->rootContext()->setContextProperty("themeManager", theme);
     if (locale) {
@@ -30,6 +31,8 @@ BarWindow::BarWindow(ConfigService* config, PluginListModel* model,
     if (config) engine()->rootContext()->setContextProperty("barConfig", config);
     // barWindow：暴露本窗口给 QML（插件 QML 用 Connections 收听 barPressed 信号）
     engine()->rootContext()->setContextProperty("barWindow", this);
+    // PopupService：插件共享定位与互斥服务。高级插件仍可继续自建 Window。
+    engine()->rootContext()->setContextProperty("popupService", m_popupService);
 
     // 工作区参数变化（ABN_POSCHANGED）→ 重新布局并重新 reserve
     connect(m_guard, &WorkAreaGuard::needRelayout,

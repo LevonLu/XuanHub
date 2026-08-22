@@ -62,6 +62,23 @@ add_custom_command(TARGET xuanhub_locale_tests POST_BUILD
 )
 add_test(NAME xuanhub_locale_tests COMMAND xuanhub_locale_tests)
 
+add_executable(xuanhub_popup_service_tests
+    PopupServiceTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/PopupService.h
+    ${CMAKE_SOURCE_DIR}/app/src/PopupService.cpp
+)
+set_target_properties(xuanhub_popup_service_tests PROPERTIES AUTOMOC ON)
+target_include_directories(xuanhub_popup_service_tests PRIVATE ${CMAKE_SOURCE_DIR}/app/src)
+target_link_libraries(xuanhub_popup_service_tests PRIVATE Qt6::Core Qt6::Test)
+add_custom_command(TARGET xuanhub_popup_service_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Core>" "$<TARGET_FILE_DIR:xuanhub_popup_service_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Test>" "$<TARGET_FILE_DIR:xuanhub_popup_service_tests>"
+    VERBATIM
+)
+add_test(NAME xuanhub_popup_service_tests COMMAND xuanhub_popup_service_tests)
+
 add_executable(xuanhub_plugin_model_tests
     PluginListModelTest.cpp
     ${CMAKE_SOURCE_DIR}/app/src/PluginListModel.cpp

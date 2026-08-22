@@ -10,6 +10,7 @@ class WorkAreaGuard;
 class TaskbarEmbed;
 class PluginListModel;
 class LocaleManager;
+class PopupService;
 
 class ThemeManager;
 
@@ -42,4 +43,5 @@ private:
     ConfigService* m_config;
     WorkAreaGuard* m_guard;
     TaskbarEmbed* m_embed;
+    PopupService* m_popupService;
 };

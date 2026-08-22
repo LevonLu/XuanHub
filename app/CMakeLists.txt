@@ -48,6 +48,8 @@ qt_add_executable(XuanHub WIN32
     src/PluginHostServices.cpp
     src/PluginContextObject.h
     src/PluginContextObject.cpp
+    src/PopupService.h
+    src/PopupService.cpp
     src/PluginDependencyGraph.h
     src/PluginDependencyGraph.cpp
 
@@ -101,6 +103,7 @@ qt_add_qml_module(XuanHub
         qml/main.qml
         qml/Bar.qml
         qml/PluginSlot.qml
+        qml/PluginPopup.qml
         qml/SettingsWindow.qml
         # UI 设计令牌与自绘控件库（Basic 样式 + palette 驱动，设置窗口用）
         qml/UiMetrics.qml
