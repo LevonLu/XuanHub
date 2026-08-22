@@ -10,11 +10,12 @@ Item {
     width: 40
     height: 40
 
-    readonly property var colors: themeManager ? themeManager.colors : ({
+    readonly property var colors: pluginContext ? pluginContext.colors
+                                                : (themeManager ? themeManager.colors : ({
         "bg": "#1e1e2e", "panel": "#313244", "fg": "#cdd6f4", "muted": "#7f849c",
         "accent": "#89b4fa", "danger": "#f38ba8", "hover": "#45475a",
         "border": "#45475a", "onAccent": "#1e1e2e"
-    })
+    }))
     property bool menuOpenOnBarPress: false
 
     Rectangle {
@@ -33,7 +34,8 @@ Item {
     }
 
     Connections {
-        target: typeof barWindow !== "undefined" ? barWindow : null
+        target: pluginContext ? pluginContext
+                              : (typeof barWindow !== "undefined" ? barWindow : null)
         function onBarPressed() {
             root.menuOpenOnBarPress = menuWin.visible
             menuWin.hide()
@@ -61,7 +63,9 @@ Item {
         const anchorBelow = root.mapToGlobal(Qt.point(root.width / 2, root.height + gap))
         let x = Math.round(anchorBelow.x - menuWin.width / 2)
         let y = Math.round(anchorBelow.y)
-        const sg = typeof barScreenGeometry !== "undefined" ? barScreenGeometry : null
+        const sg = pluginContext ? pluginContext.screenGeometry
+                                 : (typeof barScreenGeometry !== "undefined"
+                                    ? barScreenGeometry : null)
         if (sg && sg.width > 0) {
             const right = sg.x + sg.width
             const bottom = sg.y + sg.height

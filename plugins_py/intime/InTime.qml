@@ -17,13 +17,15 @@ Item {
     width: 130; height: 40
 
     // 色板（跟随主题，浅色/深色自动适配）
-    readonly property color cFg:      themeManager ? themeManager.colors.fg : "#cdd6f4"
-    readonly property color cMuted:   themeManager ? themeManager.colors.muted : "#7f849c"
-    readonly property color cSuccess: themeManager ? themeManager.colors.success : "#a6e3a1"
-    readonly property color cDanger:  themeManager ? themeManager.colors.danger : "#f38ba8"
-    readonly property color cPanel:   themeManager ? themeManager.colors.panel : "#313244"
-    readonly property color cBg:      themeManager ? themeManager.colors.bg : "#1e1e2e"
-    readonly property color cAccent:  themeManager ? themeManager.colors.accent : "#89b4fa"
+    readonly property var hostColors: pluginContext ? pluginContext.colors
+                                                    : (themeManager ? themeManager.colors : ({}))
+    readonly property color cFg:      hostColors.fg || "#cdd6f4"
+    readonly property color cMuted:   hostColors.muted || "#7f849c"
+    readonly property color cSuccess: hostColors.success || "#a6e3a1"
+    readonly property color cDanger:  hostColors.danger || "#f38ba8"
+    readonly property color cPanel:   hostColors.panel || "#313244"
+    readonly property color cBg:      hostColors.bg || "#1e1e2e"
+    readonly property color cAccent:  hostColors.accent || "#89b4fa"
 
     // 进度条样式："none"（不显示）| "bar"（水平）| "ring"（环形），由设置页 progressStyle 控制
     readonly property string progressStyle: (plugin && plugin.values && plugin.values.progressStyle) || "none"
@@ -138,7 +140,7 @@ Item {
                     id: defaultBg
                     Rectangle {
                         anchors.fill: parent
-                        color: themeManager ? themeManager.colors.bg : "#1e1e2e"
+                        color: root.cBg
                         opacity: (plugin && plugin.values) ? (plugin.values.maskOpacity || 0.92) : 0.92
                     }
                 }
@@ -147,7 +149,7 @@ Item {
                     Rectangle {
                         anchors.fill: parent
                         color: (plugin && plugin.values && plugin.values.maskColor)
-                               || (themeManager ? themeManager.colors.bg : "#1e1e2e")
+                               || root.cBg
                         opacity: (plugin && plugin.values) ? (plugin.values.maskOpacity || 0.92) : 0.92
                     }
                 }
@@ -269,7 +271,9 @@ Item {
         // 两种模式都覆盖除 bar/任务栏外的全屏。
         // 不能以 bar 窗口几何为准：taskbar 模式 bar 是嵌在任务栏里的小窗口，
         // 按它定位遮罩只会盖住任务栏上的一条（本函数此前的 bug）。
-        var g = (typeof barScreenGeometry !== "undefined") ? barScreenGeometry : null
+        var g = pluginContext ? pluginContext.screenGeometry
+                              : ((typeof barScreenGeometry !== "undefined")
+                                 ? barScreenGeometry : null)
         var scr = Qt.application.screens[0]
         var gx = g ? g.x : 0
         var gy = g ? g.y : 0

@@ -16,7 +16,9 @@ Item {
 
     // metric → 主题语义色的映射（color 为空串时回落用）
     function themeColor(metric) {
-        if (!themeManager) {
+        const c = pluginContext ? pluginContext.colors
+                                : (themeManager ? themeManager.colors : null)
+        if (!c) {
             // 无主题时的硬编码兜底（与 netstat/sysinfo 旧版一致）
             if (metric === "cpu")     return "#89b4fa"   // accent
             if (metric === "mem")     return "#a6e3a1"   // success
@@ -25,7 +27,6 @@ Item {
             if (metric === "netUp")   return "#f38ba8"   // danger
             return "#cdd6f4"
         }
-        const c = themeManager.colors
         if (metric === "cpu")     return c.accent
         if (metric === "mem")     return c.success
         if (metric === "gpu")     return c.warning

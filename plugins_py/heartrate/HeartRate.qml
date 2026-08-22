@@ -28,11 +28,12 @@ Item {
     height: 40
 
     // 色板别名：统一从 themeManager.colors 取（缺失时给深色兜底）
-    readonly property var colors: themeManager ? themeManager.colors : ({
+    readonly property var colors: pluginContext ? pluginContext.colors
+                                                : (themeManager ? themeManager.colors : ({
         "bg": "#1e1e2e", "panel": "#313244", "fg": "#cdd6f4", "muted": "#7f849c",
         "accent": "#89b4fa", "danger": "#f38ba8", "success": "#a6e3a1", "warning": "#f9e2af",
         "hover": "#45475a", "border": "#45475a", "onAccent": "#1e1e2e"
-    })
+    }))
 
     // 状态速记（供 bar 文案/颜色/弹窗复用）
     readonly property string state: plugin && plugin.values ? String(plugin.values.state) : "idle"
@@ -48,7 +49,8 @@ Item {
     property int winSel: 5
 
     Connections {
-        target: typeof barWindow !== "undefined" ? barWindow : null
+        target: pluginContext ? pluginContext
+                              : (typeof barWindow !== "undefined" ? barWindow : null)
         function onBarPressed() {
             root.popupOpenOnBarPress = popupWin.visible
             popupWin.hide()
@@ -181,8 +183,9 @@ Item {
             // 屏幕几何取宿主注入的 barScreenGeometry（当前屏 availableGeometry，
             // 已排除任务栏占位）：taskbar 模式下 bar 是任务栏子窗口，
             // root.Screen 同样失效（实测 undefined）。rect 只有 x/y/width/height。
-            const sg = (typeof barScreenGeometry !== "undefined")
-                       ? barScreenGeometry : null
+            const sg = pluginContext ? pluginContext.screenGeometry
+                                     : ((typeof barScreenGeometry !== "undefined")
+                                        ? barScreenGeometry : null)
             if (!sg || sg.width === 0) { popupWin.opacity = 1; return }
             const sRight = sg.x + sg.width; const sBottom = sg.y + sg.height
             const w = popupWin.width; const h = popupWin.height

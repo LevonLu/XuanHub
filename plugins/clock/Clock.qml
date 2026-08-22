@@ -1,7 +1,7 @@
 // Clock.qml — 时钟显示 + 点击弹出日历气泡窗口。契约：根 Item 声明 property var plugin。
 // 设计取舍：日历用独立顶层 Window（非 Popup）——宿主 Bar 仅 40px 高，
 // Popup 在 overlay 层渲染会被窗口几何裁切；Window 是独立 native 窗口，不受此限。
-// 配色跟随宿主根上下文的 context property themeManager.colors（同引擎可见）。
+// 配色、语言、屏幕范围和 bar 事件优先通过插件作用域 pluginContext 获取。
 //
 // MonthGrid/DayOfWeekRow/WeekNumberColumn 属 QtQuick.Controls（Qt6.2+），由 Basic 样式实现：
 //   - MonthGrid.month/year 是 int（0-11 / 公元年），不是 Date
@@ -29,12 +29,13 @@ Item {
     // root.Screen 也会失效（实测 undefined）。统一用宿主注入的根上下文
     // barScreenGeometry（BarWindow::setupBar 写入）+ mapToGlobal 真实屏幕坐标。
 
-    // 色板别名：统一从 themeManager.colors 取（M9 数据驱动主题），缺失时给深色兜底
-    readonly property var colors: themeManager ? themeManager.colors : ({
+    // 旧全局保留一个兼容周期；新插件只依赖作用域上下文。
+    readonly property var colors: pluginContext ? pluginContext.colors
+                                                : (themeManager ? themeManager.colors : ({
         "bg": "#1e1e2e", "panel": "#313244", "fg": "#cdd6f4", "muted": "#7f849c",
         "accent": "#89b4fa", "danger": "#f38ba8", "success": "#a6e3a1", "warning": "#f9e2af",
         "hover": "#45475a", "border": "#45475a", "onAccent": "#1e1e2e"
-    })
+    }))
 
     // bar hover 反馈（提示可点击弹日历）；barMa 在下方声明，运行时解析无碍
     property color hoverColor: root.colors.hover
@@ -62,7 +63,8 @@ Item {
     property bool calOpenOnBarPress: false
 
     Connections {
-        target: typeof barWindow !== "undefined" ? barWindow : null
+        target: pluginContext ? pluginContext
+                              : (typeof barWindow !== "undefined" ? barWindow : null)
         function onBarPressed() {
             root.calOpenOnBarPress = calendarWin.visible
             calendarWin.hide()
@@ -106,8 +108,9 @@ Item {
         let y = Math.round(belowPt.y)
 
         // 越界修正：水平收进当前屏；下方越界 → 改从时钟上方弹出
-        const sg = (typeof barScreenGeometry !== "undefined")
-                   ? barScreenGeometry : null
+        const sg = pluginContext ? pluginContext.screenGeometry
+                                 : ((typeof barScreenGeometry !== "undefined")
+                                    ? barScreenGeometry : null)
         if (sg && sg.width > 0) {
             const sRight = sg.x + sg.width
             const sBottom = sg.y + sg.height
@@ -169,7 +172,8 @@ Item {
         }
 
         // 统一使用宿主解析后的活动语言；system 已由 LocaleManager 归一为中/英文。
-        readonly property var loc: Qt.locale(i18n ? i18n.activeLocale : "zh-CN")
+        readonly property var loc: Qt.locale(pluginContext ? pluginContext.activeLocale
+                                                           : (i18n ? i18n.activeLocale : "zh-CN"))
 
         ColumnLayout {
             anchors.fill: parent

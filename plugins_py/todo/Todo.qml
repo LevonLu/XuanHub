@@ -21,15 +21,17 @@ Item {
     height: 40
 
     // 色板兜底
-    readonly property color cFg:      themeManager ? themeManager.colors.fg : "#cdd6f4"
-    readonly property color cMuted:   themeManager ? themeManager.colors.muted : "#7f849c"
-    readonly property color cSuccess: themeManager ? themeManager.colors.success : "#a6e3a1"
-    readonly property color cDanger:  themeManager ? themeManager.colors.danger : "#f38ba8"
-    readonly property color cPanel:   themeManager ? themeManager.colors.panel : "#313244"
-    readonly property color cBorder:  themeManager ? themeManager.colors.border : "#45475a"
-    readonly property color cBg:      themeManager ? themeManager.colors.bg : "#1e1e2e"
-    readonly property color cAccent:  themeManager ? themeManager.colors.accent : "#89b4fa"
-    property color cHover: themeManager ? themeManager.colors.hover : "#45475a"
+    readonly property var hostColors: pluginContext ? pluginContext.colors
+                                                    : (themeManager ? themeManager.colors : ({}))
+    readonly property color cFg:      hostColors.fg || "#cdd6f4"
+    readonly property color cMuted:   hostColors.muted || "#7f849c"
+    readonly property color cSuccess: hostColors.success || "#a6e3a1"
+    readonly property color cDanger:  hostColors.danger || "#f38ba8"
+    readonly property color cPanel:   hostColors.panel || "#313244"
+    readonly property color cBorder:  hostColors.border || "#45475a"
+    readonly property color cBg:      hostColors.bg || "#1e1e2e"
+    readonly property color cAccent:  hostColors.accent || "#89b4fa"
+    property color cHover: hostColors.hover || "#45475a"
 
     // 辅助：从 plugin.values 读取
     function vv(key) {
@@ -100,7 +102,8 @@ Item {
     property bool popupOpenOnBarPress: false
 
     Connections {
-        target: typeof barWindow !== "undefined" ? barWindow : null
+        target: pluginContext ? pluginContext
+                              : (typeof barWindow !== "undefined" ? barWindow : null)
         function onBarPressed() {
             root.popupOpenOnBarPress = popupWin.visible
             popupWin.hide()
@@ -197,8 +200,9 @@ Item {
             // 已排除任务栏占位）：弹窗先开在屏幕外时其内部 Item 的 Screen 无效；
             // taskbar 模式下 bar 是任务栏子窗口，root.Screen 同样失效（实测 undefined）。
             // 注意 QML rect 只有 x/y/width/height，right/bottom 要自己算。
-            const sg = (typeof barScreenGeometry !== "undefined")
-                       ? barScreenGeometry : null
+            const sg = pluginContext ? pluginContext.screenGeometry
+                                     : ((typeof barScreenGeometry !== "undefined")
+                                        ? barScreenGeometry : null)
             if (!sg || sg.width === 0) { popupWin.opacity = 1; return }
             const sRight = sg.x + sg.width; const sBottom = sg.y + sg.height
             const w = popupWin.width; const h = popupWin.height

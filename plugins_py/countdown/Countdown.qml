@@ -40,8 +40,10 @@ Item {
     // 在 bar 上会与右侧插件拉开异常间距）
     width: label.implicitWidth + 16; height: 40
 
-    readonly property color cFg:      themeManager ? themeManager.colors.fg      : "#cdd6f4"
-    readonly property color cSuccess: themeManager ? themeManager.colors.success : "#a6e3a1"
+    readonly property var hostColors: pluginContext ? pluginContext.colors
+                                                    : (themeManager ? themeManager.colors : ({}))
+    readonly property color cFg:      hostColors.fg || "#cdd6f4"
+    readonly property color cSuccess: hostColors.success || "#a6e3a1"
 
     // 到点 → 自定义色（非空）或主题成功色；未到点 → 前景色
     readonly property color displayColor: {
