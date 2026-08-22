@@ -56,6 +56,8 @@ qt_add_executable(XuanHub WIN32
     src/ResponsiveLayoutEngine.cpp
     src/PluginDependencyGraph.h
     src/PluginDependencyGraph.cpp
+    src/PluginPackageValidator.h
+    src/PluginPackageValidator.cpp
 
     src/AutoStart.h
 
@@ -132,6 +134,7 @@ target_link_libraries(XuanHub PRIVATE
     Qt6::Gui
     Qt6::Widgets
     Qt6::Test             # --uitest 调试钩子用 QTest 注入鼠标/键盘（devUiEvent）
+    Qt6::CorePrivate      # QZipReader：锁定 Qt 6.9.3 的离线插件包读取边界
     barplugin            # 插件接口库
     shell32              # SHAppBarMessage
     user32               # SetWindowPos / 工作区
