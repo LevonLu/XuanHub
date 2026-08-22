@@ -62,6 +62,7 @@ install(FILES LICENSE DESTINATION share/XuanHubPlugin)
 
 if(BUILD_TESTING)
     add_subdirectory(tests)
+    add_subdirectory(experiments/native_worker)
 endif()
 
 # ── 便携打包目标 ─────────────────────────────────────────────
