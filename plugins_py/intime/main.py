@@ -8,6 +8,7 @@
 import threading
 import time
 
+CONFIG_VERSION = 2
 # ========== 模块级状态 ==========
 _work_seconds = 25 * 60       # 工作秒数
 _rest_seconds = 5 * 60        # 休息秒数
@@ -38,6 +39,45 @@ def _fmt_time(seconds: int) -> str:
 
 
 # ========== 模块约定 ==========
+
+def migrate_config(old_version, config):
+    """兼容早期分钟字段与中文外观枚举，未知字段原样保留。"""
+    if old_version != 1:
+        raise ValueError(f"unsupported config version: {old_version}")
+    migrated = dict(config or {})
+    if "workSeconds" not in migrated and "workMinutes" in migrated:
+        migrated["workSeconds"] = int(migrated.pop("workMinutes")) * 60
+    if "restSeconds" not in migrated and "restMinutes" in migrated:
+        migrated["restSeconds"] = int(migrated.pop("restMinutes")) * 60
+    mask_types = {"默认": "default", "纯色": "color", "图片": "image"}
+    progress_styles = {"不显示": "none", "水平进度条": "bar", "环形进度条": "ring"}
+    if str(migrated.get("maskType", "")) in mask_types:
+        migrated["maskType"] = mask_types[str(migrated["maskType"])]
+    if str(migrated.get("progressStyle", "")) in progress_styles:
+        migrated["progressStyle"] = progress_styles[str(migrated["progressStyle"])]
+    return migrated
+
+
+def validate_config(config):
+    cfg = config or {}
+    errors = []
+    try:
+        work = int(cfg.get("workSeconds", 1500))
+        rest = int(cfg.get("restSeconds", 300))
+        opacity = float(cfg.get("maskOpacity", 0.92))
+    except (TypeError, ValueError):
+        return {"ok": False, "errors": ["duration and opacity values must be numeric"]}
+    if not 10 <= work <= 86400:
+        errors.append("workSeconds must be between 10 and 86400")
+    if not 10 <= rest <= 3600:
+        errors.append("restSeconds must be between 10 and 3600")
+    if not 0.1 <= opacity <= 1.0:
+        errors.append("maskOpacity must be between 0.1 and 1.0")
+    if str(cfg.get("maskType", "default")) not in ("default", "color", "image"):
+        errors.append("maskType is invalid")
+    if str(cfg.get("progressStyle", "none")) not in ("none", "bar", "ring"):
+        errors.append("progressStyle is invalid")
+    return {"ok": not errors, "errors": errors}
 
 def init(config: dict):
     """注入 config.json 中本插件的 config 段。"""

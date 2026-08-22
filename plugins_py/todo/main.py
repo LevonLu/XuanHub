@@ -9,6 +9,7 @@ import os
 import sqlite3
 import traceback
 
+CONFIG_VERSION = 2
 # ================= 模块级状态 =================
 _config: dict = {}
 _cache: dict = {
@@ -100,8 +101,8 @@ def _next_sort_order():
 
 
 def _normalized_bar_mode(value):
-    """新配置使用稳定 id；保留旧版中文值兼容。"""
-    return "latest" if str(value) in ("latest", "最近一项") else "count"
+    """迁移后的配置只使用稳定 id。"""
+    return "latest" if str(value) == "latest" else "count"
 
 
 # ================= 缓存构建 =================
@@ -196,6 +197,25 @@ def _clear_done():
 
 
 # ================= 模块级约定 =================
+
+
+def migrate_config(old_version, config):
+    """V1 中文显示标签迁移为与语言无关的持久化值。"""
+    if old_version != 1:
+        raise ValueError(f"unsupported config version: {old_version}")
+    migrated = dict(config or {})
+    mode = str(migrated.get("barMode", "count"))
+    if mode == "数量":
+        migrated["barMode"] = "count"
+    elif mode == "最近一项":
+        migrated["barMode"] = "latest"
+    return migrated
+
+
+def validate_config(config):
+    mode = str((config or {}).get("barMode", "count"))
+    errors = [] if mode in ("count", "latest") else ["barMode must be count or latest"]
+    return {"ok": not errors, "errors": errors}
 
 
 def init(config):

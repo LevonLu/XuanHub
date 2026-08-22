@@ -4,6 +4,7 @@
     "version": "0.1.0",
     "author": "XuanHub",
     "apiVersion": 2,
+    "configVersion": 2,
     "capabilities": ["barItem", "settings"],
     "permissions": [],
     "qml": "Countdown.qml",

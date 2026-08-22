@@ -9,6 +9,7 @@
 # 时间格式解析失败不抛异常——返回提示文字，让用户在栏上直接看到问题。
 from datetime import datetime
 
+CONFIG_VERSION = 2
 _config = {}
 _locale = "zh-CN"
 
@@ -50,6 +51,24 @@ def _parse_datetime(text):
 
 # ========== 模块约定 ==========
 
+def migrate_config(old_version, config):
+    """V1 曾把中文枚举标签直接持久化；V2 只保存稳定值。"""
+    if old_version != 1:
+        raise ValueError(f"unsupported config version: {old_version}")
+    migrated = dict(config or {})
+    mode = str(migrated.get("mode", "daily"))
+    if mode == "每日重复":
+        migrated["mode"] = "daily"
+    elif mode in ("指定日期", "once"):
+        migrated["mode"] = "date"
+    return migrated
+
+
+def validate_config(config):
+    mode = str((config or {}).get("mode", "daily"))
+    errors = [] if mode in ("daily", "date") else ["mode must be daily or date"]
+    return {"ok": not errors, "errors": errors}
+
 def init(config):
     """注入 config.json 中本插件的 config 段（dict）。"""
     global _config
@@ -68,9 +87,9 @@ def update():
     now = datetime.now()
     reached_color = str(cfg.get("reachedColor", ""))
 
-    # 新配置持久化稳定 id；继续识别旧版中文值和曾支持的 once 写法。
+    # 配置迁移后只消费稳定 id；旧标签兼容集中在 migrate_config()。
     mode = str(cfg.get("mode", "daily"))
-    daily = mode not in ("date", "once", "指定日期")
+    daily = mode == "daily"
 
     if daily:
         raw = str(cfg.get("targetTime", "")).strip()
