@@ -1,5 +1,6 @@
 // DemoPlugin.cpp — SDK V2 Descriptor、初始化和热配置参考实现
 #include "DemoPlugin.h"
+#include "barplugin/HostServices.h"
 
 using namespace xuanhub;
 
@@ -23,6 +24,10 @@ PluginDescriptor DemoPlugin::descriptor() const {
 }
 
 PluginInitResult DemoPlugin::initialize(const PluginContext2& context) {
+    if (context.hostServices) {
+        context.hostServices->logger()->log(
+            PluginLogLevel::Info, QStringLiteral("SDK V2 demo initialized"));
+    }
     const auto result = applyConfig(context.pluginConfig);
     return result.disposition == PluginConfigApplyDisposition::Rejected
         ? PluginInitResult::failed(result.error)

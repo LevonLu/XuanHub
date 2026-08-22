@@ -3,6 +3,9 @@
     "name": "PyCountdown",
     "version": "0.1.0",
     "author": "XuanHub",
+    "apiVersion": 2,
+    "capabilities": ["barItem", "settings"],
+    "permissions": [],
     "qml": "Countdown.qml",
     "settingsQml": "CountdownSettings.qml",
     "settings": [

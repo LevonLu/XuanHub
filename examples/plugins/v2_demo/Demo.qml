@@ -3,6 +3,7 @@ import QtQuick
 
 Item {
     property var plugin
+    property var pluginContext
     width: label.implicitWidth + 16
     height: label.implicitHeight + 8
 
@@ -10,6 +11,6 @@ Item {
         id: label
         anchors.centerIn: parent
         text: plugin ? plugin.text : "SDK V2"
-        color: themeManager.colors.fg
+        color: pluginContext ? pluginContext.colors.fg : "#cdd6f4"
     }
 }

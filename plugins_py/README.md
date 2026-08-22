@@ -25,6 +25,9 @@ plugins_py/
     "name": "PyHello",
     "version": "0.1.0",
     "author": "you",
+    "apiVersion": 2,
+    "capabilities": ["barItem"],
+    "permissions": [],
     "qml": "Hello.qml"
 }
 ```
@@ -40,6 +43,31 @@ plugins_py/
 ```
 
 - 另需保留 `{ "id": "pybridge", ... }` 条目作为总开关；删掉它则所有 Python 子插件都不加载。
+
+### HostServices 与权限
+
+`permissions` 使用稳定字符串声明需要的宿主能力；当前支持 `notifications`、
+`storage.private`、`secrets.own`、`shell.openUrl` 和 `shell.openFile`。首批 Python RPC
+开放日志和通知，其他服务会按路线图逐步接入。未声明通知权限时调用会返回
+`{"success": false, "errorCode": "permission_denied", ...}`。
+
+```python
+from xuanhub_host import log, notify
+
+def init(config):
+    log("info", "plugin initialized", {"mode": config.get("mode", "default")})
+    result = notify("Demo", "Ready")  # plugin.json 需声明 "notifications"
+    if not result["success"]:
+        log("warning", "notification rejected", {"code": result["errorCode"]})
+
+# 也可选实现；对象与 xuanhub_host.services 是同一插件身份绑定的代理。
+def set_host_services(services):
+    pass
+```
+
+Worker 请求中没有可填写的插件 ID，来源由宿主按子插件实例绑定。单包上限 4 MiB，调用在
+该插件现有 IPC 队列中串行并受请求超时约束。原生 DLL 是进程内受信任插件；Python 后端是
+独立进程中的隔离插件，设置页会分别展示声明权限、实际授予权限与隔离级别。
 
 ### 设置项声明（settings / settingsQml，M10）
 
@@ -156,11 +184,13 @@ pybridge 整体停用并弹托盘提示，宿主与其他插件不受影响。�
 
 ## QML 契约
 
-与 C++ 插件完全一致：根 `Item` 必须声明 `property var plugin`，框架加载后注入代理 ViewModel：
+与 C++ 插件完全一致：根 `Item` 必须声明 `property var plugin` 和
+`property var pluginContext`，框架加载后分别注入代理 ViewModel 与作用域宿主上下文：
 
 ```qml
 Item {
     property var plugin
+    property var pluginContext
     Text { text: (plugin && plugin.values.text) ? plugin.values.text : "..." }
     MouseArea { anchors.fill: parent; onClicked: if (plugin) plugin.call("bump", []) }
 }
@@ -168,6 +198,8 @@ Item {
 
 - 数据：`plugin.values.<key>`（dict 属性袋，整体替换触发刷新）。
 - 行为：`plugin.call(name, args)` → 异步 IPC → main.py 的 `invoke(name, args)`；不要依赖其同步返回值。
+- 宿主上下文：`pluginContext.colors/activeLocale/screenGeometry/barEdge/barPressed` 取代旧的
+  全局 QML 属性；服务调用还提供稳定的 `success/errorCode/errorMessage` 结果。
 - 健康：`plugin.health` 提供稳定的 `state`、`lastError`、`lastErrorAt`、`startedAt`、
   `lastHealthyAt`、`restartCount`、`consecutiveFailures`、`loadDurationMs` 和 `queueDepth` 字段。
   展示诊断信息时应容忍未来新增字段，不要根据错误文本驱动业务逻辑。

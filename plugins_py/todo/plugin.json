@@ -3,6 +3,9 @@
     "name": "待办事项",
     "version": "0.1.0",
     "author": "XuanHub",
+    "apiVersion": 2,
+    "capabilities": ["barItem", "settings", "popup"],
+    "permissions": [],
     "qml": "Todo.qml",
     "settings": [
         { "group": "通用", "fields": [
