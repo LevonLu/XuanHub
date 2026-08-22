@@ -119,6 +119,16 @@ QString SettingsController::choosePluginPackage() {
             "xuanhub.settings", "玄枢插件包 (*.xuanplugin)"));
 }
 
+QString SettingsController::choosePluginDiagnostics(const QString& pluginId) {
+    const QString safeId = pluginId.isEmpty() ? QStringLiteral("plugin") : pluginId;
+    return QFileDialog::getSaveFileName(
+        nullptr,
+        QCoreApplication::translate("xuanhub.settings", "导出插件诊断"),
+        QStringLiteral("%1-diagnostics.json").arg(safeId),
+        QCoreApplication::translate(
+            "xuanhub.settings", "玄枢诊断包 (*.json)"));
+}
+
 namespace {
 // 深度优先找首个「可见且文本匹配」的 item；匹配属性依次为
 // text / placeholderText / displayText / currentText（覆盖 Text、TextField、

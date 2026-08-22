@@ -36,6 +36,7 @@ public slots:
     // 或 "kp_<text>"（向当前焦点项投按键，如 kp_x / kp_enter）。
     Q_INVOKABLE void devUiEvent(const QString& spec);
     Q_INVOKABLE QString choosePluginPackage();
+    Q_INVOKABLE QString choosePluginDiagnostics(const QString& pluginId);
 
 private:
     ConfigService* m_config;

@@ -96,6 +96,8 @@ public:
     // 设置页「手动」宽度的初始值。无记录（插件未加载）返回 0。
     Q_INVOKABLE int pluginContentWidth(const QString& id) const;
     Q_INVOKABLE QVariantMap pluginHealth(const QString& id) const;
+    Q_INVOKABLE QVariantMap exportPluginDiagnostics(const QString& id,
+                                                    const QString& outputPath);
     Q_INVOKABLE bool restartPlugin(const QString& id);
     Q_INVOKABLE QVariantMap pluginDependencyPlan(const QString& id) const;
     Q_INVOKABLE bool installPluginDependencies(const QString& id);

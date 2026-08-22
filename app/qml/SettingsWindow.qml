@@ -1744,6 +1744,22 @@ Pane {
                                                     return parts.join(" · ")
                                                 }
                                             }
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Item { Layout.fillWidth: true }
+                                                UiButton {
+                                                    variant: "outline"
+                                                    text: root.trText("导出诊断")
+                                                    Layout.preferredWidth: Math.max(104, implicitWidth)
+                                                    onClicked: {
+                                                        const path = settingsCtl.choosePluginDiagnostics(
+                                                            pluginList.currentId)
+                                                        if (path.length > 0)
+                                                            settingsVM.exportPluginDiagnostics(
+                                                                pluginList.currentId, path)
+                                                    }
+                                                }
+                                            }
                                             ColumnLayout {
                                                 Layout.fillWidth: true
                                                 visible: String((detailPanel.rowData.health || {}).lastError || "").length > 0

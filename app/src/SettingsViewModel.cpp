@@ -4,6 +4,7 @@
 #include "ConfigService.h"
 #include "PluginListModel.h"
 #include "PluginManager.h"
+#include "PluginDiagnostics.h"
 #include "PluginPackageStore.h"
 #include "PluginPackageValidator.h"
 #include "PluginUpdateIndex.h"
@@ -168,6 +169,50 @@ int SettingsViewModel::pluginContentWidth(const QString& id) const {
 
 QVariantMap SettingsViewModel::pluginHealth(const QString& id) const {
     return m_barPlugins ? m_barPlugins->health(id) : QVariantMap{};
+}
+
+QVariantMap SettingsViewModel::exportPluginDiagnostics(
+    const QString& id, const QString& outputPath) {
+    const int row = m_sortModel->rowForId(id);
+    if (row < 0 || outputPath.trimmed().isEmpty()) {
+        setErrorMessage(QCoreApplication::translate(
+            "xuanhub.settings.errors", "无法导出插件诊断：插件或目标路径无效"));
+        return {{QStringLiteral("ok"), false},
+                {QStringLiteral("errorCode"), QStringLiteral("diagnostics.invalid_argument")}};
+    }
+    const auto role = [this, row](const char* name) {
+        return m_sortModel->roleValue(row, QString::fromLatin1(name));
+    };
+    const QVariantMap plugin{
+        {QStringLiteral("id"), id},
+        {QStringLiteral("name"), role("name")},
+        {QStringLiteral("version"), role("version")},
+        {QStringLiteral("kind"), role("kind")},
+        {QStringLiteral("apiVersion"), role("apiVersion")},
+        {QStringLiteral("enabled"), role("enabled")},
+        {QStringLiteral("capabilities"), role("capabilities")},
+        {QStringLiteral("trustLevel"), role("trustLevel")},
+    };
+    const QString configDirectory = QFileInfo(m_config->activePath()).absolutePath();
+    const PluginDiagnosticsResult exportResult = PluginDiagnostics::write(
+        outputPath,
+        QDir(configDirectory).absoluteFilePath(QStringLiteral("xuanhub.log")),
+        plugin, pluginHealth(id), managedPluginInfo(id),
+        {QDir::homePath(), configDirectory, m_exeDir},
+        QCoreApplication::applicationVersion());
+    if (!exportResult.ok) {
+        setErrorMessage(QCoreApplication::translate(
+            "xuanhub.settings.errors", "无法导出插件诊断：%1")
+                            .arg(exportResult.error));
+        return {{QStringLiteral("ok"), false},
+                {QStringLiteral("errorCode"), exportResult.error}};
+    }
+    setErrorMessage({});
+    return {
+        {QStringLiteral("ok"), true},
+        {QStringLiteral("path"), outputPath},
+        {QStringLiteral("logEntryCount"), exportResult.logEntryCount},
+    };
 }
 
 bool SettingsViewModel::restartPlugin(const QString& id) {
