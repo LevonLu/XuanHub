@@ -3,6 +3,7 @@
 
 #include "barplugin/IBarPlugin.h"
 #include "barplugin/IBarPlugin2.h"
+#include "barplugin/IPluginConfigMigration.h"
 
 #include <QtTest>
 
@@ -22,9 +23,10 @@ public:
     bool stopped = false;
 };
 
-class FakeV2Plugin final : public QObject, public xuanhub::IBarPlugin2 {
+class FakeV2Plugin final : public QObject, public xuanhub::IBarPlugin2,
+                           public xuanhub::IPluginConfigMigration {
     Q_OBJECT
-    Q_INTERFACES(xuanhub::IBarPlugin2)
+    Q_INTERFACES(xuanhub::IBarPlugin2 xuanhub::IPluginConfigMigration)
 public:
     xuanhub::PluginDescriptor descriptor() const override {
         xuanhub::PluginDescriptor value;
@@ -32,6 +34,7 @@ public:
         value.displayName = QStringLiteral("V2");
         value.version = QStringLiteral("2.0.0");
         value.apiVersion = 2;
+        value.configVersion = 3;
         return value;
     }
     xuanhub::PluginInitResult initialize(const xuanhub::PluginContext2& context) override {
@@ -48,6 +51,14 @@ public:
     }
     xuanhub::PluginConfigApplyResult applyConfig(const QVariantMap&) override {
         return xuanhub::PluginConfigApplyResult::applied();
+    }
+    xuanhub::PluginConfigMigrationResult migrateConfig(
+        int fromVersion, const QVariantMap& config) const override {
+        if (config.contains(QStringLiteral("migrationFail")))
+            return xuanhub::PluginConfigMigrationResult::failed(QStringLiteral("failed"));
+        QVariantMap migrated = config;
+        migrated.insert(QStringLiteral("fromVersion"), fromVersion);
+        return xuanhub::PluginConfigMigrationResult::migrated(migrated);
     }
     QObject* viewModel() override { return this; }
     QUrl qmlUrl() const override { return QUrl(QStringLiteral("V2.qml")); }
@@ -94,6 +105,19 @@ private Q_SLOTS:
                  PluginRuntime::ApplyStatus::Applied);
         QCOMPARE(runtime->applyConfig({{QStringLiteral("reject"), true}}).status,
                  PluginRuntime::ApplyStatus::Rejected);
+        const auto migration = runtime->migrateConfig(
+            1, {{QStringLiteral("kept"), true}});
+        QCOMPARE(migration.status, PluginRuntime::MigrationStatus::Migrated);
+        QCOMPARE(migration.targetVersion, 3);
+        QCOMPARE(migration.config.value(QStringLiteral("kept")).toBool(), true);
+        QCOMPARE(migration.config.value(QStringLiteral("fromVersion")).toInt(), 1);
+        QCOMPARE(runtime->migrateConfig(3, {}).status,
+                 PluginRuntime::MigrationStatus::NotRequired);
+        QCOMPARE(runtime->migrateConfig(4, {}).status,
+                 PluginRuntime::MigrationStatus::Rejected);
+        QCOMPARE(runtime->migrateConfig(
+                     1, {{QStringLiteral("migrationFail"), true}}).status,
+                 PluginRuntime::MigrationStatus::Rejected);
         runtime->shutdown();
         QVERIFY(plugin.initialized);
         QVERIFY(plugin.stopped);

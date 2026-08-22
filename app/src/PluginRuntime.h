@@ -19,8 +19,15 @@ struct BarPluginContext;
 class PluginRuntime final {
 public:
     enum class ApplyStatus { Unsupported, Applied, RequiresRestart, Rejected };
+    enum class MigrationStatus { NotRequired, Unsupported, Migrated, Rejected };
     struct ApplyResult {
         ApplyStatus status = ApplyStatus::Unsupported;
+        QString error;
+    };
+    struct MigrationResult {
+        MigrationStatus status = MigrationStatus::Unsupported;
+        int targetVersion = 1;
+        QVariantMap config;
         QString error;
     };
 
@@ -36,6 +43,8 @@ public:
     QObject* viewModel() const;
     QUrl qmlUrl() const;
     ApplyResult applyConfig(const QVariantMap& config);
+    MigrationResult migrateConfig(int currentVersion,
+                                  const QVariantMap& config) const;
     void shutdown();
 
 private:

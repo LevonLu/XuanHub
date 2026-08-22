@@ -14,6 +14,7 @@ add_library(barplugin SHARED
     include/barplugin/IBarPluginHostEventBus.h
     include/barplugin/IBarPluginHostLifecycle.h
     include/barplugin/IBarPluginHostServices.h
+    include/barplugin/IPluginConfigMigration.h
     include/barplugin/PluginHealth.h
     include/barplugin/PluginDescriptor.h
     include/barplugin/PluginEventScope.h

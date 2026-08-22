@@ -5,6 +5,7 @@
 #include "barplugin/IBarPlugin.h"
 #include "barplugin/IBarPlugin2.h"
 #include "barplugin/IBarPluginConfigurable.h"
+#include "barplugin/IPluginConfigMigration.h"
 
 namespace {
 void setError(QString* error, const QString& text) {
@@ -151,6 +152,40 @@ PluginRuntime::ApplyResult PluginRuntime::applyConfig(const QVariantMap& config)
     if (!configurable->applyConfig(config))
         return {ApplyStatus::Rejected, QStringLiteral("V1 applyConfig returned false")};
     return {ApplyStatus::Applied, {}};
+}
+
+PluginRuntime::MigrationResult PluginRuntime::migrateConfig(
+    int currentVersion, const QVariantMap& config) const {
+    const int targetVersion = qMax(1, descriptor().configVersion);
+    if (currentVersion == targetVersion)
+        return {MigrationStatus::NotRequired, targetVersion, config, {}};
+    if (currentVersion > targetVersion) {
+        return {MigrationStatus::Rejected, targetVersion, {},
+                QStringLiteral("config version %1 is newer than plugin target %2")
+                    .arg(currentVersion).arg(targetVersion)};
+    }
+
+    auto* migration = qobject_cast<xuanhub::IPluginConfigMigration*>(m_instance);
+    if (!migration) {
+        return {MigrationStatus::Unsupported, targetVersion, {},
+                QStringLiteral("plugin does not provide a config migration")};
+    }
+    const xuanhub::PluginConfigMigrationResult result =
+        migration->migrateConfig(currentVersion, config);
+    if (!result.success) {
+        return {MigrationStatus::Rejected, targetVersion, {},
+                result.error.isEmpty()
+                    ? QStringLiteral("plugin config migration failed") : result.error};
+    }
+    if (m_v2) {
+        const auto validation = m_v2->validateConfig(result.config);
+        if (!validation.valid) {
+            return {MigrationStatus::Rejected, targetVersion, {},
+                    validation.error.isEmpty()
+                        ? QStringLiteral("migrated config is invalid") : validation.error};
+        }
+    }
+    return {MigrationStatus::Migrated, targetVersion, result.config, {}};
 }
 
 void PluginRuntime::shutdown() {
