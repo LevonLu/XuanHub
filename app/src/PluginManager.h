@@ -87,9 +87,14 @@ public:
     QString loadError(const QString& id) const { return m_loadErrors.value(id); }
     const QHash<QString, QString>& loadErrors() const { return m_loadErrors; }
     const ConfigMigrationSuggestion* migrationSuggestion(const QString& id) const;
+    Q_INVOKABLE QVariantMap invokeAction(const QString& pluginId,
+                                         const QString& actionId);
 
     const QVector<LoadedPlugin>& loaded() const { return m_loaded; }
     void shutdownAll();   // 重载周期约定：必须先 shutdownAll() 再 loadFrom()（入口有重入保护）
+
+Q_SIGNALS:
+    void pluginsChanged();
 
 private:
     Q_SLOT void onHostedMigrationReady(const QString& id, int currentVersion,

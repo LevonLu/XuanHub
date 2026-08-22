@@ -38,6 +38,27 @@ QString sanitizePosition(QString pos, const QString& id) {
     }
     return pos;
 }
+
+QVariantMap actionResult(bool accepted, bool pending = false,
+                         const QString& errorCode = {},
+                         const QString& errorMessage = {}) {
+    return {
+        {QStringLiteral("accepted"), accepted},
+        {QStringLiteral("pending"), pending},
+        {QStringLiteral("errorCode"), errorCode},
+        {QStringLiteral("errorMessage"), errorMessage},
+    };
+}
+
+QVariantMap actionState(QObject* viewModel, const QString& actionId) {
+    if (!viewModel) return {};
+    QVariantMap states = viewModel->property("actionStates").toMap();
+    if (states.isEmpty()) {
+        states = viewModel->property("values").toMap()
+                     .value(QStringLiteral("actionStates")).toMap();
+    }
+    return states.value(actionId).toMap();
+}
 } // namespace
 
 PluginManager::PluginManager(xuanhub::EventBus* bus, const QString& configDir,
@@ -52,6 +73,7 @@ PluginManager::~PluginManager() {
 
 void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfigEntry>& enabled) {
     loadFromImpl(pluginsDir, enabled, false);
+    Q_EMIT pluginsChanged();
 }
 
 void PluginManager::loadFromImpl(const QString& pluginsDir,
@@ -551,11 +573,15 @@ bool PluginManager::loadOne(const QString& pluginsDir, const PluginConfigEntry& 
     // 已加载 host 优先尝试创建子插件，不扫描或重启其他运行实例。
     for (auto it = m_hostById.cbegin(); it != m_hostById.cend(); ++it) {
         if (!it.value()->subPluginIds().contains(entry.id)) continue;
-        return createHostedPlugin(it.key(), it.value(), entry);
+        const bool loaded = createHostedPlugin(it.key(), it.value(), entry);
+        if (loaded) Q_EMIT pluginsChanged();
+        return loaded;
     }
 
     loadFromImpl(pluginsDir, {entry}, true);
-    return m_loadedIds.contains(entry.id);
+    const bool loaded = m_loadedIds.contains(entry.id);
+    if (loaded) Q_EMIT pluginsChanged();
+    return loaded;
 }
 
 const PluginManager::LoadedPlugin* PluginManager::loadedPlugin(const QString& id) const {
@@ -569,6 +595,74 @@ const PluginManager::ConfigMigrationSuggestion*
 PluginManager::migrationSuggestion(const QString& id) const {
     const auto it = m_migrationSuggestions.constFind(id);
     return it == m_migrationSuggestions.cend() ? nullptr : &it.value();
+}
+
+QVariantMap PluginManager::invokeAction(const QString& pluginId,
+                                        const QString& actionId) {
+    const LoadedPlugin* plugin = loadedPlugin(pluginId);
+    if (!plugin || !plugin->viewModel) {
+        return actionResult(false, false, QStringLiteral("plugin_not_loaded"),
+                            QStringLiteral("plugin is not loaded"));
+    }
+    const auto declared = std::find_if(
+        plugin->actions.cbegin(), plugin->actions.cend(),
+        [&actionId](const xuanhub::PluginAction& action) {
+            return action.id == actionId;
+        });
+    if (declared == plugin->actions.cend()) {
+        return actionResult(false, false, QStringLiteral("action_not_declared"),
+                            QStringLiteral("action is not declared by the plugin"));
+    }
+    if (!actionState(plugin->viewModel, actionId)
+             .value(QStringLiteral("enabled"), true).toBool()) {
+        return actionResult(false, false, QStringLiteral("action_disabled"),
+                            QStringLiteral("action is currently disabled"));
+    }
+
+    const bool hosted = m_subPluginHostId.contains(pluginId);
+    const char* method = hosted ? "call" : "invokeAction";
+    QVariant invocationResult;
+    bool invoked = false;
+    if (hosted) {
+        invoked = QMetaObject::invokeMethod(
+            plugin->viewModel, method, Qt::DirectConnection,
+            Q_RETURN_ARG(QVariant, invocationResult),
+            Q_ARG(QString, actionId), Q_ARG(QVariantList, QVariantList{}));
+    } else {
+        invoked = QMetaObject::invokeMethod(
+            plugin->viewModel, method, Qt::DirectConnection,
+            Q_RETURN_ARG(QVariant, invocationResult), Q_ARG(QString, actionId));
+    }
+    if (!invoked) {
+        return actionResult(false, false, QStringLiteral("action_unsupported"),
+                            QStringLiteral("plugin does not implement the action entrypoint"));
+    }
+
+    const QVariantMap returned = invocationResult.toMap();
+    if (!returned.isEmpty()) {
+        const bool accepted = returned.value(
+            QStringLiteral("accepted"),
+            returned.value(QStringLiteral("queued"), true)).toBool();
+        const bool pending = returned.value(
+            QStringLiteral("pending"),
+            hosted && returned.value(QStringLiteral("queued"), false).toBool()).toBool();
+        if (!accepted) {
+            return actionResult(false, false, QStringLiteral("action_rejected"),
+                                returned.value(QStringLiteral("errorMessage")).toString());
+        }
+        QVariantMap result = returned;
+        result.insert(QStringLiteral("accepted"), true);
+        result.insert(QStringLiteral("pending"), pending);
+        result.insert(QStringLiteral("errorCode"), QString());
+        result.insert(QStringLiteral("errorMessage"), QString());
+        return result;
+    }
+    if (invocationResult.metaType().id() == QMetaType::Bool
+        && !invocationResult.toBool()) {
+        return actionResult(false, false, QStringLiteral("action_rejected"),
+                            QStringLiteral("plugin rejected the action"));
+    }
+    return actionResult(true, false);
 }
 
 QStringList PluginManager::dependentPluginIds(const QString& id) const {
@@ -607,6 +701,7 @@ bool PluginManager::stopOne(const QString& id) {
         m_descriptorById.remove(id);
         m_migrationSuggestions.remove(id);
         removeHostServices(id);
+        Q_EMIT pluginsChanged();
         return true;
     }
 
@@ -655,6 +750,7 @@ bool PluginManager::stopOne(const QString& id) {
     }
     delete loader;
     removeHostServices(id);
+    Q_EMIT pluginsChanged();
     return true;
 }
 
@@ -795,6 +891,7 @@ void PluginManager::shutdownAll() {
     m_descriptorById.clear();
     m_migrationSuggestions.clear();
     m_hostServiceScopes.clear();
+    Q_EMIT pluginsChanged();
 }
 
 std::unique_ptr<PluginHostServices> PluginManager::createHostServices(

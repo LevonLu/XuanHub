@@ -105,6 +105,12 @@ private Q_SLOTS:
 
         QVERIFY(manager.loadedPlugin(clock.id));
         QCOMPARE(manager.loadedPlugin(clock.id)->apiVersion, 2);
+        QSignalSpy pluginsChanged(&manager, &PluginManager::pluginsChanged);
+        const QVariantMap undeclaredAction = manager.invokeAction(
+            clock.id, QStringLiteral("not_declared"));
+        QVERIFY(!undeclaredAction.value(QStringLiteral("accepted")).toBool());
+        QCOMPARE(undeclaredAction.value(QStringLiteral("errorCode")).toString(),
+                 QStringLiteral("action_not_declared"));
         const auto* migration = manager.migrationSuggestion(clock.id);
         QVERIFY(migration);
         QVERIFY(migration->ready());
@@ -136,11 +142,13 @@ private Q_SLOTS:
         QVERIFY(!manager.loadOne(pluginsDir, missing));
         QCOMPARE(manager.loadedPlugin(menu.id)->viewModel, menuViewModel);
         QVERIFY(manager.stopOne(clock.id));
+        QCOMPARE(pluginsChanged.count(), 1);
         QVERIFY(!manager.loadedPlugin(clock.id));
         QCOMPARE(manager.loadedPlugin(menu.id)->viewModel, menuViewModel);
         bus.publish(QStringLiteral("app.quickmenu.state"));
 
         QVERIFY(manager.loadOne(pluginsDir, clock));
+        QCOMPARE(pluginsChanged.count(), 2);
         QVERIFY(manager.loadedPlugin(clock.id));
         QCOMPARE(manager.loadedPlugin(menu.id)->viewModel, menuViewModel);
         QVERIFY(manager.restartOne(pluginsDir, clock));
