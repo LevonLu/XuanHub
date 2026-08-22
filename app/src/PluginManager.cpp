@@ -11,6 +11,7 @@
 #include "barplugin/IBarPluginHost.h"
 #include "barplugin/IBarPluginHostLifecycle.h"
 #include "barplugin/IBarPluginHostConfigurable.h"
+#include "barplugin/IBarPluginHostEventBus.h"
 #include "barplugin/IBarPluginHostServices.h"
 #include "barplugin/PluginEventScope.h"
 
@@ -412,13 +413,25 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
     lp.order = entry.order;
     lp.width = entry.width;
     lp.viewModel = sp.viewModel;
+    const QStringList grantedPermissions = xuanhub::grantedHostPermissions(
+        xuanhub::HostPluginTrustLevel::Isolated, sp.permissions);
     auto hostServices = createHostServices(
         entry.id, xuanhub::HostPluginTrustLevel::Isolated,
-        sp.permissions,
-        xuanhub::grantedHostPermissions(xuanhub::HostPluginTrustLevel::Isolated,
-                                        sp.permissions));
+        sp.permissions, grantedPermissions);
+    auto eventScope = std::make_unique<xuanhub::PluginEventScope>(
+        m_bus, entry.id, grantedPermissions);
     auto* hostRuntime = m_runtimeById.value(hostId);
     auto* hostObject = hostRuntime ? hostRuntime->instance() : nullptr;
+    if (auto* eventBinder = hostObject
+            ? qobject_cast<xuanhub::IBarPluginHostEventBus*>(hostObject) : nullptr) {
+        if (!eventBinder->bindSubPluginEventScope(entry.id, eventScope.get())) {
+            if (auto* lifecycle = qobject_cast<xuanhub::IBarPluginHostLifecycle*>(hostObject))
+                lifecycle->destroySubPlugin(entry.id);
+            recordLoadError(entry.id,
+                            QStringLiteral("host failed to bind sub-plugin event scope"));
+            return false;
+        }
+    }
     if (auto* binder = hostObject
             ? qobject_cast<xuanhub::IBarPluginHostServices*>(hostObject) : nullptr) {
         if (!binder->bindSubPluginHostServices(entry.id, hostServices.get())) {
@@ -449,6 +462,8 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
     m_descriptorById.insert(entry.id, descriptor);
     m_loadErrors.remove(entry.id);
     m_subPluginHostId.insert(entry.id, hostId);
+    m_scopeById.insert(entry.id, eventScope.get());
+    m_eventScopes.push_back(std::move(eventScope));
     retainHostServices(entry.id, std::move(hostServices), std::move(qmlContext));
     qDebug() << "[Plugin] loaded:" << entry.id << "pos=" << lp.position
              << "qml=" << lp.qmlUrl.toLocalFile() << "(via host" << hostId << ")";
@@ -497,7 +512,11 @@ bool PluginManager::stopOne(const QString& id) {
             qWarning() << "[Plugin] host cannot stop sub-plugin independently:" << hostId << id;
             return false;
         }
+        if (auto* scope = m_scopeById.take(id)) scope->clear();
         if (!lifecycle->destroySubPlugin(id)) return false;
+        const auto scopeIt = std::find_if(m_eventScopes.begin(), m_eventScopes.end(),
+            [&id](const auto& owned) { return owned->pluginId() == id; });
+        if (scopeIt != m_eventScopes.end()) m_eventScopes.erase(scopeIt);
         for (int i = 0; i < m_loaded.size(); ++i) {
             if (m_loaded.at(i).id == id) {
                 m_loaded.removeAt(i);

@@ -58,6 +58,15 @@ class BridgeWorkerTests(unittest.TestCase):
                 "    state['log_ok'] = log('info', 'worker ready', {'kind': 'test'})['success']\n"
                 "    state['notify_ok'] = notify('Demo', 'Ready')['success']\n"
             )
+        if self._testMethodName == "test_event_bus_publish_subscribe_and_request":
+            host_import = "from xuanhub_host import events\n"
+            host_init = (
+                "    state['event_value'] = 0\n"
+                "    def on_event(envelope):\n"
+                "        state['event_value'] = envelope.get('data', {}).get('value', 0)\n"
+                "    state['sub_ok'] = events.subscribe('plugin.py_demo.input', on_event, True)['success']\n"
+                "    state['pub_ok'] = events.publish('plugin.py_demo.ready', {'value': 1})['success']\n"
+            )
         (self.plugin_dir / "main.py").write_text(
             "import os\n"
             + host_import +
@@ -66,9 +75,10 @@ class BridgeWorkerTests(unittest.TestCase):
             "    state['prefix'] = config.get('prefix', '')\n"
             + host_init +
             "def update():\n"
-            "    return {'count': state['count'], 'prefix': state['prefix'], 'locale': state['locale']}\n"
+            "    return dict(state)\n"
             "def invoke(name, args):\n"
             "    if name == 'bump': state['count'] += int(args[0])\n"
+            "    if name == 'request': state['request'] = events.request('plugin.py_demo.query', {'value': 2})\n"
             "    return state['count']\n"
             + locale_callback + config_callback +
             "def stop():\n"
@@ -95,6 +105,7 @@ class BridgeWorkerTests(unittest.TestCase):
         self.assertEqual(recv_frame(self.socket), {"type": "hello", "token": self.token})
         self.request_id = 0
         self.host_requests: list[dict] = []
+        self.event_requests: list[dict] = []
 
     def tearDown(self) -> None:
         if hasattr(self, "socket"):
@@ -118,15 +129,31 @@ class BridgeWorkerTests(unittest.TestCase):
         send_frame(self.socket, {"type": "request", "id": request_id, "op": op, "data": data})
         while True:
             response = recv_frame(self.socket)
-            if response.get("type") != "host_service":
+            if response.get("type") == "host_service":
+                self.host_requests.append(response)
+                send_frame(self.socket, {
+                    "type": "host_service_response",
+                    "id": response["id"],
+                    "ok": True,
+                    "result": None,
+                })
+                continue
+            if response.get("type") == "event_bus":
+                self.event_requests.append(response)
+                result = {"accepted": True}
+                if response.get("operation") == "request":
+                    result = {"requestId": "bus-1", "success": True,
+                              "data": {"answer": 42}, "errorCode": "",
+                              "errorMessage": ""}
+                send_frame(self.socket, {
+                    "type": "event_bus_response",
+                    "id": response["id"],
+                    "ok": True,
+                    "result": result,
+                })
+                continue
+            else:
                 break
-            self.host_requests.append(response)
-            send_frame(self.socket, {
-                "type": "host_service_response",
-                "id": response["id"],
-                "ok": True,
-                "result": None,
-            })
         self.assertEqual(response["type"], "response")
         self.assertEqual(response["id"], request_id)
         return response
@@ -135,7 +162,8 @@ class BridgeWorkerTests(unittest.TestCase):
         self.assertEqual(self.request("init", {"config": {"prefix": "worker"}, "locale": "en-US"}),
                          {"type": "response", "id": "1", "ok": True,
                           "result": {"ready": True,
-                                     "capabilities": ["set_config", "host_services.v1"]}})
+                                     "capabilities": ["set_config", "host_services.v1",
+                                                      "event_bus.v2"]}})
         self.assertEqual(self.request("update", {}),
                          {"type": "response", "id": "2", "ok": True,
                           "result": {"count": 0, "prefix": "worker", "locale": "en-US"}})
@@ -153,7 +181,8 @@ class BridgeWorkerTests(unittest.TestCase):
     def test_missing_set_locale_is_compatible(self) -> None:
         initialized = self.request("init", {"config": {}, "locale": "en-US"})
         self.assertTrue(initialized["ok"])
-        self.assertEqual(initialized["result"]["capabilities"], ["host_services.v1"])
+        self.assertEqual(initialized["result"]["capabilities"],
+                         ["host_services.v1", "event_bus.v2"])
         self.assertTrue(self.request("set_locale", {"locale": "zh-CN"})["ok"])
         self.assertEqual(self.request("update", {})["result"]["locale"], "unset")
         self.assertTrue(self.request("stop", {})["ok"])
@@ -169,6 +198,26 @@ class BridgeWorkerTests(unittest.TestCase):
         self.assertTrue(all("pluginId" not in request for request in self.host_requests))
         self.assertTrue(self.request("stop", {})["ok"])
         self.process.wait(timeout=5)
+
+    def test_event_bus_publish_subscribe_and_request(self) -> None:
+        initialized = self.request("init", {"config": {}, "locale": "en-US"})
+        self.assertTrue(initialized["ok"])
+        self.assertEqual([item["operation"] for item in self.event_requests],
+                         ["subscribe", "publish"])
+        self.assertTrue(all("pluginId" not in item for item in self.event_requests))
+
+        send_frame(self.socket, {
+            "type": "event_bus_event", "id": "delivery-1",
+            "topic": "plugin.py_demo.input",
+            "envelope": {"schemaVersion": 1, "source": "plugin.test",
+                         "kind": "event", "data": {"value": 9}},
+        })
+        self.assertEqual(recv_frame(self.socket),
+                         {"type": "event_bus_event_ack", "id": "delivery-1"})
+        self.assertEqual(self.request("update", {})["result"]["event_value"], 9)
+        self.assertTrue(self.request("invoke", {"name": "request", "args": []})["ok"])
+        state = self.request("update", {})["result"]
+        self.assertEqual(state["request"]["data"]["answer"], 42)
 
 
 if __name__ == "__main__":

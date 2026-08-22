@@ -254,6 +254,24 @@ private slots:
         QTest::qWait(20);
         QCOMPARE(receiver.calls, 0);
     }
+
+    void eventStormUsesBoundedQueueAndReportsDrops() {
+        xuanhub::EventBus bus;
+        xuanhub::PluginEventScope scope(&bus, QStringLiteral("storm"));
+        EventReceiver receiver;
+        QSignalSpy traces(&bus, &xuanhub::EventBus::traceRecorded);
+        QVERIFY(scope.subscribeV2(QStringLiteral("plugin.storm.tick"), &receiver,
+                                  "onEnvelope(QVariantMap)"));
+
+        for (int i = 0; i < 300; ++i)
+            QVERIFY(scope.publish(QStringLiteral("plugin.storm.tick"),
+                                  {{QStringLiteral("sequence"), i}}));
+        QTRY_COMPARE(receiver.calls, 256);
+        int dropped = 0;
+        for (const QList<QVariant>& trace : traces)
+            dropped += trace.at(4).toInt();
+        QCOMPARE(dropped, 44);
+    }
 };
 
 QTEST_GUILESS_MAIN(EventBusTest)

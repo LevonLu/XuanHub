@@ -6,6 +6,7 @@
 #include <QByteArray>
 #include <QElapsedTimer>
 #include <QJsonObject>
+#include <QHash>
 #include <QPointer>
 #include <QProcess>
 #include <QQueue>
@@ -51,9 +52,14 @@ public:
     Q_INVOKABLE bool restart();
     bool applyConfig(const QVariantMap& config);
     void setHostServices(xuanhub::IHostServices* services) { m_hostServices = services; }
+    void setEventScope(xuanhub::PluginEventScope* eventScope) {
+        m_pluginEventScope = eventScope;
+    }
 
 public slots:
     void onLocaleChanged(QVariantMap payload);
+    void onEventBusEnvelope(QVariantMap envelope);
+    void onEventBusRequestResult(QVariantMap result);
 
 Q_SIGNALS:
     void valuesChanged();
@@ -74,6 +80,8 @@ private:
     void readMessages();
     void handleMessage(const QJsonObject& message);
     void handleHostServiceRequest(const QJsonObject& message);
+    void handleEventBusRequest(const QJsonObject& message);
+    void flushEventBusEvents();
     bool sendMessage(const QJsonObject& message);
     void enqueue(Request request, bool front = false);
     void dispatchNext();
@@ -107,9 +115,13 @@ private:
     QElapsedTimer m_failureClock;
     QByteArray m_readBuffer;
     QQueue<Request> m_queue;
+    QQueue<QJsonObject> m_eventQueue;
+    QHash<QString, QString> m_eventRequestIds; // EventBus request id -> Worker request id
     Request m_inFlight;
     quint64 m_inFlightId = 0;
     quint64 m_nextRequestId = 1;
+    quint64 m_nextEventDeliveryId = 1;
+    QString m_eventDeliveryInFlight;
     QString m_token;
     bool m_authenticated = false;
     bool m_stopping = false;
@@ -120,4 +132,5 @@ private:
     int m_restartAttempt = 0;
     int m_updateIntervalMs = 1000;
     xuanhub::IHostServices* m_hostServices = nullptr; // 核心按子插件 ID 绑定，Worker 不参与选择
+    xuanhub::PluginEventScope* m_pluginEventScope = nullptr; // 核心拥有，销毁 VM 前先 clear
 };

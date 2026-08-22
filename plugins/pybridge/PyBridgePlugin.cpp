@@ -420,3 +420,11 @@ bool PyBridgePlugin::bindSubPluginHostServices(
     qWarning() << "[PyBridge]" << id << ": cannot start isolated worker";
     return false;
 }
+
+bool PyBridgePlugin::bindSubPluginEventScope(
+    const QString& id, xuanhub::PluginEventScope* eventScope) {
+    auto* viewModel = qobject_cast<PyWorkerViewModel*>(m_vms.value(id));
+    if (!viewModel || !eventScope) return false;
+    viewModel->setEventScope(eventScope);
+    return true;
+}

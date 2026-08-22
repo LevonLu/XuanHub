@@ -278,15 +278,17 @@ void EventBus::deliver(const QString& topic, const QVariantMap& rawPayload,
 
 void EventBus::queueV2(const QString& topic, const Sub& sub,
                        const QVariantMap& value) {
+    QVariantMap routedValue = value;
+    routedValue.insert(QStringLiteral("topic"), topic);
     int& queued = m_queuedBySubscription[sub.id];
     if (queued >= kMaxQueuedPerSubscription) {
         qWarning() << "[EventBus] V2 subscriber queue full, drop:" << topic;
-        emit traceRecorded(topic, value.value(QStringLiteral("source")).toString(),
+        emit traceRecorded(topic, routedValue.value(QStringLiteral("source")).toString(),
                            1, 0, 1);
         return;
     }
     ++queued;
-    QMetaObject::invokeMethod(this, [this, topic, sub, value] {
+    QMetaObject::invokeMethod(this, [this, topic, sub, routedValue] {
         auto queuedIt = m_queuedBySubscription.find(sub.id);
         if (queuedIt != m_queuedBySubscription.end()) {
             if (--queuedIt.value() <= 0) m_queuedBySubscription.erase(queuedIt);
@@ -304,13 +306,13 @@ void EventBus::queueV2(const QString& topic, const Sub& sub,
         QElapsedTimer timer;
         timer.start();
         metaObject->method(methodIndex).invoke(active->receiver.data(), Qt::AutoConnection,
-                                               Q_ARG(QVariantMap, value));
+                                               Q_ARG(QVariantMap, routedValue));
         const qint64 durationMs = timer.elapsed();
         if (durationMs >= kSlowSubscriberMs) {
             qWarning() << "[EventBus] slow V2 subscriber:" << topic
                        << durationMs << "ms";
         }
-        emit traceRecorded(topic, value.value(QStringLiteral("source")).toString(),
+        emit traceRecorded(topic, routedValue.value(QStringLiteral("source")).toString(),
                            1, durationMs, 0);
     }, Qt::QueuedConnection);
 }

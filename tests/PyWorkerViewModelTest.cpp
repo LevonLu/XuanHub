@@ -2,6 +2,7 @@
 #include "PyWorkerViewModel.h"
 #include "PluginHostServices.h"
 #include "barplugin/EventBus.h"
+#include "barplugin/PluginEventScope.h"
 #include "barplugin/ProcessReaper.h"
 
 #include <QDir>
@@ -11,6 +12,21 @@
 #include <QProcess>
 #include <QTemporaryDir>
 #include <QtTest>
+
+class PythonBusResponder final : public QObject {
+    Q_OBJECT
+public:
+    explicit PythonBusResponder(xuanhub::EventBus* bus) : bus(bus) {}
+
+public Q_SLOTS:
+    void onRequest(QVariantMap envelope) {
+        bus->respond(envelope.value(QStringLiteral("requestId")).toString(),
+                     {{QStringLiteral("answer"), 42}});
+    }
+
+private:
+    xuanhub::EventBus* bus;
+};
 
 class PyWorkerViewModelTest final : public QObject {
     Q_OBJECT
@@ -261,6 +277,61 @@ def update():
             viewModel.values().value(QStringLiteral("error")).toString(),
             QStringLiteral("permission_denied"), 5000);
         QCOMPARE(viewModel.values().value(QStringLiteral("success")).toBool(), false);
+    }
+
+    void bridgesPythonPublishSubscribeAndRequest() {
+        const QString python = qEnvironmentVariable("XUANHUB_TEST_PYTHON");
+        const QString worker = qEnvironmentVariable("XUANHUB_TEST_WORKER");
+        QVERIFY2(!python.isEmpty() && !worker.isEmpty(),
+                 "CTest must provide python executable and bridge_worker.py paths");
+
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString pluginDir = temporary.filePath(QStringLiteral("plugin"));
+        QVERIFY(QDir().mkpath(pluginDir));
+        QFile mainFile(pluginDir + QStringLiteral("/main.py"));
+        QVERIFY(mainFile.open(QIODevice::WriteOnly | QIODevice::Text));
+        QVERIFY(mainFile.write(R"PY(
+from xuanhub_host import events
+state = {"received": 0, "answer": 0, "published": False}
+def on_message(envelope):
+    state["received"] = envelope.get("data", {}).get("value", 0)
+def init(config):
+    events.subscribe("plugin.peer.message", on_message)
+    state["published"] = events.publish("plugin.py_events.ready", {"ready": True})["success"]
+def invoke(name, args):
+    if name == "query":
+        result = events.request("plugin.py_events.query", {"question": 1}, 1000)
+        state["answer"] = result.get("data", {}).get("answer", 0)
+def update():
+    return dict(state)
+)PY"));
+        mainFile.close();
+
+        xuanhub::EventBus bus;
+        PythonBusResponder responder(&bus);
+        QVERIFY(bus.subscribeV2(QStringLiteral("plugin.py_events.query"), &responder,
+                                "onRequest(QVariantMap)"));
+        xuanhub::PluginEventScope pythonScope(
+            &bus, QStringLiteral("py_events"),
+            {QStringLiteral("events.subscribe:plugin.peer.*")});
+        PyWorkerViewModel viewModel(QStringLiteral("py_events"), pluginDir,
+                                    {}, python, worker, &bus);
+        viewModel.setEventScope(&pythonScope);
+        QVERIFY(viewModel.start());
+        QTRY_COMPARE_WITH_TIMEOUT(
+            viewModel.values().value(QStringLiteral("published")).toBool(), true, 5000);
+
+        xuanhub::PluginEventScope peerScope(&bus, QStringLiteral("peer"));
+        QVERIFY(peerScope.publish(QStringLiteral("plugin.peer.message"),
+                                  {{QStringLiteral("value"), 9}}));
+        QTRY_COMPARE_WITH_TIMEOUT(
+            viewModel.values().value(QStringLiteral("received")).toInt(), 9, 5000);
+
+        QCOMPARE(viewModel.call(QStringLiteral("query"), {}).toMap()
+                     .value(QStringLiteral("queued")).toBool(), true);
+        QTRY_COMPARE_WITH_TIMEOUT(
+            viewModel.values().value(QStringLiteral("answer")).toInt(), 42, 5000);
     }
 
     void respectsConfiguredUpdateInterval() {

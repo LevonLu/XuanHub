@@ -13,6 +13,7 @@
 #include <QTcpSocket>
 #include <QtEndian>
 
+#include <algorithm>
 #include <utility>
 
 #include "barplugin/ProcessReaper.h"
@@ -29,6 +30,8 @@ constexpr int kMinUpdateIntervalMs = 100;
 constexpr int kMaxUpdateIntervalMs = 60000;
 constexpr int kCircuitFailureLimit = 5;
 constexpr qint64 kCircuitFailureWindowMs = 10 * 60 * 1000;
+constexpr int kMaxQueuedEvents = 128;
+constexpr int kMaxEventRequestTimeoutMs = 10000;
 
 QString processStatusText(QProcess::ExitStatus status) {
     return status == QProcess::CrashExit ? QStringLiteral("crash") : QStringLiteral("normal");
@@ -130,6 +133,9 @@ bool PyWorkerViewModel::start() {
     m_authenticated = false;
     m_readBuffer.clear();
     m_queue.clear();
+    m_eventQueue.clear();
+    m_eventRequestIds.clear();
+    m_eventDeliveryInFlight.clear();
     m_inFlight = {};
     m_inFlightId = 0;
     connect(server, &QTcpServer::newConnection, this, &PyWorkerViewModel::acceptConnection);
@@ -285,6 +291,22 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
         handleHostServiceRequest(message);
         return;
     }
+    if (message.value(QStringLiteral("type")).toString()
+        == QLatin1String("event_bus")) {
+        handleEventBusRequest(message);
+        return;
+    }
+    if (message.value(QStringLiteral("type")).toString()
+        == QLatin1String("event_bus_event_ack")) {
+        if (message.value(QStringLiteral("id")).toString() != m_eventDeliveryInFlight) {
+            failWorker(QStringLiteral("worker event acknowledgement mismatch"), false);
+            return;
+        }
+        m_eventDeliveryInFlight.clear();
+        flushEventBusEvents();
+        dispatchNext();
+        return;
+    }
 
     if (message.value(QStringLiteral("type")).toString() != QLatin1String("response")) {
         failWorker(QStringLiteral("worker IPC returned an unexpected message"), false);
@@ -341,11 +363,141 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
         }
     }
 
+    flushEventBusEvents();
     if (op == QLatin1String("init") || op == QLatin1String("invoke")
         || op == QLatin1String("set_locale") || op == QLatin1String("set_config"))
         scheduleUpdate(0);
     if (op == QLatin1String("update")) scheduleUpdate();
     dispatchNext();
+}
+
+void PyWorkerViewModel::onEventBusEnvelope(QVariantMap envelope) {
+    if (m_eventQueue.size() >= kMaxQueuedEvents) {
+        qWarning() << "[PyBridge]" << m_id
+                   << ": EventBus queue full, dropping newest event";
+        return;
+    }
+    const QString deliveryId = QStringLiteral("event-%1").arg(m_nextEventDeliveryId++);
+    m_eventQueue.enqueue({
+        {QStringLiteral("type"), QStringLiteral("event_bus_event")},
+        {QStringLiteral("id"), deliveryId},
+        {QStringLiteral("topic"), envelope.value(QStringLiteral("topic")).toString()},
+        {QStringLiteral("envelope"), QJsonObject::fromVariantMap(envelope)},
+    });
+    flushEventBusEvents();
+}
+
+void PyWorkerViewModel::onEventBusRequestResult(QVariantMap result) {
+    const QString busRequestId = result.value(QStringLiteral("requestId")).toString();
+    const QString workerRequestId = m_eventRequestIds.take(busRequestId);
+    if (workerRequestId.isEmpty() || !m_authenticated) return;
+    if (!sendMessage({
+            {QStringLiteral("type"), QStringLiteral("event_bus_response")},
+            {QStringLiteral("id"), workerRequestId},
+            {QStringLiteral("ok"), true},
+            {QStringLiteral("result"), QJsonObject::fromVariantMap(result)},
+        })) {
+        failWorker(QStringLiteral("cannot write EventBus request result"), true);
+    }
+}
+
+void PyWorkerViewModel::handleEventBusRequest(const QJsonObject& message) {
+    const QString workerRequestId = message.value(QStringLiteral("id")).toString();
+    auto respond = [this, &workerRequestId](bool ok, const QVariantMap& result,
+                                            const QString& errorCode = {},
+                                            const QString& error = {}) {
+        QJsonObject response{
+            {QStringLiteral("type"), QStringLiteral("event_bus_response")},
+            {QStringLiteral("id"), workerRequestId},
+            {QStringLiteral("ok"), ok},
+        };
+        if (ok) response.insert(QStringLiteral("result"),
+                                QJsonObject::fromVariantMap(result));
+        else {
+            response.insert(QStringLiteral("errorCode"), errorCode);
+            response.insert(QStringLiteral("error"), error);
+        }
+        if (!sendMessage(response))
+            failWorker(QStringLiteral("cannot write EventBus response"), true);
+    };
+
+    if (workerRequestId.isEmpty() || workerRequestId.size() > 64
+        || message.contains(QStringLiteral("pluginId"))) {
+        respond(false, {}, QStringLiteral("invalid_request"),
+                QStringLiteral("invalid EventBus request identity"));
+        return;
+    }
+    if (!m_pluginEventScope) {
+        respond(false, {}, QStringLiteral("service_unavailable"),
+                QStringLiteral("plugin EventBus scope is not bound"));
+        return;
+    }
+    const QString operation = message.value(QStringLiteral("operation")).toString();
+    const QJsonObject args = message.value(QStringLiteral("args")).toObject();
+    const QString topic = args.value(QStringLiteral("topic")).toString();
+    const QVariantMap data = args.value(QStringLiteral("data")).toObject().toVariantMap();
+
+    if (operation == QLatin1String("publish")) {
+        const bool ok = m_pluginEventScope->publish(topic, data);
+        respond(ok, {{QStringLiteral("published"), ok}},
+                ok ? QString{} : QStringLiteral("permission_denied"),
+                ok ? QString{} : QStringLiteral("EventBus publish rejected"));
+        return;
+    }
+    if (operation == QLatin1String("subscribe")) {
+        xuanhub::EventSubscriptionOptions options;
+        options.replayRetained = args.value(QStringLiteral("replayRetained")).toBool(false);
+        const bool ok = m_pluginEventScope->subscribeV2(
+            topic, this, "onEventBusEnvelope(QVariantMap)", options);
+        respond(ok, {{QStringLiteral("subscribed"), ok}},
+                ok ? QString{} : QStringLiteral("permission_denied"),
+                ok ? QString{} : QStringLiteral("EventBus subscription rejected"));
+        return;
+    }
+    if (operation == QLatin1String("state")) {
+        respond(true, {{QStringLiteral("envelope"),
+                        m_pluginEventScope->state(topic)}});
+        return;
+    }
+    if (operation == QLatin1String("request")) {
+        const int timeoutMs = std::clamp(
+            args.value(QStringLiteral("timeoutMs")).toInt(5000), 1,
+            kMaxEventRequestTimeoutMs);
+        const QString busRequestId = m_pluginEventScope->request(
+            topic, data, this, "onEventBusRequestResult(QVariantMap)", timeoutMs);
+        if (busRequestId.isEmpty()) {
+            respond(false, {}, QStringLiteral("request_rejected"),
+                    QStringLiteral("EventBus request rejected"));
+        } else {
+            m_eventRequestIds.insert(busRequestId, workerRequestId);
+        }
+        return;
+    }
+    if (operation == QLatin1String("respond")) {
+        const bool ok = m_pluginEventScope->respond(
+            args.value(QStringLiteral("requestId")).toString(), data,
+            args.value(QStringLiteral("errorCode")).toString(),
+            args.value(QStringLiteral("errorMessage")).toString());
+        respond(ok, {{QStringLiteral("responded"), ok}},
+                ok ? QString{} : QStringLiteral("response_rejected"),
+                ok ? QString{} : QStringLiteral("EventBus response rejected"));
+        return;
+    }
+    respond(false, {}, QStringLiteral("unsupported_operation"),
+            QStringLiteral("unsupported EventBus operation"));
+}
+
+void PyWorkerViewModel::flushEventBusEvents() {
+    if (!m_authenticated || m_stopping || m_inFlightId != 0
+        || !m_eventDeliveryInFlight.isEmpty() || m_eventQueue.isEmpty()) {
+        return;
+    }
+    const QJsonObject event = m_eventQueue.dequeue();
+    m_eventDeliveryInFlight = event.value(QStringLiteral("id")).toString();
+    if (!sendMessage(event)) {
+        m_eventDeliveryInFlight.clear();
+        failWorker(QStringLiteral("cannot write EventBus event"), true);
+    }
 }
 
 void PyWorkerViewModel::handleHostServiceRequest(const QJsonObject& message) {
@@ -454,7 +606,10 @@ void PyWorkerViewModel::enqueue(Request request, bool front) {
 }
 
 void PyWorkerViewModel::dispatchNext() {
-    if (!m_authenticated || m_stopping || m_inFlightId != 0 || m_queue.isEmpty()) return;
+    if (!m_authenticated || m_stopping || m_inFlightId != 0
+        || !m_eventDeliveryInFlight.isEmpty() || m_queue.isEmpty()) return;
+    flushEventBusEvents();
+    if (!m_eventQueue.isEmpty() || !m_eventDeliveryInFlight.isEmpty()) return;
     m_inFlight = m_queue.dequeue();
     m_inFlightId = m_nextRequestId++;
     QJsonObject message{{QStringLiteral("type"), QStringLiteral("request")},
@@ -520,6 +675,9 @@ void PyWorkerViewModel::failWorker(const QString& reason, bool retry) {
     m_authenticated = false;
     m_supportsHotConfig = false;
     m_queue.clear();
+    m_eventQueue.clear();
+    m_eventRequestIds.clear();
+    m_eventDeliveryInFlight.clear();
     m_inFlight = {};
     m_inFlightId = 0;
     if (m_socket) {
@@ -608,6 +766,9 @@ void PyWorkerViewModel::stopWorker() {
     m_updateTimer.stop();
     m_supportsHotConfig = false;
     m_queue.clear();
+    m_eventQueue.clear();
+    m_eventRequestIds.clear();
+    m_eventDeliveryInFlight.clear();
     if (m_socket) {
         QTcpSocket* socket = m_socket;
         m_socket = nullptr;

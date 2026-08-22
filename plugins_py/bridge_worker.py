@@ -62,11 +62,83 @@ class HostServices:
         })
 
 
-def _install_host_module(services: HostServices) -> None:
+class EventBusServices:
+    """EventBus V2 代理；身份和 Topic 权限由宿主绑定，handler 只在主循环串行调用。"""
+
+    def __init__(self, sock: socket.socket) -> None:
+        self._sock = sock
+        self._next_id = 1
+        self._handlers: dict[str, list[Any]] = {}
+
+    def _call(self, operation: str, args: dict[str, Any]) -> dict[str, Any]:
+        request_id = "event-" + str(self._next_id)
+        self._next_id += 1
+        _send(self._sock, {
+            "type": "event_bus",
+            "id": request_id,
+            "operation": operation,
+            "args": _json_value(args),
+        })
+        response = _recv(self._sock)
+        if response.get("type") != "event_bus_response" or response.get("id") != request_id:
+            raise RuntimeError("EventBus response mismatch")
+        return {
+            "success": bool(response.get("ok", False)),
+            "value": response.get("result"),
+            "errorCode": str(response.get("errorCode", "")),
+            "errorMessage": str(response.get("error", "")),
+        }
+
+    def publish(self, topic: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self._call("publish", {"topic": str(topic), "data": data or {}})
+
+    def subscribe(self, topic: str, handler: Any,
+                  replay_retained: bool = False) -> dict[str, Any]:
+        if not callable(handler):
+            raise TypeError("EventBus handler must be callable")
+        topic = str(topic)
+        handlers = self._handlers.setdefault(topic, [])
+        if handler not in handlers:
+            handlers.append(handler)
+        result = self._call("subscribe", {
+            "topic": topic, "replayRetained": bool(replay_retained),
+        })
+        if not result["success"] and handler in handlers:
+            handlers.remove(handler)
+        return result
+
+    def request(self, topic: str, data: dict[str, Any] | None = None,
+                timeout_ms: int = 5000) -> dict[str, Any]:
+        result = self._call("request", {
+            "topic": str(topic), "data": data or {}, "timeoutMs": int(timeout_ms),
+        })
+        return result["value"] if result["success"] else result
+
+    def respond(self, request_id: str, data: dict[str, Any] | None = None,
+                error_code: str = "", error_message: str = "") -> dict[str, Any]:
+        return self._call("respond", {
+            "requestId": str(request_id), "data": data or {},
+            "errorCode": str(error_code), "errorMessage": str(error_message),
+        })
+
+    def state(self, topic: str) -> dict[str, Any]:
+        result = self._call("state", {"topic": str(topic)})
+        return result["value"] if result["success"] else result
+
+    def _deliver(self, topic: str, envelope: dict[str, Any]) -> None:
+        for handler in list(self._handlers.get(topic, [])):
+            try:
+                handler(envelope)
+            except Exception:
+                _log("EventBus handler failed:\n" + traceback.format_exc(limit=8))
+
+
+def _install_host_module(services: HostServices, events: EventBusServices) -> None:
     module = types.ModuleType("xuanhub_host")
     module.services = services
     module.log = services.log
     module.notify = services.notify
+    module.events = events
     sys.modules["xuanhub_host"] = module
 
 
@@ -121,7 +193,7 @@ def _recv(sock: socket.socket) -> dict[str, Any]:
 
 
 def _load_plugin(plugin_dir: Path, plugin_id: str, config: dict[str, Any], locale: str,
-                 host_services: HostServices) -> Any:
+                 host_services: HostServices, event_bus: EventBusServices) -> Any:
     main_file = plugin_dir / "main.py"
     if not main_file.is_file():
         raise RuntimeError("main.py is missing")
@@ -136,10 +208,12 @@ def _load_plugin(plugin_dir: Path, plugin_id: str, config: dict[str, Any], local
         raise RuntimeError("cannot create import specification")
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
-    _install_host_module(host_services)
+    _install_host_module(host_services, event_bus)
     spec.loader.exec_module(module)
     if hasattr(module, "set_host_services"):
         module.set_host_services(host_services)
+    if hasattr(module, "set_event_bus"):
+        module.set_event_bus(event_bus)
     if hasattr(module, "init"):
         module.init(config)
     if hasattr(module, "set_locale"):
@@ -168,9 +242,21 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
         with socket.create_connection(("127.0.0.1", port), timeout=10) as sock:
             sock.settimeout(None)
             host_services = HostServices(sock)
+            event_bus = EventBusServices(sock)
             _send(sock, {"type": "hello", "token": token})
             while True:
                 request = _recv(sock)
+                if request.get("type") == "event_bus_event":
+                    delivery_id = str(request.get("id", ""))
+                    try:
+                        topic = str(request.get("topic", ""))
+                        envelope = request.get("envelope", {})
+                        if not isinstance(envelope, dict):
+                            envelope = {}
+                        event_bus._deliver(topic, envelope)
+                    finally:
+                        _send(sock, {"type": "event_bus_event_ack", "id": delivery_id})
+                    continue
                 request_id = str(request.get("id", ""))
                 if request.get("type") != "request" or not request_id:
                     raise ValueError("malformed request")
@@ -188,11 +274,13 @@ def run(port: int, token: str, plugin_dir: Path, plugin_id: str) -> int:
                         locale = data.get("locale", "en-US")
                         if not isinstance(locale, str):
                             raise ValueError("init locale must be a string")
-                        module = _load_plugin(plugin_dir, plugin_id, config, locale, host_services)
+                        module = _load_plugin(plugin_dir, plugin_id, config, locale,
+                                              host_services, event_bus)
                         capabilities = []
                         if hasattr(module, "set_config"):
                             capabilities.append("set_config")
                         capabilities.append("host_services.v1")
+                        capabilities.append("event_bus.v2")
                         result: Any = {"ready": True, "capabilities": capabilities}
                     elif module is None:
                         raise RuntimeError("worker is not initialized")
