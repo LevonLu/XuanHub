@@ -302,6 +302,9 @@ PluginPackageStoreResult PluginPackageStore::install(
              QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
             {QStringLiteral("packageHash"), package.packageHash},
             {QStringLiteral("publisher"), package.publisher},
+            {QStringLiteral("signatureStatus"), package.signatureStatus},
+            {QStringLiteral("signatureAlgorithm"), package.signatureAlgorithm},
+            {QStringLiteral("signerKeyId"), package.signerKeyId},
         };
         if (!previousVersion.isEmpty())
             record.insert(QStringLiteral("previousVersion"), previousVersion);

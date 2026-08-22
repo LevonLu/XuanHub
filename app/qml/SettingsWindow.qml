@@ -197,10 +197,22 @@ Pane {
             }
             Text {
                 Layout.fillWidth: true
-                color: root.c.warning
+                color: packageInstallConfirm.info.signatureStatus === "verified"
+                    ? root.c.success : root.c.warning
+                font.pixelSize: UiMetrics.fontTiny
+                wrapMode: Text.WrapAnywhere
+                text: packageInstallConfirm.info.signatureStatus === "verified"
+                    ? root.trText("发布者签名有效 · 密钥：%1").arg(String(
+                        packageInstallConfirm.info.signerKeyId || ""))
+                    : root.trText("未签名包：无法确认发布者身份。原生插件与宿主同进程运行，请只安装可信来源的包。")
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: packageInstallConfirm.info.signatureStatus === "verified"
+                color: root.c.muted
                 font.pixelSize: UiMetrics.fontTiny
                 wrapMode: Text.Wrap
-                text: root.trText("当前版本尚未校验发布者签名。原生插件与宿主同进程运行，请只安装可信来源的包。")
+                text: root.trText("签名证明内容由该密钥签发，但不代表玄枢已经信任此发布者。请核对来源和密钥标识。")
             }
             RowLayout {
                 Layout.alignment: Qt.AlignRight
@@ -1290,6 +1302,17 @@ Pane {
                                                 wrapMode: Text.WrapAnywhere
                                                 text: root.trText("包 SHA-256：%1").arg(String(
                                                     (detailPanel.rowData.managedInfo || {}).packageHash || ""))
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                color: (detailPanel.rowData.managedInfo || {}).signatureStatus === "verified"
+                                                    ? root.c.success : root.c.warning
+                                                font.pixelSize: UiMetrics.fontTiny
+                                                wrapMode: Text.WrapAnywhere
+                                                text: (detailPanel.rowData.managedInfo || {}).signatureStatus === "verified"
+                                                    ? root.trText("发布者签名有效 · 密钥：%1").arg(String(
+                                                        (detailPanel.rowData.managedInfo || {}).signerKeyId || ""))
+                                                    : root.trText("未签名 · 发布者身份未经验证")
                                             }
                                             RowLayout {
                                                 spacing: UiMetrics.space2

@@ -388,6 +388,17 @@ private Q_SLOTS:
         QCOMPARE(result.signatureAlgorithm, QStringLiteral("ecdsa-p256-sha256"));
         QVERIFY(result.signerKeyId.startsWith(QStringLiteral("sha256:")));
 
+        PluginPackageStore store(directory.filePath(QStringLiteral("config")));
+        const auto installed = store.install(first, {}, {}, testEnvironment());
+        QVERIFY2(installed.ok, qPrintable(installed.error));
+        const QJsonObject record = store.current(result.descriptor.id).installRecord;
+        QCOMPARE(record.value(QStringLiteral("signatureStatus")).toString(),
+                 QStringLiteral("verified"));
+        QCOMPARE(record.value(QStringLiteral("signatureAlgorithm")).toString(),
+                 QStringLiteral("ecdsa-p256-sha256"));
+        QCOMPARE(record.value(QStringLiteral("signerKeyId")).toString(),
+                 result.signerKeyId);
+
         const QString unsafeKey = QDir(sourceDirectory).filePath(
             QStringLiteral("publisher-private.json"));
         QVERIFY(QFile::copy(keyPath, unsafeKey));
