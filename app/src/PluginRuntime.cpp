@@ -19,6 +19,16 @@ bool sameDependency(const xuanhub::PluginDependency& left,
         && left.optional == right.optional;
 }
 
+bool sameAction(const xuanhub::PluginAction& left,
+                const xuanhub::PluginAction& right) {
+    return left.id == right.id
+        && left.label == right.label
+        && left.placements == right.placements
+        && left.icon == right.icon
+        && left.defaultShortcut == right.defaultShortcut
+        && left.checkable == right.checkable;
+}
+
 bool sameV2Descriptor(const xuanhub::PluginDescriptor& left,
                       const xuanhub::PluginDescriptor& right) {
     if (left.id != right.id || left.displayName != right.displayName
@@ -36,8 +46,12 @@ bool sameV2Descriptor(const xuanhub::PluginDescriptor& left,
         || left.compatibility.qtVersion != right.compatibility.qtVersion
         || left.compatibility.compiler != right.compatibility.compiler
         || left.compatibility.crt != right.compatibility.crt
-        || left.dependencies.size() != right.dependencies.size()) {
+        || left.dependencies.size() != right.dependencies.size()
+        || left.actions.size() != right.actions.size()) {
         return false;
+    }
+    for (qsizetype i = 0; i < left.actions.size(); ++i) {
+        if (!sameAction(left.actions.at(i), right.actions.at(i))) return false;
     }
     for (qsizetype i = 0; i < left.dependencies.size(); ++i) {
         if (!sameDependency(left.dependencies.at(i), right.dependencies.at(i))) return false;

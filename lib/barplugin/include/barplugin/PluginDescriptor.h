@@ -26,6 +26,15 @@ struct PluginCompatibility {
     QString crt;
 };
 
+struct PluginAction {
+    QString id;
+    QString label;
+    QStringList placements;
+    QString icon;
+    QString defaultShortcut;
+    bool checkable = false;
+};
+
 struct PluginDescriptor {
     QString id;
     QString displayName;
@@ -38,6 +47,7 @@ struct PluginDescriptor {
     PluginEntry entry;
     QStringList capabilities;
     QStringList permissions;
+    QVector<PluginAction> actions;
     QVector<PluginDependency> dependencies;
     PluginCompatibility compatibility;
 };

@@ -170,6 +170,46 @@ private Q_SLOTS:
         QVERIFY(loadManifest(manifest).error.contains(QStringLiteral("invalid version")));
     }
 
+    void parsesActionDeclarations() {
+        auto manifest = validV2Manifest();
+        manifest[QStringLiteral("actions")] = QJsonArray{QJsonObject{
+            {QStringLiteral("id"), QStringLiteral("refresh")},
+            {QStringLiteral("label"), QStringLiteral("立即刷新")},
+            {QStringLiteral("placements"),
+             QJsonArray{QStringLiteral("quickMenu"), QStringLiteral("tray")}},
+            {QStringLiteral("icon"), QStringLiteral("refresh")},
+            {QStringLiteral("checkable"), true}}};
+        const auto result = loadManifest(manifest);
+        QVERIFY2(result.ok, qPrintable(result.error));
+        QCOMPARE(result.descriptor.actions.size(), 1);
+        const auto& action = result.descriptor.actions.first();
+        QCOMPARE(action.id, QStringLiteral("refresh"));
+        QCOMPARE(action.label, QStringLiteral("立即刷新"));
+        QCOMPARE(action.placements,
+                 QStringList({QStringLiteral("quickMenu"), QStringLiteral("tray")}));
+        QCOMPARE(action.icon, QStringLiteral("refresh"));
+        QVERIFY(action.checkable);
+    }
+
+    void rejectsMalformedActionDeclarations() {
+        auto duplicate = validV2Manifest();
+        duplicate[QStringLiteral("actions")] = QJsonArray{
+            QJsonObject{{QStringLiteral("id"), QStringLiteral("refresh")},
+                        {QStringLiteral("label"), QStringLiteral("刷新")},
+                        {QStringLiteral("placements"), QJsonArray{QStringLiteral("tray")}}},
+            QJsonObject{{QStringLiteral("id"), QStringLiteral("refresh")},
+                        {QStringLiteral("label"), QStringLiteral("再次刷新")},
+                        {QStringLiteral("placements"), QJsonArray{QStringLiteral("tray")}}}};
+        QVERIFY(loadManifest(duplicate).error.contains(QStringLiteral("duplicate action")));
+
+        auto badPlacement = validV2Manifest();
+        badPlacement[QStringLiteral("actions")] = QJsonArray{QJsonObject{
+            {QStringLiteral("id"), QStringLiteral("refresh")},
+            {QStringLiteral("label"), QStringLiteral("刷新")},
+            {QStringLiteral("placements"), QJsonArray{QStringLiteral("desktop")}}}};
+        QVERIFY(loadManifest(badPlacement).error.contains(QStringLiteral("invalid placement")));
+    }
+
     void rejectsMalformedJson() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());

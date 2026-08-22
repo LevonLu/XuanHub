@@ -194,6 +194,68 @@ bool parseDependencies(const QJsonObject& object,
     }
     return true;
 }
+
+bool parseActions(const QJsonObject& object,
+                  QVector<xuanhub::PluginAction>* output,
+                  QString* error) {
+    const QJsonValue value = object.value(QStringLiteral("actions"));
+    if (value.isUndefined()) return true;
+    if (!value.isArray()) {
+        *error = QStringLiteral("manifest field 'actions' must be an array");
+        return false;
+    }
+    const QSet<QString> allowedPlacements = {
+        QStringLiteral("quickMenu"), QStringLiteral("tray"),
+        QStringLiteral("pluginMenu")};
+    QSet<QString> seen;
+    for (const QJsonValue& item : value.toArray()) {
+        if (!item.isObject()) {
+            *error = QStringLiteral("manifest action must be an object");
+            return false;
+        }
+        const QJsonObject actionObject = item.toObject();
+        xuanhub::PluginAction action;
+        if (!requiredString(actionObject, QStringLiteral("id"), &action.id, error)
+            || !kPluginIdPattern.match(action.id).hasMatch()) {
+            if (error->isEmpty())
+                *error = QStringLiteral("action id is invalid: %1").arg(action.id);
+            return false;
+        }
+        if (seen.contains(action.id)) {
+            *error = QStringLiteral("duplicate action id: %1").arg(action.id);
+            return false;
+        }
+        seen.insert(action.id);
+        if (!requiredString(actionObject, QStringLiteral("label"), &action.label, error)
+            || !optionalString(actionObject, QStringLiteral("icon"), &action.icon, error)
+            || !optionalString(actionObject, QStringLiteral("defaultShortcut"),
+                               &action.defaultShortcut, error)
+            || !stringArray(actionObject, QStringLiteral("placements"),
+                            &action.placements, error)) {
+            return false;
+        }
+        if (action.placements.isEmpty()) {
+            *error = QStringLiteral("action '%1' requires at least one placement")
+                         .arg(action.id);
+            return false;
+        }
+        for (const QString& placement : action.placements) {
+            if (!allowedPlacements.contains(placement)) {
+                *error = QStringLiteral("action '%1' has invalid placement '%2'")
+                             .arg(action.id, placement);
+                return false;
+            }
+        }
+        const QJsonValue checkable = actionObject.value(QStringLiteral("checkable"));
+        if (!checkable.isUndefined() && !checkable.isBool()) {
+            *error = QStringLiteral("action '%1' checkable must be boolean").arg(action.id);
+            return false;
+        }
+        action.checkable = checkable.toBool(false);
+        output->append(action);
+    }
+    return true;
+}
 } // namespace
 
 PluginValidationEnvironment PluginValidationEnvironment::current() {
@@ -278,6 +340,7 @@ PluginManifestResult PluginManifest::load(
                      &descriptor.capabilities, &error)
         || !stringArray(object, QStringLiteral("permissions"),
                         &descriptor.permissions, &error)
+        || !parseActions(object, &descriptor.actions, &error)
         || !parseDependencies(object, &descriptor.dependencies, &error)) {
         return failed(error);
     }
