@@ -152,10 +152,12 @@ QVariantMap privateEnvironmentPlan(const QString& id, const QString& pluginDir,
                     QStringLiteral("private environment requires an offline wheel directory"));
         return plan;
     }
-    const QString pluginCanonical = QFileInfo(pluginDir).canonicalFilePath();
+    const QString pluginCanonical = QDir::fromNativeSeparators(
+        QFileInfo(pluginDir).canonicalFilePath());
     const QFileInfo wheelInfo(QDir(pluginDir).absoluteFilePath(spec.wheelDirectory));
-    const QString wheelCanonical = wheelInfo.canonicalFilePath();
-    const QString prefix = pluginCanonical + QDir::separator();
+    const QString wheelCanonical = QDir::fromNativeSeparators(
+        wheelInfo.canonicalFilePath());
+    const QString prefix = pluginCanonical + QLatin1Char('/');
     if (pluginCanonical.isEmpty() || wheelCanonical.isEmpty() || !wheelInfo.isDir()
         || (!wheelCanonical.startsWith(prefix, Qt::CaseInsensitive)
             && wheelCanonical.compare(pluginCanonical, Qt::CaseInsensitive) != 0)) {
@@ -736,9 +738,11 @@ bool PyBridgePlugin::installSubPluginDependencies(const QString& id) {
 
     const QString environment = plan.value(QStringLiteral("_environment")).toString();
     const QString configRoot = QDir(m_ctx.configDir).absolutePath();
-    const QString environmentPath = QFileInfo(environment).absoluteFilePath();
-    const QString expectedPrefix = QDir(configRoot).absoluteFilePath(
-        QStringLiteral("python-envs")) + QDir::separator();
+    const QString environmentPath = QDir::fromNativeSeparators(
+        QFileInfo(environment).absoluteFilePath());
+    const QString expectedPrefix = QDir::fromNativeSeparators(
+        QDir(configRoot).absoluteFilePath(QStringLiteral("python-envs")))
+        + QLatin1Char('/');
     if (!environmentPath.startsWith(expectedPrefix, Qt::CaseInsensitive)) {
         qWarning() << "[PyBridge] refused dependency environment outside config root:" << id;
         return false;

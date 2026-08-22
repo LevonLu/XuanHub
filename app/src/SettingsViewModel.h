@@ -79,6 +79,8 @@ public:
     Q_INVOKABLE int pluginContentWidth(const QString& id) const;
     Q_INVOKABLE QVariantMap pluginHealth(const QString& id) const;
     Q_INVOKABLE bool restartPlugin(const QString& id);
+    Q_INVOKABLE QVariantMap pluginDependencyPlan(const QString& id) const;
+    Q_INVOKABLE bool installPluginDependencies(const QString& id);
     Q_INVOKABLE bool acceptPluginMigration(const QString& id);
 
 signals:
@@ -93,6 +95,8 @@ signals:
     void languageChanged();
     void errorMessageChanged();
     void pluginHealthChanged(const QString& id);
+    void pluginDependencyInstallFinished(const QString& id, bool success,
+                                         const QString& error);
 
 private:
     void setErrorMessage(const QString& m);

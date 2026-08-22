@@ -151,6 +151,69 @@ private Q_SLOTS:
         manager.shutdownAll();
     }
 
+    void privatePythonEnvironmentRequiresExplicitInstall() {
+        const QString pythonPlugins = QDir(QCoreApplication::applicationDirPath())
+                                          .filePath(QStringLiteral("plugins_py"));
+        QTemporaryDir pluginDirectory(
+            QDir(pythonPlugins).filePath(QStringLiteral("private-env-test-XXXXXX")));
+        QTemporaryDir configRoot;
+        QVERIFY(pluginDirectory.isValid());
+        QVERIFY(configRoot.isValid());
+        QVERIFY(QDir(pluginDirectory.path()).mkpath(QStringLiteral("wheels")));
+        QFile wheel(QDir(pluginDirectory.path()).filePath(
+            QStringLiteral("wheels/demo-1.0.0-py3-none-any.whl")));
+        QVERIFY(wheel.open(QIODevice::WriteOnly));
+        QVERIFY(wheel.write("not installed without confirmation") > 0);
+        wheel.close();
+        QFile main(QDir(pluginDirectory.path()).filePath(QStringLiteral("main.py")));
+        QVERIFY(main.open(QIODevice::WriteOnly));
+        QVERIFY(main.write("def update(): return {}\n") > 0);
+        main.close();
+        QFile qml(QDir(pluginDirectory.path()).filePath(QStringLiteral("Private.qml")));
+        QVERIFY(qml.open(QIODevice::WriteOnly));
+        QVERIFY(qml.write("import QtQuick\nItem { property var plugin }") > 0);
+        qml.close();
+        const QString pluginId = QStringLiteral("py_private_environment_test");
+        const QJsonObject object{
+            {QStringLiteral("id"), pluginId},
+            {QStringLiteral("name"), QStringLiteral("Private Environment Test")},
+            {QStringLiteral("version"), QStringLiteral("1.0.0")},
+            {QStringLiteral("apiVersion"), 2},
+            {QStringLiteral("qml"), QStringLiteral("Private.qml")},
+            {QStringLiteral("python"), QJsonObject{
+                {QStringLiteral("packages"), QJsonArray{QJsonObject{
+                    {QStringLiteral("name"), QStringLiteral("demo")},
+                    {QStringLiteral("version"), QStringLiteral("==1.0.0")}}}},
+                {QStringLiteral("environment"), QJsonObject{
+                    {QStringLiteral("mode"), QStringLiteral("private")},
+                    {QStringLiteral("wheels"), QStringLiteral("wheels")}}},
+            }},
+        };
+        QFile manifest(QDir(pluginDirectory.path()).filePath(QStringLiteral("plugin.json")));
+        QVERIFY(manifest.open(QIODevice::WriteOnly));
+        QVERIFY(manifest.write(QJsonDocument(object).toJson(QJsonDocument::Compact)) > 0);
+        manifest.close();
+
+        xuanhub::EventBus bus;
+        PluginManager manager(&bus, configRoot.path());
+        manager.loadFrom(qEnvironmentVariable("XUANHUB_TEST_PLUGINS"),
+                         {entry(QStringLiteral("pybridge")), entry(pluginId)});
+        QVERIFY(!manager.loadedPlugin(pluginId));
+        const QString privateError = manager.loadError(pluginId);
+        QVERIFY2(privateError.contains(QStringLiteral("private")),
+                 qPrintable(privateError));
+        const QVariantMap plan = manager.dependencyInstallPlan(pluginId);
+        QVERIFY(plan.value(QStringLiteral("available")).toBool());
+        QVERIFY(plan.value(QStringLiteral("requiresConfirmation")).toBool());
+        QCOMPARE(plan.value(QStringLiteral("packages")).toStringList(),
+                 QStringList{QStringLiteral("demo")});
+        QCOMPARE(plan.value(QStringLiteral("wheelCount")).toInt(), 1);
+        QVERIFY(!plan.contains(QStringLiteral("_environment")));
+        QVERIFY(!QDir(configRoot.path()).exists(
+            QStringLiteral("python-envs/") + pluginId));
+        manager.shutdownAll();
+    }
+
     void nativePluginCanStopAndReloadWithoutTouchingPeer() {
         const QString pluginsDir = qEnvironmentVariable("XUANHUB_TEST_PLUGINS");
         QVERIFY2(!pluginsDir.isEmpty(), "XUANHUB_TEST_PLUGINS is required");

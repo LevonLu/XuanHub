@@ -30,6 +30,85 @@ Pane {
         }
     }
 
+    Popup {
+        id: dependencyConfirm
+        property string pluginId: ""
+        property var plan: ({})
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: Math.min(520, root.width - UiMetrics.space6 * 2)
+        x: Math.max(0, (root.width - width) / 2)
+        y: Math.max(0, (root.height - height) / 2)
+        padding: UiMetrics.space5
+        palette.window: root.c.bg
+        palette.windowText: root.c.fg
+        palette.base: root.c.bg
+        palette.text: root.c.fg
+        palette.button: root.c.panel
+        palette.buttonText: root.c.fg
+        palette.highlight: root.c.accent
+        palette.highlightedText: root.c.onAccent
+        palette.mid: root.c.muted
+        background: Rectangle {
+            color: root.c.panel
+            radius: UiMetrics.radiusL
+            border.width: 1
+            border.color: root.c.border
+        }
+        contentItem: ColumnLayout {
+            spacing: UiMetrics.space3
+            Text {
+                Layout.fillWidth: true
+                color: root.c.fg
+                font.pixelSize: UiMetrics.fontL
+                font.weight: Font.DemiBold
+                text: root.trText("安装离线 Python 依赖？")
+            }
+            Text {
+                Layout.fillWidth: true
+                color: root.c.muted
+                font.pixelSize: UiMetrics.fontS
+                wrapMode: Text.Wrap
+                text: root.trText("将从插件自带的 %1 个 wheel 安装 %2，并创建仅供该插件使用的私有环境。安装器不会访问网络。")
+                    .arg(Number(dependencyConfirm.plan.wheelCount || 0))
+                    .arg((dependencyConfirm.plan.packages || []).join(", "))
+            }
+            Text {
+                Layout.fillWidth: true
+                color: root.c.warning
+                font.pixelSize: UiMetrics.fontTiny
+                wrapMode: Text.Wrap
+                text: root.trText("只有在你信任该插件及其 wheel 文件时才继续。")
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                spacing: UiMetrics.space2
+                UiButton {
+                    variant: "ghost"
+                    text: root.trText("取消")
+                    onClicked: dependencyConfirm.close()
+                }
+                UiButton {
+                    variant: "primary"
+                    text: root.trText("确认安装")
+                    onClicked: {
+                        const id = dependencyConfirm.pluginId
+                        dependencyConfirm.close()
+                        settingsVM.installPluginDependencies(id)
+                        detailPanel.refresh()
+                    }
+                }
+            }
+        }
+
+        function ask(id, dependencyPlan) {
+            pluginId = id
+            plan = dependencyPlan || ({})
+            open()
+        }
+    }
+
     // 色板别名：统一从 themeManager.colors 取（M9 数据驱动主题）。Basic 样式经
     // palette 继承传给所有子控件，故把 colors 灌进 palette.* 让 QtQuick.Controls
     // 的表单控件也跟随主题。自绘控件（Ui*.qml）内部只引用 palette。
@@ -782,7 +861,8 @@ Pane {
                                         "migrationAvailable": m.roleValue(currentRow, "migrationAvailable"),
                                         "migrationError": m.roleValue(currentRow, "migrationError"),
                                         "layoutPreference": m.roleValue(currentRow, "layoutPreference"),
-                                        "health": settingsVM.pluginHealth(pluginList.currentId)
+                                        "health": settingsVM.pluginHealth(pluginList.currentId),
+                                        "dependencyPlan": settingsVM.pluginDependencyPlan(pluginList.currentId)
                                     }
                                 }
                                 _refreshing = false
@@ -806,6 +886,9 @@ Pane {
                                 function onPluginHealthChanged(id) {
                                     if (id.length === 0 || id === pluginList.currentId)
                                         detailPanel.refresh()
+                                }
+                                function onPluginDependencyInstallFinished(id) {
+                                    if (id === pluginList.currentId) detailPanel.refresh()
                                 }
                             }
                             // 草稿桥始终指向当前选中插件（schema 表单与自绘页都经它读写）。
@@ -1035,10 +1118,24 @@ Pane {
                                                 }
                                                 UiButton {
                                                     visible: detailPanel.rowData.kind === "python"
+                                                             && (detailPanel.rowData.dependencyPlan || {}).available !== true
                                                     variant: "outline"
                                                     text: root.trText("重新启动插件")
                                                     Layout.preferredWidth: Math.max(112, implicitWidth)
                                                     onClicked: settingsVM.restartPlugin(pluginList.currentId)
+                                                }
+                                                UiButton {
+                                                    visible: detailPanel.rowData.kind === "python"
+                                                             && (detailPanel.rowData.dependencyPlan || {}).available === true
+                                                    enabled: (detailPanel.rowData.dependencyPlan || {}).installing !== true
+                                                    variant: "primary"
+                                                    text: (detailPanel.rowData.dependencyPlan || {}).installing === true
+                                                        ? root.trText("正在安装…")
+                                                        : root.trText("安装离线依赖")
+                                                    Layout.preferredWidth: Math.max(128, implicitWidth)
+                                                    onClicked: dependencyConfirm.ask(
+                                                        pluginList.currentId,
+                                                        detailPanel.rowData.dependencyPlan)
                                                 }
                                             }
                                             ColumnLayout {

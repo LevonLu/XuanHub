@@ -14,6 +14,7 @@
 #include "barplugin/IBarPluginHostConfigMigration.h"
 #include "barplugin/IBarPluginHostConfigValidation.h"
 #include "barplugin/IBarPluginHostDiagnostics.h"
+#include "barplugin/IBarPluginHostDependencies.h"
 #include "barplugin/IBarPluginHostEventBus.h"
 #include "barplugin/IBarPluginHostServices.h"
 #include "barplugin/PluginEventScope.h"
@@ -98,6 +99,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
     if (!allowExisting) {
         m_loadErrors.clear();
         m_migrationSuggestions.clear();
+        m_candidateHostBySubPluginId.clear();
     }
     for (const auto& entry : enabled) {
         m_loadErrors.remove(entry.id);
@@ -362,10 +364,17 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                 m_hosts.append(runtimePtr);
                 retainHostServices(descriptor.id, std::move(hostServices));
                 qDebug() << "[Plugin] loaded host:" << descriptor.id;
+                QObject::connect(
+                    obj,
+                    SIGNAL(subPluginDependencyInstallFinished(QString,bool,QString)),
+                    this,
+                    SLOT(onHostedDependencyInstallFinished(QString,bool,QString)),
+                    Qt::UniqueConnection);
                 const QStringList subIds = host->subPluginIds();
                 if (subIds.isEmpty())
                     qDebug() << "[Plugin] host" << descriptor.id << "found no sub-plugins";
                 for (const QString& sid : subIds) {
+                    m_candidateHostBySubPluginId.insert(sid, descriptor.id);
                     if (m_loadedIds.contains(sid)) {
                         qWarning() << "[Plugin] duplicate id (sub-plugin), skip:" << sid;
                         continue;
@@ -463,6 +472,32 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                 QStringLiteral("enabled plugin has no valid discovered runtime"));
         }
     }
+}
+
+QVariantMap PluginManager::dependencyInstallPlan(const QString& pluginId) const {
+    const QString hostId = m_candidateHostBySubPluginId.value(pluginId);
+    auto* runtime = m_runtimeById.value(hostId);
+    QObject* object = runtime ? runtime->instance() : nullptr;
+    auto* dependencies = object
+        ? qobject_cast<xuanhub::IBarPluginHostDependencies*>(object) : nullptr;
+    return dependencies ? dependencies->subPluginDependencyPlan(pluginId) : QVariantMap{};
+}
+
+bool PluginManager::installPluginDependencies(const QString& pluginId) {
+    const QString hostId = m_candidateHostBySubPluginId.value(pluginId);
+    auto* runtime = m_runtimeById.value(hostId);
+    QObject* object = runtime ? runtime->instance() : nullptr;
+    auto* dependencies = object
+        ? qobject_cast<xuanhub::IBarPluginHostDependencies*>(object) : nullptr;
+    return dependencies && dependencies->installSubPluginDependencies(pluginId);
+}
+
+void PluginManager::onHostedDependencyInstallFinished(
+    const QString& id, bool success, const QString& error) {
+    if (success) m_loadErrors.remove(id);
+    else recordLoadError(id, error.isEmpty()
+        ? QStringLiteral("offline dependency installation failed") : error);
+    Q_EMIT dependencyInstallFinished(id, success, error);
 }
 
 bool PluginManager::createHostedPlugin(const QString& hostId,
@@ -913,6 +948,7 @@ void PluginManager::shutdownAll() {
     m_loaded.clear();
     m_loadedIds.clear();
     m_descriptorById.clear();
+    m_candidateHostBySubPluginId.clear();
     m_migrationSuggestions.clear();
     m_hostServiceScopes.clear();
     Q_EMIT pluginsChanged();

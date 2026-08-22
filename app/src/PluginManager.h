@@ -90,18 +90,24 @@ public:
     const ConfigMigrationSuggestion* migrationSuggestion(const QString& id) const;
     Q_INVOKABLE QVariantMap invokeAction(const QString& pluginId,
                                          const QString& actionId);
+    QVariantMap dependencyInstallPlan(const QString& pluginId) const;
+    bool installPluginDependencies(const QString& pluginId);
 
     const QVector<LoadedPlugin>& loaded() const { return m_loaded; }
     void shutdownAll();   // 重载周期约定：必须先 shutdownAll() 再 loadFrom()（入口有重入保护）
 
 Q_SIGNALS:
     void pluginsChanged();
+    void dependencyInstallFinished(const QString& pluginId, bool success,
+                                   const QString& error);
 
 private:
     Q_SLOT void onHostedMigrationReady(const QString& id, int currentVersion,
                                        int targetVersion, const QVariantMap& config);
     Q_SLOT void onHostedMigrationFailed(const QString& id, int currentVersion,
                                         int targetVersion, const QString& error);
+    Q_SLOT void onHostedDependencyInstallFinished(const QString& id, bool success,
+                                                  const QString& error);
     void loadFromImpl(const QString& pluginsDir, const QList<PluginConfigEntry>& enabled,
                       bool allowExisting);
     bool createHostedPlugin(const QString& hostId, xuanhub::IBarPluginHost* host,
@@ -138,6 +144,7 @@ private:
     QHash<QString, PluginRuntime*> m_runtimeById;            // 原生插件/host id → V1/V2 适配
     QHash<QString, xuanhub::PluginDescriptor> m_descriptorById; // 已加载依赖与能力快照
     QHash<QString, xuanhub::IBarPluginHost*> m_hostById;     // host id → host 接口
+    QHash<QString, QString> m_candidateHostBySubPluginId;    // 已发现子插件（含加载失败）→ host id
     QHash<QString, QString> m_subPluginHostId;               // 子插件 id → host id
     QHash<QString, xuanhub::PluginEventScope*> m_scopeById;  // 原生插件/host id → 作用域
     QSet<QString> m_loadedIds;   // 按 metadata.id 去重

@@ -55,6 +55,34 @@ SettingsViewModel::SettingsViewModel(ConfigService* config, ThemeRegistry* regis
         connect(m_barPlugins, &PluginListModel::loadErrorChanged,
                 this, &SettingsViewModel::pluginHealthChanged);
     }
+    if (m_pluginManager) {
+        connect(m_pluginManager, &PluginManager::dependencyInstallFinished, this,
+                [this](const QString& id, bool success, const QString& error) {
+            bool loaded = success;
+            QString finalError = error;
+            if (success) {
+                loaded = false;
+                for (const PluginConfigEntry& entry : m_config->pluginEntries()) {
+                    if (entry.id != id) continue;
+                    loaded = m_pluginManager->loadOne(
+                        QDir(m_exeDir).filePath(QStringLiteral("plugins")), entry);
+                    break;
+                }
+                if (!loaded) finalError = m_pluginManager->loadError(id);
+            }
+            if (m_barPlugins) {
+                m_barPlugins->setPlugins(m_pluginManager->loaded());
+                m_barPlugins->setLoadErrors(m_pluginManager->loadErrors());
+            }
+            if (!loaded) setErrorMessage(finalError.isEmpty()
+                ? QCoreApplication::translate("xuanhub.settings.errors",
+                                              "插件依赖安装后仍无法启动")
+                : finalError);
+            else setErrorMessage({});
+            emit pluginHealthChanged(id);
+            emit pluginDependencyInstallFinished(id, loaded, finalError);
+        });
+    }
 }
 
 QAbstractItemModel* SettingsViewModel::pluginModel() const { return m_sortModel; }
@@ -71,6 +99,20 @@ QVariantMap SettingsViewModel::pluginHealth(const QString& id) const {
 
 bool SettingsViewModel::restartPlugin(const QString& id) {
     return m_barPlugins && m_barPlugins->restartPlugin(id);
+}
+
+QVariantMap SettingsViewModel::pluginDependencyPlan(const QString& id) const {
+    return m_pluginManager ? m_pluginManager->dependencyInstallPlan(id) : QVariantMap{};
+}
+
+bool SettingsViewModel::installPluginDependencies(const QString& id) {
+    if (!m_pluginManager || !m_pluginManager->installPluginDependencies(id)) {
+        setErrorMessage(QCoreApplication::translate(
+            "xuanhub.settings.errors", "无法启动离线依赖安装"));
+        return false;
+    }
+    setErrorMessage({});
+    return true;
 }
 
 bool SettingsViewModel::acceptPluginMigration(const QString& id) {
