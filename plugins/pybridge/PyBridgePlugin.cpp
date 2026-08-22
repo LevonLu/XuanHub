@@ -6,6 +6,7 @@
 
 #include "PyBridgePlugin.h"
 #include "PyWorkerViewModel.h"
+#include "PythonDependencySpec.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -369,6 +370,8 @@ PythonManifestResult readPluginJson(const QDir& directory) {
     if (!readPythonActions(result.object, &actions, &result.error)) return result;
     xuanhub::PluginLayoutPreference layout;
     if (!readPythonLayout(result.object, &layout, &result.error)) return result;
+    PythonDependencySpec dependencies;
+    if (!readPythonDependencySpec(result.object, &dependencies, &result.error)) return result;
 
     QString pathError;
     if (!xuanhub::validatePluginFilePath(directory.absolutePath(),
