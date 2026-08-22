@@ -186,12 +186,49 @@ bool PyWorkerViewModel::start() {
 }
 
 QVariant PyWorkerViewModel::call(const QString& name, const QVariantList& args) {
-    if (!running()) return QVariantMap{{QStringLiteral("queued"), false}};
+    if (!running()) {
+        return QVariantMap{
+            {QStringLiteral("queued"), false},
+            {QStringLiteral("id"), QString{}},
+            {QStringLiteral("errorCode"), QStringLiteral("worker_not_running")},
+        };
+    }
+    const QString callId = QStringLiteral("call-%1").arg(m_nextCallId++);
     enqueue({QStringLiteral("invoke"), {
         {QStringLiteral("name"), name},
         {QStringLiteral("args"), QJsonArray::fromVariantList(args)},
-    }});
-    return QVariantMap{{QStringLiteral("queued"), true}};
+    }, callId});
+    return QVariantMap{
+        {QStringLiteral("queued"), true},
+        {QStringLiteral("id"), callId},
+        {QStringLiteral("errorCode"), QString{}},
+    };
+}
+
+QVariantMap PyWorkerViewModel::cancelCall(const QString& callId) {
+    if (callId.isEmpty()) {
+        return {{QStringLiteral("canceled"), false},
+                {QStringLiteral("errorCode"), QStringLiteral("invalid_call_id")}};
+    }
+    if (m_inFlight.callId == callId) {
+        // CPython 运行中无法安全注入异步异常；强杀会破坏插件资源清理和状态一致性。
+        return {{QStringLiteral("canceled"), false},
+                {QStringLiteral("errorCode"), QStringLiteral("not_interruptible")}};
+    }
+    for (qsizetype index = 0; index < m_queue.size(); ++index) {
+        if (m_queue.at(index).callId != callId) continue;
+        m_queue.removeAt(index);
+        const QVariantMap error{
+            {QStringLiteral("code"), QStringLiteral("canceled")},
+            {QStringLiteral("message"), QStringLiteral("call canceled before execution")},
+        };
+        Q_EMIT callFinished(callId, false, {}, error);
+        Q_EMIT healthChanged();
+        return {{QStringLiteral("canceled"), true},
+                {QStringLiteral("errorCode"), QString{}}};
+    }
+    return {{QStringLiteral("canceled"), false},
+            {QStringLiteral("errorCode"), QStringLiteral("call_not_found")}};
 }
 
 bool PyWorkerViewModel::restart() {
@@ -368,6 +405,7 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
     }
     const QString op = m_inFlight.op;
     const QJsonObject requestData = m_inFlight.data;
+    const QString callId = m_inFlight.callId;
     m_inFlight = {};
     m_inFlightId = 0;
     m_requestTimer.stop();
@@ -388,6 +426,17 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
             }
             failWorker(QStringLiteral("worker failed during plugin initialization"), false);
             return;
+        } else if (op == QLatin1String("invoke") && !callId.isEmpty()) {
+            const QVariantMap error{
+                {QStringLiteral("code"),
+                 message.value(QStringLiteral("errorCode"))
+                     .toString(QStringLiteral("plugin_error"))},
+                {QStringLiteral("message"),
+                 message.value(QStringLiteral("error")).toString()},
+                {QStringLiteral("details"),
+                 message.value(QStringLiteral("details")).toObject().toVariantMap()},
+            };
+            Q_EMIT callFinished(callId, false, {}, error);
         }
     } else if (op == QLatin1String("init")) {
         const QJsonObject initResult = message.value(QStringLiteral("result")).toObject();
@@ -432,6 +481,9 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
             // 崩溃的插件绕过退避；健康运行后下一次故障从 1 秒重新尝试。
             markWorkerHealthy();
         }
+    } else if (op == QLatin1String("invoke") && !callId.isEmpty()) {
+        Q_EMIT callFinished(callId, true,
+                            message.value(QStringLiteral("result")).toVariant(), {});
     }
 
     flushEventBusEvents();
@@ -710,7 +762,9 @@ void PyWorkerViewModel::scheduleUpdate(int delayMs) {
 
 void PyWorkerViewModel::handleRequestTimeout() {
     const QString operation = m_inFlight.op;
-    failWorker(QStringLiteral("worker %1 request timed out").arg(operation), true);
+    failWorker(QStringLiteral("worker %1 request timed out").arg(operation), true,
+               operation == QLatin1String("invoke")
+                   ? QStringLiteral("timeout") : QStringLiteral("worker_failed"));
 }
 
 void PyWorkerViewModel::handleProcessError() {
@@ -735,7 +789,8 @@ void PyWorkerViewModel::handleProcessFinished(int exitCode, QProcess::ExitStatus
     Q_EMIT runningChanged();
 }
 
-void PyWorkerViewModel::failWorker(const QString& reason, bool retry) {
+void PyWorkerViewModel::failWorker(const QString& reason, bool retry,
+                                   const QString& callErrorCode) {
     if (m_stopping) return;
     qWarning() << "[PyBridge]" << m_id << ":" << reason;
     m_health.lastError = reason;
@@ -746,6 +801,16 @@ void PyWorkerViewModel::failWorker(const QString& reason, bool retry) {
     m_authenticated = false;
     m_supportsHotConfig = false;
     m_supportsConfigValidation = false;
+    const QVariantMap callError{
+        {QStringLiteral("code"), callErrorCode},
+        {QStringLiteral("message"), reason},
+    };
+    if (!m_inFlight.callId.isEmpty())
+        Q_EMIT callFinished(m_inFlight.callId, false, {}, callError);
+    for (const Request& request : std::as_const(m_queue)) {
+        if (!request.callId.isEmpty())
+            Q_EMIT callFinished(request.callId, false, {}, callError);
+    }
     m_queue.clear();
     m_eventQueue.clear();
     m_eventRequestIds.clear();

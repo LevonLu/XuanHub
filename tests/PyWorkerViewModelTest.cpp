@@ -101,6 +101,30 @@ private Q_SLOTS:
         QCOMPARE(health.value(QStringLiteral("consecutiveFailures")).toInt(), 5);
     }
 
+    void cancelsOnlyQueuedCalls() {
+        PyWorkerViewModel viewModel(QStringLiteral("cancel_calls"), {}, {}, {}, {}, nullptr);
+        viewModel.m_authenticated = true;
+        viewModel.m_inFlightId = 1;
+        viewModel.m_inFlight = {
+            QStringLiteral("invoke"), {}, QStringLiteral("call-running")};
+        viewModel.enqueue({
+            QStringLiteral("invoke"), {}, QStringLiteral("call-queued")});
+        QSignalSpy finished(&viewModel, &PyWorkerViewModel::callFinished);
+
+        const QVariantMap running = viewModel.cancelCall(QStringLiteral("call-running"));
+        QVERIFY(!running.value(QStringLiteral("canceled")).toBool());
+        QCOMPARE(running.value(QStringLiteral("errorCode")).toString(),
+                 QStringLiteral("not_interruptible"));
+
+        const QVariantMap queued = viewModel.cancelCall(QStringLiteral("call-queued"));
+        QVERIFY(queued.value(QStringLiteral("canceled")).toBool());
+        QCOMPARE(finished.size(), 1);
+        QCOMPARE(finished.at(0).at(0).toString(), QStringLiteral("call-queued"));
+        QVERIFY(!finished.at(0).at(1).toBool());
+        QCOMPARE(finished.at(0).at(3).toMap().value(QStringLiteral("code")).toString(),
+                 QStringLiteral("canceled"));
+    }
+
     void reaperGraceTimerSurvivesEarlyWorkerExit() {
         // 两个 worker 在 750ms 宽限期内先后自行退出，覆盖曾导致热重载闪退的
         // finished/deleteLater 与 grace timer 竞态。旧实现会在这里访问悬空 QProcess。
@@ -196,8 +220,15 @@ def stop():
                          {{QStringLiteral("locale"), QStringLiteral("en-US")}});
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("locale")).toString(),
                                       QStringLiteral("en-US"), 5000);
-            QCOMPARE(viewModel.call(QStringLiteral("bump"), {3}).toMap()
-                         .value(QStringLiteral("queued")).toBool(), true);
+            QSignalSpy callFinished(&viewModel, &PyWorkerViewModel::callFinished);
+            const QVariantMap call = viewModel.call(QStringLiteral("bump"), {3}).toMap();
+            QVERIFY(call.value(QStringLiteral("queued")).toBool());
+            QVERIFY(!call.value(QStringLiteral("id")).toString().isEmpty());
+            QTRY_COMPARE_WITH_TIMEOUT(callFinished.size(), 1, 5000);
+            QCOMPARE(callFinished.at(0).at(0).toString(),
+                     call.value(QStringLiteral("id")).toString());
+            QVERIFY(callFinished.at(0).at(1).toBool());
+            QCOMPARE(callFinished.at(0).at(2).toInt(), 3);
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("count")).toInt(), 3, 5000);
         }
         QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(stopFile), 3000);

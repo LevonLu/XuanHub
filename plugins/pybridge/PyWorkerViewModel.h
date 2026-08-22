@@ -57,6 +57,7 @@ public:
 
     // 保持既有 QML API；调用改为排队异步执行，返回值仅表示是否已入队。
     Q_INVOKABLE QVariant call(const QString& name, const QVariantList& args);
+    Q_INVOKABLE QVariantMap cancelCall(const QString& callId);
     // 只重建当前插件的 worker；同时解除熔断，供设置页和插件错误界面手动恢复。
     Q_INVOKABLE bool restart();
     xuanhub::HostedPluginConfigValidationResult validateConfig(
@@ -84,6 +85,8 @@ Q_SIGNALS:
     void configMigrationFailed(const QString& id, int currentVersion,
                                int targetVersion, const QString& error);
     void configValidationFinished(bool valid, const QString& error);
+    void callFinished(const QString& callId, bool ok, const QVariant& result,
+                      const QVariantMap& error);
 
 private:
     friend class PyWorkerViewModelTest;
@@ -91,6 +94,7 @@ private:
     struct Request {
         QString op;
         QJsonObject data;
+        QString callId;
     };
 
     void acceptConnection();
@@ -107,7 +111,8 @@ private:
     void handleRequestTimeout();
     void handleProcessError();
     void handleProcessFinished(int exitCode, QProcess::ExitStatus status);
-    void failWorker(const QString& reason, bool retry);
+    void failWorker(const QString& reason, bool retry,
+                    const QString& callErrorCode = QStringLiteral("worker_failed"));
     bool recordWorkerFailure(qint64 elapsedMs);
     void markWorkerHealthy();
     void setHealthState(xuanhub::PluginState state);
@@ -139,6 +144,7 @@ private:
     Request m_inFlight;
     quint64 m_inFlightId = 0;
     quint64 m_nextRequestId = 1;
+    quint64 m_nextCallId = 1;
     quint64 m_nextEventDeliveryId = 1;
     QString m_eventDeliveryInFlight;
     QString m_token;
