@@ -63,6 +63,29 @@ PluginConfigMigrationResult DemoPlugin::migrateConfig(
 `QSaveFile` 原子写入新 `configVersion`。未来版本、缺失迁移器、迁移或校验失败会阻止目标
 插件初始化，原配置和其他插件不受影响。插件不得在迁移函数中自行写配置文件或密钥库。
 
+## 设置 Schema
+
+`settings` 使用“分组 → fields”结构；通用类型为 `bool/int/double/string/color/enum/json`，
+另支持 `object/array`。`object/array/json` 都由 JSON 编辑器输入，前两者还会检查顶层类型。
+`string` 可用 `regex` 校验（整串匹配需自行添加 `^`、`$`），并以 `multiline: true` 选择
+多行编辑器。枚举推荐写成稳定值与显示标签分离的对象：
+
+```json
+{
+  "key": "endpoint",
+  "type": "string",
+  "regex": "^https://",
+  "multiline": false,
+  "visibleWhen": {"key": "mode", "equals": "custom"},
+  "enabledWhen": {"key": "editable", "truthy": true}
+}
+```
+
+条件只读取本插件 config 顶层键，运算符为 `equals/notEquals/in/truthy`；若同时声明多个，
+按此顺序使用第一个。条件只影响呈现，隐藏或禁用不会删除既有值，也不会跳过保存时的最终
+Schema 校验。`settingsQml` 自绘页和通用表单均写入同一份设置草稿，最终都经过宿主的
+Schema 校验，未知键继续保留；插件侧保存前验证钩子将在后续阶段补齐。
+
 ## HostServices 与权限
 
 `PluginContext2::hostServices` 是按插件 ID 绑定的版本化服务入口。插件不得缓存到

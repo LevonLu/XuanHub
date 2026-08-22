@@ -149,6 +149,13 @@ API 为 `publish/subscribe/request/respond/state`。插件自己的 `plugin.<id>
   （`options` 必填；推荐用 `{ "value": "daily", "label": "每日重复" }` 对象数组，
   `value` 是持久化稳定值、`label` 可翻译；旧字符串数组继续兼容）；`json`→多行编辑器
   （复杂结构兜底，保存前 JSON 校验）。不要把翻译后的标签写进 config。
+- `string.regex` 使用正则表达式校验；默认是“包含匹配”，要求整串匹配时自行加 `^`、`$`。
+  `string.multiline: true` 改用自动增高的多行编辑器。`object` 和 `array` 使用 JSON 编辑器，
+  保存前除 JSON 语法外还会分别检查顶层对象/数组类型；`json` 继续接受任意 JSON 值。
+- 字段可声明 `visibleWhen` 或 `enabledWhen`，条件只读取同一插件 config 的顶层键：
+  `{ "key": "mode", "equals": "advanced" }`。还支持 `notEquals`、`in` 数组和 `truthy`
+  布尔判断；多个运算符并存时按 `equals`、`notEquals`、`in`、`truthy` 的顺序取第一个。
+  条件只控制显示或编辑状态，不删除草稿中的字段，也不绕过保存时的最终校验。
 - 编辑结果写入 config.json 的本插件 config 段（即 `init(config)` 收到的 dict），
   保存后热重载生效；schema 未声明的 config 键保存时原样保留。
 - `settingsQml`：声明自绘设置页（如 `"settingsQml": "Settings.qml"`，相对本目录），
