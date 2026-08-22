@@ -1,5 +1,5 @@
 // PluginListModel.h — QML 可用的插件列表模型
-// 角色：id / position / qmlUrl / viewModel。
+// 角色：插件内容、布局与运行时健康状态。
 // 暴露 leftPlugins / centerPlugins / rightPlugins 三个过滤子模型。
 #pragma once
 #include <QAbstractListModel>
@@ -24,7 +24,16 @@ public:
         PositionRole,
         QmlUrlRole,
         ViewModelRole,
-        WidthRole
+        WidthRole,
+        HealthStateRole,
+        LastErrorRole,
+        LastErrorAtRole,
+        StartedAtRole,
+        LastHealthyAtRole,
+        RestartCountRole,
+        ConsecutiveFailuresRole,
+        LoadDurationMsRole,
+        QueueDepthRole,
     };
 
     explicit PluginListModel(QObject* parent = nullptr);
@@ -45,7 +54,14 @@ public:
     int contentWidth(const QString& id) const;   // 无记录返回 0
 
 private:
-    struct Item { QString id; QString position; QUrl qmlUrl; QObject* vm; int width = 0; };
+    struct Item {
+        QString id;
+        QString position;
+        QUrl qmlUrl;
+        QObject* vm = nullptr;
+        int width = 0;
+        xuanhub::PluginHealth health;
+    };
     QVector<Item> m_items;
     QHash<QString, int> m_contentWidths;
 

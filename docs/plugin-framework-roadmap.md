@@ -202,7 +202,7 @@ V1 插件仍可通过原始 EventBus 工作，但宿主应逐步把内置插件�
 
 #### 阶段 B：健康模型
 
-- [ ] 新增 `PluginHealth` 数据结构和模型角色。
+- [x] 新增 `PluginHealth` 数据结构和模型角色。
 - [ ] `PluginManager`、pybridge 和 `PluginSlot` 上报状态。
 - [ ] 设置页显示状态、最近错误和重新启动按钮。
 - [ ] 红色占位符提供可读错误摘要，不只显示 ID。

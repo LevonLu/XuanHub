@@ -12,6 +12,7 @@
 #include <QPluginLoader>
 
 #include "barplugin/IBarPlugin.h"
+#include "barplugin/PluginHealth.h"
 
 struct PluginConfigEntry;
 namespace xuanhub { class EventBus; }
@@ -27,6 +28,7 @@ public:
         QObject* viewModel = nullptr;
         QUrl qmlUrl;                 // 绝对 file URL
         xuanhub::IBarPlugin* iface = nullptr;
+        xuanhub::PluginHealth health;
     };
 
     PluginManager(xuanhub::EventBus* bus, const QString& configDir, QObject* parent = nullptr);

@@ -5,6 +5,7 @@ add_library(barplugin SHARED
     src/EventBus.cpp
     src/ProcessReaper.cpp
     include/barplugin/EventBus.h
+    include/barplugin/PluginHealth.h
     include/barplugin/ProcessReaper.h
 )
 

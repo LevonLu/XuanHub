@@ -8,6 +8,7 @@
 #include <QFileInfo>
 #include <QLibrary>
 #include <QDebug>
+#include <QDateTime>
 
 namespace {
 // position 校验：空默认 right；非法值告警并回落 right
@@ -139,6 +140,9 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
                     lp.viewModel = sp.viewModel;
                     lp.qmlUrl = QUrl::fromLocalFile(QDir(sp.dirPath).absoluteFilePath(sp.qmlFilePath));
                     lp.iface = nullptr;   // 生命周期归 host，shutdownAll 由 host 统一 shutdown
+                    lp.health.state = xuanhub::PluginState::Running;
+                    lp.health.startedAt = QDateTime::currentDateTimeUtc();
+                    lp.health.lastHealthyAt = lp.health.startedAt;
                     m_loaded.append(lp);
                     m_loadedIds.insert(sid);
                     qDebug() << "[Plugin] loaded:" << sid << "pos=" << lp.position
@@ -164,6 +168,9 @@ void PluginManager::loadFrom(const QString& pluginsDir, const QList<PluginConfig
             lp.viewModel = plugin->viewModel();
             lp.qmlUrl = qmlUrl;
             lp.iface = plugin;
+            lp.health.state = xuanhub::PluginState::Running;
+            lp.health.startedAt = QDateTime::currentDateTimeUtc();
+            lp.health.lastHealthyAt = lp.health.startedAt;
 
             m_loaders.append(loader);
             m_loaded.append(lp);

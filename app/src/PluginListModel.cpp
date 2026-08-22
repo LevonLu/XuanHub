@@ -27,6 +27,15 @@ QVariant PluginListModel::data(const QModelIndex& index, int role) const {
         case QmlUrlRole:   return it.qmlUrl;
         case ViewModelRole:return QVariant::fromValue(it.vm);
         case WidthRole:    return it.width;
+        case HealthStateRole:        return xuanhub::pluginStateKey(it.health.state);
+        case LastErrorRole:          return it.health.lastError;
+        case LastErrorAtRole:        return it.health.lastErrorAt;
+        case StartedAtRole:          return it.health.startedAt;
+        case LastHealthyAtRole:      return it.health.lastHealthyAt;
+        case RestartCountRole:       return it.health.restartCount;
+        case ConsecutiveFailuresRole:return it.health.consecutiveFailures;
+        case LoadDurationMsRole:     return it.health.loadDurationMs;
+        case QueueDepthRole:         return it.health.queueDepth;
     }
     return {};
 }
@@ -38,6 +47,15 @@ QHash<int, QByteArray> PluginListModel::roleNames() const {
         { QmlUrlRole,    "qmlUrl" },
         { ViewModelRole, "viewModel" },
         { WidthRole,     "width" },
+        { HealthStateRole,         "healthState" },
+        { LastErrorRole,           "lastError" },
+        { LastErrorAtRole,         "lastErrorAt" },
+        { StartedAtRole,           "startedAt" },
+        { LastHealthyAtRole,       "lastHealthyAt" },
+        { RestartCountRole,        "restartCount" },
+        { ConsecutiveFailuresRole, "consecutiveFailures" },
+        { LoadDurationMsRole,      "loadDurationMs" },
+        { QueueDepthRole,          "queueDepth" },
     };
 }
 
@@ -68,8 +86,16 @@ void PluginListModel::setPlugins(const QVector<PluginManager::LoadedPlugin>& ite
                   return a.order < b.order;
     });
 
-    for (const auto& lp : sorted)
-        m_items.append({ lp.id, lp.position, lp.qmlUrl, lp.viewModel, lp.width });
+    for (const auto& lp : sorted) {
+        Item item;
+        item.id = lp.id;
+        item.position = lp.position;
+        item.qmlUrl = lp.qmlUrl;
+        item.vm = lp.viewModel;
+        item.width = lp.width;
+        item.health = lp.health;
+        m_items.append(item);
+    }
     endResetModel();
 }
 
