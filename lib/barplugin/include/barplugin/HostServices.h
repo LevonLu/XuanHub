@@ -51,19 +51,19 @@ public:
 class IPluginStorage {
 public:
     virtual ~IPluginStorage() = default;
-    virtual HostServiceResult read(const QString& relativePath) const = 0;
-    virtual HostServiceResult write(const QString& relativePath,
-                                    const QByteArray& data) = 0;
-    virtual HostServiceResult remove(const QString& relativePath) = 0;
+    virtual HostServiceResult readBytes(const QString& relativePath) const = 0;
+    virtual HostServiceResult writeBytes(const QString& relativePath,
+                                         const QByteArray& data) = 0;
+    virtual HostServiceResult removePath(const QString& relativePath) = 0;
     virtual HostServiceResult list(const QString& relativeDirectory = {}) const = 0;
 };
 
 class IPluginSecrets {
 public:
     virtual ~IPluginSecrets() = default;
-    virtual HostServiceResult read(const QString& key) const = 0;
-    virtual HostServiceResult write(const QString& key, const QString& value) = 0;
-    virtual HostServiceResult remove(const QString& key) = 0;
+    virtual HostServiceResult readSecret(const QString& key) const = 0;
+    virtual HostServiceResult writeSecret(const QString& key, const QString& value) = 0;
+    virtual HostServiceResult removeSecret(const QString& key) = 0;
 };
 
 class IPluginNavigation {

@@ -229,6 +229,33 @@ add_custom_command(TARGET xuanhub_host_services_tests POST_BUILD
 )
 add_test(NAME xuanhub_host_services_tests COMMAND xuanhub_host_services_tests)
 
+add_executable(xuanhub_plugin_host_services_tests
+    PluginHostServicesTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/PluginHostServices.h
+    ${CMAKE_SOURCE_DIR}/app/src/PluginHostServices.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/SecretStore.h
+    ${CMAKE_SOURCE_DIR}/app/src/SecretStore.cpp
+)
+set_target_properties(xuanhub_plugin_host_services_tests PROPERTIES AUTOMOC ON)
+target_include_directories(xuanhub_plugin_host_services_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/app/src
+)
+target_link_libraries(xuanhub_plugin_host_services_tests PRIVATE
+    barplugin Qt6::Core Qt6::Gui Qt6::Test crypt32
+)
+add_custom_command(TARGET xuanhub_plugin_host_services_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:barplugin>" "$<TARGET_FILE_DIR:xuanhub_plugin_host_services_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Core>" "$<TARGET_FILE_DIR:xuanhub_plugin_host_services_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Gui>" "$<TARGET_FILE_DIR:xuanhub_plugin_host_services_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Test>" "$<TARGET_FILE_DIR:xuanhub_plugin_host_services_tests>"
+    VERBATIM
+)
+add_test(NAME xuanhub_plugin_host_services_tests COMMAND xuanhub_plugin_host_services_tests)
+
 # 协议回归只需可执行解释器，不需要开发头/库；找不到时不让核心 CTest 失效。
 find_package(Python 3.12 QUIET COMPONENTS Interpreter)
 if(Python_Interpreter_FOUND)
