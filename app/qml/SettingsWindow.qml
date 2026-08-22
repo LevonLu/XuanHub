@@ -1610,197 +1610,11 @@ Pane {
                                         }
                                     }
 
-                                    UiCard {
-                                        Layout.fillWidth: true
-                                        compact: true
-                                        title: root.trText("权限与安全")
-                                        description: root.trText("查看插件声明、实际授权和运行隔离级别")
-
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            spacing: UiMetrics.space2
-                                            RowLayout {
-                                                Layout.fillWidth: true
-                                                spacing: UiMetrics.space2
-                                                Rectangle {
-                                                    Layout.preferredWidth: trustTag.implicitWidth + 18
-                                                    Layout.preferredHeight: 24
-                                                    radius: 12
-                                                    color: root.translucent(
-                                                        detailPanel.rowData.trustLevel === "isolated"
-                                                            ? root.accentColor : root.c.warning, 0.16)
-                                                    Text {
-                                                        id: trustTag
-                                                        anchors.centerIn: parent
-                                                        color: detailPanel.rowData.trustLevel === "isolated"
-                                                            ? root.c.accent : root.c.warning
-                                                        font.pixelSize: UiMetrics.fontTiny
-                                                        font.weight: Font.DemiBold
-                                                        text: detailPanel.rowData.trustLevel === "isolated"
-                                                            ? root.trText("隔离插件")
-                                                            : root.trText("受信任的进程内插件")
-                                                    }
-                                                }
-                                                Text {
-                                                    Layout.fillWidth: true
-                                                    color: root.c.muted
-                                                    font.pixelSize: UiMetrics.fontS
-                                                    wrapMode: Text.Wrap
-                                                    text: detailPanel.rowData.trustLevel === "isolated"
-                                                        ? root.trText("Python 后端运行在独立进程中，HostServices 请求按声明权限强制校验。")
-                                                        : root.trText("原生插件与宿主在同一进程运行，权限仅作说明，不能限制其直接访问系统资源。")
-                                                }
-                                            }
-                                            Text {
-                                                Layout.fillWidth: true
-                                                color: root.c.fg
-                                                font.pixelSize: UiMetrics.fontS
-                                                wrapMode: Text.Wrap
-                                                text: root.trText("声明权限：%1").arg(
-                                                    root.permissionListText(detailPanel.rowData.declaredPermissions))
-                                            }
-                                            Text {
-                                                Layout.fillWidth: true
-                                                color: root.c.fg
-                                                font.pixelSize: UiMetrics.fontS
-                                                wrapMode: Text.Wrap
-                                                text: root.trText("已授予权限：%1").arg(
-                                                    root.permissionListText(detailPanel.rowData.grantedPermissions))
-                                            }
-                                            Text {
-                                                Layout.fillWidth: true
-                                                color: root.c.muted
-                                                font.pixelSize: UiMetrics.fontTiny
-                                                wrapMode: Text.Wrap
-                                                text: root.trText("宿主服务：API %1 · %2").arg(
-                                                    Number(detailPanel.rowData.apiVersion || 1)).arg(
-                                                    root.permissionListText(detailPanel.rowData.capabilities))
-                                            }
-                                        }
-                                    }
-
                                     // ── 启用后的设置区 ──
                                     ColumnLayout {
                                         Layout.fillWidth: true
                                         spacing: 10
                                         visible: detailPanel.rowData.enabled === true
-
-                                        UiCard {
-                                            Layout.fillWidth: true
-                                            compact: true
-                                            visible: Object.keys(detailPanel.rowData.health || {}).length > 0
-                                            title: root.trText("运行状态")
-                                            description: root.trText("显示插件当前健康状态和最近一次运行错误")
-
-                                            RowLayout {
-                                                Layout.fillWidth: true
-                                                spacing: UiMetrics.space2
-                                                Rectangle {
-                                                    width: 10; height: 10; radius: 5
-                                                    property string state: String(
-                                                        (detailPanel.rowData.health || {}).state || "discovered")
-                                                    color: state === "running" ? root.c.success
-                                                         : (state === "failed" || state === "circuitOpen")
-                                                           ? root.c.danger
-                                                         : (state === "restarting" || state === "degraded")
-                                                           ? root.c.warning : root.c.muted
-                                                }
-                                                Text {
-                                                    color: root.c.fg
-                                                    font.pixelSize: UiMetrics.fontM
-                                                    font.weight: Font.DemiBold
-                                                    text: root.healthLabel(String(
-                                                        (detailPanel.rowData.health || {}).state || "discovered"))
-                                                }
-                                                Text {
-                                                    Layout.fillWidth: true
-                                                    color: root.c.muted
-                                                    font.pixelSize: UiMetrics.fontTiny
-                                                    text: root.trText("连续失败：%1 · 重启次数：%2 · 队列：%3")
-                                                        .arg(Number((detailPanel.rowData.health || {}).consecutiveFailures || 0))
-                                                        .arg(Number((detailPanel.rowData.health || {}).restartCount || 0))
-                                                        .arg(Number((detailPanel.rowData.health || {}).queueDepth || 0))
-                                                    elide: Text.ElideRight
-                                                }
-                                                UiButton {
-                                                    visible: detailPanel.rowData.kind === "python"
-                                                             && (detailPanel.rowData.dependencyPlan || {}).available !== true
-                                                    variant: "outline"
-                                                    compact: true
-                                                    text: root.trText("重新启动插件")
-                                                    Layout.preferredWidth: Math.max(112, implicitWidth)
-                                                    onClicked: settingsVM.restartPlugin(pluginList.currentId)
-                                                }
-                                                UiButton {
-                                                    visible: detailPanel.rowData.kind === "python"
-                                                             && (detailPanel.rowData.dependencyPlan || {}).available === true
-                                                    enabled: (detailPanel.rowData.dependencyPlan || {}).installing !== true
-                                                    variant: "primary"
-                                                    compact: true
-                                                    text: (detailPanel.rowData.dependencyPlan || {}).installing === true
-                                                        ? root.trText("正在安装…")
-                                                        : root.trText("安装离线依赖")
-                                                    Layout.preferredWidth: Math.max(128, implicitWidth)
-                                                    onClicked: dependencyConfirm.ask(
-                                                        pluginList.currentId,
-                                                        detailPanel.rowData.dependencyPlan)
-                                                }
-                                                UiButton {
-                                                    variant: "outline"
-                                                    compact: true
-                                                    text: root.trText("导出诊断")
-                                                    onClicked: {
-                                                        const path = settingsCtl.choosePluginDiagnostics(
-                                                            pluginList.currentId)
-                                                        if (path.length > 0)
-                                                            settingsVM.exportPluginDiagnostics(
-                                                                pluginList.currentId, path)
-                                                    }
-                                                }
-                                            }
-                                            Text {
-                                                Layout.fillWidth: true
-                                                color: root.c.muted
-                                                font.pixelSize: UiMetrics.fontTiny
-                                                wrapMode: Text.Wrap
-                                                text: {
-                                                    const health = detailPanel.rowData.health || ({})
-                                                    const parts = [
-                                                        root.trText("启动耗时：%1 ms").arg(
-                                                            Number(health.loadDurationMs || 0)),
-                                                        root.trText("最近成功：%1").arg(
-                                                            root.healthTime(health.lastHealthyAt))
-                                                    ]
-                                                    if (detailPanel.rowData.kind === "python"
-                                                            && Number(health.processId || 0) > 0) {
-                                                        parts.push(root.trText("Python PID：%1").arg(
-                                                            Number(health.processId)))
-                                                    }
-                                                    return parts.join(" · ")
-                                                }
-                                            }
-                                            ColumnLayout {
-                                                Layout.fillWidth: true
-                                                visible: String((detailPanel.rowData.health || {}).lastError || "").length > 0
-                                                spacing: UiMetrics.space1
-                                                Text {
-                                                    text: String((detailPanel.rowData.health || {}).lastErrorCode || "").length > 0
-                                                        ? root.trText("最近错误（%1）").arg(String(
-                                                            (detailPanel.rowData.health || {}).lastErrorCode))
-                                                        : root.trText("最近错误")
-                                                    color: root.c.danger
-                                                    font.pixelSize: UiMetrics.fontS
-                                                    font.weight: Font.DemiBold
-                                                }
-                                                Text {
-                                                    Layout.fillWidth: true
-                                                    text: String((detailPanel.rowData.health || {}).lastError || "")
-                                                    color: root.c.muted
-                                                    font.pixelSize: UiMetrics.fontTiny
-                                                    wrapMode: Text.Wrap
-                                                }
-                                            }
-                                        }
 
                                         UiCard {
                                             Layout.fillWidth: true
@@ -1994,6 +1808,193 @@ Pane {
                                         Repeater {
                                             model: customPage.visible ? [] : (detailPanel.rowData.schema || [])
                                             delegate: groupDelegate
+                                        }
+                                    }
+
+                                    UiCard {
+                                        Layout.fillWidth: true
+                                        compact: true
+                                        visible: detailPanel.rowData.enabled === true
+                                                 && Object.keys(detailPanel.rowData.health || {}).length > 0
+                                        title: root.trText("运行状态")
+                                        description: root.trText("显示插件当前健康状态和最近一次运行错误")
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: UiMetrics.space2
+                                            Rectangle {
+                                                width: 10; height: 10; radius: 5
+                                                property string state: String(
+                                                    (detailPanel.rowData.health || {}).state || "discovered")
+                                                color: state === "running" ? root.c.success
+                                                     : (state === "failed" || state === "circuitOpen")
+                                                       ? root.c.danger
+                                                     : (state === "restarting" || state === "degraded")
+                                                       ? root.c.warning : root.c.muted
+                                            }
+                                            Text {
+                                                color: root.c.fg
+                                                font.pixelSize: UiMetrics.fontM
+                                                font.weight: Font.DemiBold
+                                                text: root.healthLabel(String(
+                                                    (detailPanel.rowData.health || {}).state || "discovered"))
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                color: root.c.muted
+                                                font.pixelSize: UiMetrics.fontTiny
+                                                text: root.trText("连续失败：%1 · 重启次数：%2 · 队列：%3")
+                                                    .arg(Number((detailPanel.rowData.health || {}).consecutiveFailures || 0))
+                                                    .arg(Number((detailPanel.rowData.health || {}).restartCount || 0))
+                                                    .arg(Number((detailPanel.rowData.health || {}).queueDepth || 0))
+                                                elide: Text.ElideRight
+                                            }
+                                            UiButton {
+                                                visible: detailPanel.rowData.kind === "python"
+                                                         && (detailPanel.rowData.dependencyPlan || {}).available !== true
+                                                variant: "outline"
+                                                compact: true
+                                                text: root.trText("重新启动插件")
+                                                Layout.preferredWidth: Math.max(112, implicitWidth)
+                                                onClicked: settingsVM.restartPlugin(pluginList.currentId)
+                                            }
+                                            UiButton {
+                                                visible: detailPanel.rowData.kind === "python"
+                                                         && (detailPanel.rowData.dependencyPlan || {}).available === true
+                                                enabled: (detailPanel.rowData.dependencyPlan || {}).installing !== true
+                                                variant: "primary"
+                                                compact: true
+                                                text: (detailPanel.rowData.dependencyPlan || {}).installing === true
+                                                    ? root.trText("正在安装…")
+                                                    : root.trText("安装离线依赖")
+                                                Layout.preferredWidth: Math.max(128, implicitWidth)
+                                                onClicked: dependencyConfirm.ask(
+                                                    pluginList.currentId,
+                                                    detailPanel.rowData.dependencyPlan)
+                                            }
+                                            UiButton {
+                                                variant: "outline"
+                                                compact: true
+                                                text: root.trText("导出诊断")
+                                                onClicked: {
+                                                    const path = settingsCtl.choosePluginDiagnostics(
+                                                        pluginList.currentId)
+                                                    if (path.length > 0)
+                                                        settingsVM.exportPluginDiagnostics(
+                                                            pluginList.currentId, path)
+                                                }
+                                            }
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            color: root.c.muted
+                                            font.pixelSize: UiMetrics.fontTiny
+                                            wrapMode: Text.Wrap
+                                            text: {
+                                                const health = detailPanel.rowData.health || ({})
+                                                const parts = [
+                                                    root.trText("启动耗时：%1 ms").arg(
+                                                        Number(health.loadDurationMs || 0)),
+                                                    root.trText("最近成功：%1").arg(
+                                                        root.healthTime(health.lastHealthyAt))
+                                                ]
+                                                if (detailPanel.rowData.kind === "python"
+                                                        && Number(health.processId || 0) > 0) {
+                                                    parts.push(root.trText("Python PID：%1").arg(
+                                                        Number(health.processId)))
+                                                }
+                                                return parts.join(" · ")
+                                            }
+                                        }
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            visible: String((detailPanel.rowData.health || {}).lastError || "").length > 0
+                                            spacing: UiMetrics.space1
+                                            Text {
+                                                text: String((detailPanel.rowData.health || {}).lastErrorCode || "").length > 0
+                                                    ? root.trText("最近错误（%1）").arg(String(
+                                                        (detailPanel.rowData.health || {}).lastErrorCode))
+                                                    : root.trText("最近错误")
+                                                color: root.c.danger
+                                                font.pixelSize: UiMetrics.fontS
+                                                font.weight: Font.DemiBold
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: String((detailPanel.rowData.health || {}).lastError || "")
+                                                color: root.c.muted
+                                                font.pixelSize: UiMetrics.fontTiny
+                                                wrapMode: Text.Wrap
+                                            }
+                                        }
+                                    }
+
+                                    UiCard {
+                                        Layout.fillWidth: true
+                                        compact: true
+                                        title: root.trText("权限与安全")
+                                        description: root.trText("查看插件声明、实际授权和运行隔离级别")
+
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: UiMetrics.space2
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                spacing: UiMetrics.space2
+                                                Rectangle {
+                                                    Layout.preferredWidth: trustTag.implicitWidth + 18
+                                                    Layout.preferredHeight: 24
+                                                    radius: 12
+                                                    color: root.translucent(
+                                                        detailPanel.rowData.trustLevel === "isolated"
+                                                            ? root.accentColor : root.c.warning, 0.16)
+                                                    Text {
+                                                        id: trustTag
+                                                        anchors.centerIn: parent
+                                                        color: detailPanel.rowData.trustLevel === "isolated"
+                                                            ? root.c.accent : root.c.warning
+                                                        font.pixelSize: UiMetrics.fontTiny
+                                                        font.weight: Font.DemiBold
+                                                        text: detailPanel.rowData.trustLevel === "isolated"
+                                                            ? root.trText("隔离插件")
+                                                            : root.trText("受信任的进程内插件")
+                                                    }
+                                                }
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    color: root.c.muted
+                                                    font.pixelSize: UiMetrics.fontS
+                                                    wrapMode: Text.Wrap
+                                                    text: detailPanel.rowData.trustLevel === "isolated"
+                                                        ? root.trText("Python 后端运行在独立进程中，HostServices 请求按声明权限强制校验。")
+                                                        : root.trText("原生插件与宿主在同一进程运行，权限仅作说明，不能限制其直接访问系统资源。")
+                                                }
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                color: root.c.fg
+                                                font.pixelSize: UiMetrics.fontS
+                                                wrapMode: Text.Wrap
+                                                text: root.trText("声明权限：%1").arg(
+                                                    root.permissionListText(detailPanel.rowData.declaredPermissions))
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                color: root.c.fg
+                                                font.pixelSize: UiMetrics.fontS
+                                                wrapMode: Text.Wrap
+                                                text: root.trText("已授予权限：%1").arg(
+                                                    root.permissionListText(detailPanel.rowData.grantedPermissions))
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                color: root.c.muted
+                                                font.pixelSize: UiMetrics.fontTiny
+                                                wrapMode: Text.Wrap
+                                                text: root.trText("宿主服务：API %1 · %2").arg(
+                                                    Number(detailPanel.rowData.apiVersion || 1)).arg(
+                                                    root.permissionListText(detailPanel.rowData.capabilities))
+                                            }
                                         }
                                     }
                                 }
