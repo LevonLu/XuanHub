@@ -89,7 +89,7 @@ Item {
     Rectangle {
         id: errorBadge
         visible: slot.status === Loader.Error
-        width: badgeText.implicitWidth + 12
+        width: Math.min(320, Math.max(80, badgeText.implicitWidth + 12))
         height: wrapper.height
         // colors 里的值是字符串：先经 color 属性隐式转换再拆通道（字符串无 .r/.g/.b）
         // themeManager/colors.danger 缺失时给 fallback（参照 main.qml 的空值防御）
@@ -101,11 +101,16 @@ Item {
 
         Text {
             id: badgeText
-            anchors.centerIn: parent
+            anchors.fill: parent
+            anchors.margins: 6
+            verticalAlignment: Text.AlignVCenter
             text: "⚠ " + model.id
+                  + (String(model.lastError || "").length > 0
+                     ? ": " + String(model.lastError) : "")
             // 自定义属性不能跨 item 裸名引用，必须经 id 限定（实测 ReferenceError）
             color: errorBadge.dangerColor
             font.pixelSize: 12
+            elide: Text.ElideRight
         }
     }
 }
