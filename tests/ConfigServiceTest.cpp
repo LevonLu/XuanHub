@@ -585,6 +585,80 @@ private Q_SLOTS:
         QVERIFY(!store.read(secretId).has_value());
     }
 
+    void legacyDottedNestedSecretMigratesToJsonPointer() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString token = QStringLiteral("stable-account");
+        const QJsonArray settings{QJsonObject{
+            {QStringLiteral("group"), QStringLiteral("账户")},
+            {QStringLiteral("fields"), QJsonArray{QJsonObject{
+                {QStringLiteral("key"), QStringLiteral("accounts")},
+                {QStringLiteral("type"), QStringLiteral("array")},
+                {QStringLiteral("itemKey"), QStringLiteral("uid")},
+                {QStringLiteral("items"), QJsonObject{
+                    {QStringLiteral("type"), QStringLiteral("object")},
+                    {QStringLiteral("fields"), QJsonArray{QJsonObject{
+                        {QStringLiteral("key"), QStringLiteral("token")},
+                        {QStringLiteral("type"), QStringLiteral("string")},
+                        {QStringLiteral("secret"), true}
+                    }}}
+                }}
+            }}}
+        }};
+        const QString pluginDir = dir.filePath(QStringLiteral("plugins_py/nested_demo"));
+        QVERIFY(QDir().mkpath(pluginDir));
+        QFile sidecar(QDir(pluginDir).filePath(QStringLiteral("plugin.json")));
+        QVERIFY(sidecar.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        QVERIFY(sidecar.write(QJsonDocument(QJsonObject{
+            {QStringLiteral("id"), QStringLiteral("py_nested_demo")},
+            {QStringLiteral("settings"), settings}
+        }).toJson(QJsonDocument::Compact)) > 0);
+        sidecar.close();
+
+        SecretStore store(dir.path());
+        const QString legacyId = SecretStore::idForPluginField(
+            QStringLiteral("py_nested_demo"),
+            QStringLiteral("accounts.%1.token").arg(token));
+        const QString pointerId = SecretStore::idForPluginPointer(
+            QStringLiteral("py_nested_demo"),
+            QStringLiteral("/accounts/%1/token").arg(token));
+        QVERIFY(store.write(legacyId, QStringLiteral("legacy-value")));
+        const QJsonObject rawEntry = plugin(QStringLiteral("py_nested_demo"), {
+            {QStringLiteral("accounts"), QJsonArray{QJsonObject{
+                {QStringLiteral("uid"), token},
+                {QStringLiteral("token"), SecretStore::referenceValue(legacyId)}
+            }}}
+        });
+        QVERIFY(writeJson(dir.path(), QJsonDocument(configWithPlugins({rawEntry}))));
+
+        ConfigService service;
+        QVERIFY(service.load(dir.path(), dir.path()));
+        const QVariantMap hydrated = service.pluginEntries().first().config
+                                         .value(QStringLiteral("accounts"))
+                                         .toList().first().toMap();
+        QCOMPARE(hydrated.value(QStringLiteral("token")).toString(),
+                 QStringLiteral("legacy-value"));
+
+        SettingsPluginModel model;
+        model.reload(service.pluginEntries(), QJsonArray{rawEntry}, dir.path(),
+                     service.activePath());
+        QJsonArray exported;
+        QString error;
+        auto transaction = store.beginTransaction();
+        QVERIFY2(model.toPluginEntriesJson(&exported, &error, &transaction), qPrintable(error));
+        const QJsonObject savedAccount = exported.first().toObject()
+                                             .value(QStringLiteral("config")).toObject()
+                                             .value(QStringLiteral("accounts")).toArray()
+                                             .first().toObject();
+        QCOMPARE(SecretStore::referenceId(savedAccount.value(QStringLiteral("token"))), pointerId);
+        QVERIFY(transaction.commit());
+        QVERIFY(writeJson(dir.path(), QJsonDocument(configWithPlugins(
+                                            {exported.first().toObject()}))));
+        transaction.finalize();
+        QVERIFY(!store.read(legacyId).has_value());
+        QCOMPARE(store.read(pointerId).value_or({}), QStringLiteral("legacy-value"));
+    }
+
     void pluginMoveKeepsRegionsSeparateAndNormalizesOrder() {
         auto entry = [](const QString& id, const QString& position, int order) {
             PluginConfigEntry value;
