@@ -1,11 +1,11 @@
 // HeartRate.qml — py_heartrate 子插件界面：bleak 心率显示
 // 契约同 C++ 插件：根 Item 声明 property var plugin；数据走 plugin.values，
 // 行为走 plugin.call(name, args) → main.py 的 invoke()。
-// 弹窗范式照抄 usage_hub：mapToGlobal 锚点 + barScreenGeometry 越界修正 +
-// 隐身创建/稳定后显现 + barWindow.barPressed 关窗守卫。
+// 弹窗使用宿主 PluginPopup；蓝牙扫描与曲线订阅仍由本插件按显隐控制。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import XuanHub
 
 Item {
     id: root
@@ -40,22 +40,8 @@ Item {
     readonly property bool connected: root.state === "connected"
 
     // ── Bar 点击 → 切换弹窗 ──────────────────────────────────────
-    // 点 bar 任意处关闭弹窗：bar 是 WindowDoesNotAcceptFocus，点击不会让弹窗
-    // 失活（onActiveChanged 不触发），靠宿主 barWindow.barPressed 信号补齐。
-    // 信号先于 item 的 onClicked 到达，用 popupOpenOnBarPress 记录按下瞬间
-    // 弹窗状态，避免「点部件关弹窗」被 onClicked 当成 toggle 又立刻重开。
-    property bool popupOpenOnBarPress: false
     // 曲线时长窗口选中态（打开弹窗时从 plugin.values.historyWindow 同步）
     property int winSel: 5
-
-    Connections {
-        target: pluginContext ? pluginContext
-                              : (typeof barWindow !== "undefined" ? barWindow : null)
-        function onBarPressed() {
-            root.popupOpenOnBarPress = popupWin.visible
-            popupWin.hide()
-        }
-    }
 
     // bar hover 反馈（提示可点击）
     Rectangle {
@@ -97,14 +83,7 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: {
-            if (root.popupOpenOnBarPress) {
-                // 本次按下已经由 barPressed 把弹窗关掉了，不再重开
-                root.popupOpenOnBarPress = false
-                return
-            }
-            root.openPopup()
-        }
+        onClicked: popupWin.toggleFromBar()
     }
 
     // ── 弹出窗口 ─────────────────────────────────────────────────
@@ -118,90 +97,25 @@ Item {
         return trText("%1 天前").arg(Math.floor(s / 86400))
     }
 
-    function openPopup() {
-        const pw = 360
-        const anchor = root.mapToGlobal(Qt.point(root.width / 2, root.height + 6))
-        popupWin.x = Math.round(anchor.x - pw / 2)
-        popupWin.y = Math.round(anchor.y)
-        // 清掉上次上翻遗留的底边锚：否则高度瞬变会让 onHeightChanged 用旧锚抢跑
-        popupWin.bottomAnchor = -1
-        // 隐身创建：定位是「先 show 再 clamp」两段式，不隐身用户会看到弹窗
-        // 从屏幕外跳到正确位置；doClamp 末尾由 revealTimer 恢复 opacity
-        popupWin.opacity = 0
-        popupWin.pendingClamp = true   // 必须在 show() 前置位：onVisibleChanged 同步触发
-        popupWin.show()
-        popupWin.raise()
-        popupWin.requestActivate()
-    }
-
-    Window {
+    PluginPopup {
         id: popupWin
-        transientParent: null
-        property bool pendingClamp: false
-        // >=0 时为「上翻」模式：弹窗底边锚定在该屏幕 y 处（部件上方 6px）。
-        property real bottomAnchor: -1
-
-        visible: false; width: 360
+        anchorItem: root
+        pluginContext: root.pluginContext
+        width: 360
         height: Math.min(640, Math.max(320, contentCol.implicitHeight + 24))
-        color: "transparent"
-        flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
-
-        onActiveChanged: if (!active && visible) hide()
-        Shortcut { sequence: "Escape"; onActivated: popupWin.hide() }
-        onVisibleChanged: {
-            if (visible) {
-                if (pendingClamp) Qt.callLater(doClamp)
-                // 弹窗打开即扫描、关闭即停扫：扫描只在需要时占用蓝牙无线电
-                if (plugin) plugin.call("startScan", [])
-                // 历史曲线：打开才向 values 输出数据；同步上次窗口选中态
-                if (plugin) {
-                    if (plugin.values && plugin.values.historyWindow)
-                        root.winSel = plugin.values.historyWindow
-                    plugin.call("setChartActive", [true])
-                }
-            } else {
-                if (plugin) plugin.call("stopScan", [])
-                if (plugin) plugin.call("setChartActive", [false])
+        onOpened: {
+            // 弹窗打开即扫描：扫描只在需要时占用蓝牙无线电。
+            if (plugin) plugin.call("startScan", [])
+            // 历史曲线打开才输出数据，并同步上次窗口选中态。
+            if (plugin) {
+                if (plugin.values && plugin.values.historyWindow)
+                    root.winSel = plugin.values.historyWindow
+                plugin.call("setChartActive", [true])
             }
         }
-        onHeightChanged: {
-            if (visible && bottomAnchor >= 0)
-                y = Math.round(bottomAnchor - height)
-            // 高度每变一次都把显现时间后推：等高度稳定 50ms 再显示，
-            // 否则用户会看到 doClamp 之后高度继续收敛带来的顶边收缩
-            if (visible) revealTimer.restart()
-        }
-
-        // 显现定时器：doClamp 或最后一次高度变化 50ms 后恢复 opacity
-        Timer {
-            id: revealTimer; interval: 50
-            onTriggered: popupWin.opacity = 1
-        }
-
-        function doClamp() {
-            pendingClamp = false
-            // 屏幕几何取宿主注入的 barScreenGeometry（当前屏 availableGeometry，
-            // 已排除任务栏占位）：taskbar 模式下 bar 是任务栏子窗口，
-            // root.Screen 同样失效（实测 undefined）。rect 只有 x/y/width/height。
-            const sg = pluginContext ? pluginContext.screenGeometry
-                                     : ((typeof barScreenGeometry !== "undefined")
-                                        ? barScreenGeometry : null)
-            if (!sg || sg.width === 0) { popupWin.opacity = 1; return }
-            const sRight = sg.x + sg.width; const sBottom = sg.y + sg.height
-            const w = popupWin.width; const h = popupWin.height
-            let x = popupWin.x
-            const belowPt = root.mapToGlobal(Qt.point(root.width / 2, root.height + 6))
-            let y = Math.round(belowPt.y)
-            if (x + w > sRight)  x = Math.round(sRight - w)
-            if (x < sg.x)        x = sg.x
-            if (y + h > sBottom) {
-                const abovePt = root.mapToGlobal(Qt.point(root.width / 2, -6))
-                bottomAnchor = Math.round(abovePt.y)
-                y = Math.round(abovePt.y - h)
-            }
-            if (y < sg.y) y = sg.y
-            popupWin.x = x; popupWin.y = y
-            revealTimer.restart()
+        onClosed: {
+            if (plugin) plugin.call("stopScan", [])
+            if (plugin) plugin.call("setChartActive", [false])
         }
 
         // ── 内容 ─────────────────────────────────────────────
