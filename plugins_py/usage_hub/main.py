@@ -4,20 +4,33 @@
 #   - balance: 余额查询（如 DeepSeek），显示今日用量 + 当前余额
 #   - plan:    限额查询（如 GLM Coding Plan），显示 5h/每周窗口进度条
 #
-# 模块级四约定：update() -> dict 必需；init(config)、invoke(name,args)、stop() 可选。
-# update/invoke 在隔离 worker 的主线程内串行执行，必须轻量——网络 IO 全在后台 daemon
-# 线程里完成，线程只碰纯 Python 对象、绝不触达 Qt/QML，结果写进模块级 _cache，
-# update() 只瞬读缓存。stop() 用来在热重载/卸载前停掉旧线程防泄漏。
+# 网络 IO 全在后台 daemon 线程完成；线程只碰纯 Python 对象和 bridge 推送队列，
+# 绝不触达 Qt/QML。PUSH_VALUES 停用周期轮询，update() 仅提供初始化快照；
+# set_config() 原子替换厂商列表，不重启 Worker，stop() 在卸载前通知旧线程退出。
 import json
 import os
 import threading
 import time
 import traceback
 
+try:
+    from xuanhub_host import CallError, emit_values
+except ImportError:  # 允许脱离宿主运行纯 Python 单测。
+    class CallError(RuntimeError):
+        def __init__(self, code, message, details=None):
+            super().__init__(message)
+            self.code = code
+            self.details = details or {}
+
+    def emit_values(_patch):
+        return False
+
 from vendors import VendorBase
 from vendors.deepseek import DeepseekVendor
 from vendors.glm import GLMVendor
 from vendors.opencode_go import OpenCodeGoVendor
+
+PUSH_VALUES = True
 
 # ================= 模块级状态 =================
 _vendors: list[VendorBase] = []
@@ -69,7 +82,7 @@ def _load_user_config():
     return data if isinstance(data, dict) else {}
 
 
-def _load_state():
+def _load_state(vendors=None):
     """从持久化文件恢复各厂商状态。"""
     try:
         with open(_state_path(), "r", encoding="utf-8") as f:
@@ -78,7 +91,7 @@ def _load_state():
         return
     if not isinstance(data, dict):
         return
-    for v in _vendors:
+    for v in (_vendors if vendors is None else vendors):
         if v.id in data:
             v.load_state(data[v.id])
 
@@ -86,8 +99,10 @@ def _load_state():
 def _save_state():
     """将各厂商状态落盘。先写临时文件再 os.replace 原子替换：
     进程在写盘途中被杀不会留下半截 JSON（旧文件保持完整）。"""
+    with _lock:
+        vendors = list(_vendors)
     snap = {}
-    for v in _vendors:
+    for v in vendors:
         state = v.save_state()
         if state:
             snap[v.id] = state
@@ -106,13 +121,13 @@ def _save_state():
 # ================= 缓存构建 =================
 
 
-def _rebuild_cache():
+def _rebuild_cache(vendors=None):
     """根据各厂商当前状态重建 _cache 扁平字典（调用方持 _lock）。"""
     cache: dict = {}
     parts = []
     vendor_ids = []
 
-    for v in _vendors:
+    for v in (_vendors if vendors is None else vendors):
         if not v.enabled:
             continue
 
@@ -178,7 +193,9 @@ def _worker():
     """后台轮询：遍历厂商，独立判断 should_query() 后执行查询。"""
     global _cache
     while not _stop_flag:
-        for v in _vendors:
+        with _lock:
+            vendors = list(_vendors)
+        for v in vendors:
             if _stop_flag:
                 break
             if not v.enabled:
@@ -198,6 +215,8 @@ def _worker():
 
                 with _lock:
                     _cache = _rebuild_cache()
+                    cache_snapshot = dict(_cache)
+                emit_values(cache_snapshot)
                 # stop() 后不再落盘：热重载时旧线程若在 query 中（最长 timeoutSec），
                 # 醒来后写盘会与新线程并发甚至用旧数据覆盖新数据
                 if _stop_flag:
@@ -214,7 +233,9 @@ def _worker():
         # 计算下一个最近的查询时间
         now = time.time()
         delays = []
-        for v in _vendors:
+        with _lock:
+            vendors = list(_vendors)
+        for v in vendors:
             if v.enabled:
                 elapsed = now - v._last_query_ts
                 remaining = max(0, v.interval_sec - elapsed)
@@ -227,23 +248,14 @@ def _worker():
 # ================= 模块级约定 =================
 
 
-def init(config):
-    """注入 config.json 中本子插件的 config 段。
-
-    config 包含：
-      - intervalMs: QTimer 刷新间隔（宿主侧使用，本模块不直接使用）
-      - vendors: 厂商配置数组
-    """
-    global _vendors, _cache
-
+def _build_vendors(config):
+    """从配置构建全新的厂商对象；失败条目只影响自身。"""
     vendors_cfg = config.get("vendors", []) if isinstance(config, dict) else []
-
-    # 如果 config.json 中未配置厂商，尝试从 user_config.json 读取
     if not vendors_cfg:
         uc = _load_user_config()
         vendors_cfg = uc.get("vendors", [])
 
-    _vendors = []
+    vendors = []
     for vc in vendors_cfg:
         if not isinstance(vc, dict):
             continue
@@ -252,44 +264,55 @@ def init(config):
         if cls is None:
             continue
         try:
-            vendor = cls(vc)
+            vendors.append(cls(vc))
         except Exception:
-            # 单条配置非法（如 intervalSec 写成非数字）不能拖垮其余厂商——
-            # 异常穿透 init() 会让整个插件加载失败
             traceback.print_exc()
+    return vendors
+
+
+def _configure(config):
+    """原子替换配置快照，后台线程下一个循环自动使用新厂商列表。"""
+    global _vendors, _cache
+    vendors = _build_vendors(config)
+    _load_state(vendors)
+    for vendor in vendors:
+        if not vendor.enabled or vendor.should_query():
             continue
-        _vendors.append(vendor)
-
-    # 恢复持久化状态
-    _load_state()
-
-    # 恢复可用的旧数据：如果上次查询距今不足 intervalSec，直接复用持久化数据
-    for v in _vendors:
-        if not v.enabled:
-            continue
-        if v.should_query():
-            continue  # 需要重新查询
-
-        # 尝试从持久化状态恢复展示数据
-        if isinstance(v, DeepseekVendor) and v.current_balance is not None:
-            v.data = {
-                "today": "%.2f" % abs(v.today_usage),
-                "balance": "%.2f" % v.current_balance,
+        if isinstance(vendor, DeepseekVendor) and vendor.current_balance is not None:
+            vendor.data = {
+                "today": "%.2f" % abs(vendor.today_usage),
+                "balance": "%.2f" % vendor.current_balance,
             }
-            v.status = "ok"
-        elif v.mode in ("plan", "go") and v.data:
-            # plan/go 模式 data 即展示数据，非空即可恢复显示
-            v.status = "ok"
-
-    # 构建初始缓存
+            vendor.status = "ok"
+        elif vendor.mode in ("plan", "go") and vendor.data:
+            vendor.status = "ok"
     with _lock:
-        _cache = _rebuild_cache()
+        _vendors = vendors
+        _cache = _rebuild_cache(vendors)
+        snapshot = dict(_cache)
+    emit_values(snapshot)
+    _refresh_event.set()
+
+
+def init(config):
+    """注入 config.json 中本子插件的 config 段。
+
+    config 包含：
+      - intervalMs: QTimer 刷新间隔（宿主侧使用，本模块不直接使用）
+      - vendors: 厂商配置数组
+    """
+    _configure(config)
 
     # 启动后台线程
     global _stop_flag, _worker_thread
     _stop_flag = False
     _worker_thread = threading.Thread(target=_worker, daemon=True)
     _worker_thread.start()
+
+
+def set_config(config):
+    """热更新厂商配置，不重启 Worker 进程或后台线程。"""
+    _configure(config)
 
 
 def update():
@@ -309,13 +332,16 @@ def invoke(name, args):
         for v in _vendors:
             v.force_refresh()
         _refresh_event.set()
+        return {"scheduled": len(_vendors)}
     elif name == "refresh_vendor" and args:
         vid = str(args[0])
         for v in _vendors:
             if v.id == vid:
                 v.force_refresh()
                 _refresh_event.set()
-                break
+                return {"scheduled": vid}
+        raise CallError("vendor_not_found", "vendor does not exist", {"vendorId": vid})
+    raise CallError("unsupported_action", "unknown usage hub action", {"name": name})
 
 
 def stop():

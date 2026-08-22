@@ -316,6 +316,54 @@ def stop():
         QVERIFY(viewModel.protocolCapabilities().contains(QStringLiteral("pushValues")));
     }
 
+    void runsBuiltInUsageHubWithPushHotConfigAndCallResults() {
+        const QString python = qEnvironmentVariable("XUANHUB_TEST_PYTHON");
+        const QString worker = qEnvironmentVariable("XUANHUB_TEST_WORKER");
+        const QString plugins = qEnvironmentVariable("XUANHUB_TEST_PYTHON_PLUGINS");
+        QVERIFY2(!python.isEmpty() && !worker.isEmpty() && !plugins.isEmpty(),
+                 "CTest must provide Python worker and built-in plugin paths");
+        const QString pluginDir = QDir(plugins).filePath(QStringLiteral("usage_hub"));
+        QVERIFY(QFileInfo::exists(QDir(pluginDir).filePath(QStringLiteral("main.py"))));
+
+        PyWorkerViewModel viewModel(
+            QStringLiteral("py_usage_hub"), pluginDir,
+            {{QStringLiteral("vendors"), QVariantList{}}}, python, worker, nullptr);
+        QVERIFY(viewModel.start());
+        QTRY_VERIFY_WITH_TIMEOUT(viewModel.running(), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(viewModel.usesPushValues(), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(viewModel.supportsHotConfig(), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(
+            viewModel.values().contains(QStringLiteral("summaryCode")), 5000);
+        QVERIFY(!viewModel.m_updateTimer.isActive());
+
+        const int restartCount = viewModel.health()
+                                     .value(QStringLiteral("restartCount")).toInt();
+        QVERIFY(viewModel.applyConfig({
+            {QStringLiteral("vendors"), QVariantList{}},
+            {QStringLiteral("intervalMs"), 250},
+        }));
+        QTest::qWait(300);
+        QVERIFY(viewModel.running());
+        QCOMPARE(viewModel.health().value(QStringLiteral("restartCount")).toInt(),
+                 restartCount);
+        QVERIFY(!viewModel.m_updateTimer.isActive());
+
+        QSignalSpy finished(&viewModel, &PyWorkerViewModel::callFinished);
+        const QVariantMap refresh = viewModel.call(QStringLiteral("refresh"), {}).toMap();
+        QVERIFY(refresh.value(QStringLiteral("queued")).toBool());
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 5000);
+        QVERIFY(finished.at(0).at(1).toBool());
+        QCOMPARE(finished.at(0).at(2).toMap()
+                     .value(QStringLiteral("scheduled")).toInt(), 0);
+
+        viewModel.call(QStringLiteral("unknown"), {});
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 2, 5000);
+        QVERIFY(!finished.at(1).at(1).toBool());
+        QCOMPARE(finished.at(1).at(3).toMap()
+                     .value(QStringLiteral("code")).toString(),
+                 QStringLiteral("unsupported_action"));
+    }
+
     void routesHostServicesWithBoundPluginIdentity() {
         const QString python = qEnvironmentVariable("XUANHUB_TEST_PYTHON");
         const QString worker = qEnvironmentVariable("XUANHUB_TEST_WORKER");
