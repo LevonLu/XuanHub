@@ -1203,9 +1203,9 @@ Connections {
 
 #### 阶段 D：服务和事件
 
-- [ ] 接入 PF-04 HostServices。
-- [ ] 接入 PF-05 EventBus。
-- [ ] 权限和插件身份由宿主绑定。
+- [x] 接入 PF-04 HostServices。
+- [x] 接入 PF-05 EventBus。
+- [x] 权限和插件身份由宿主绑定。
 
 #### 阶段 E：依赖检查
 
@@ -1238,6 +1238,10 @@ Connections {
   乱序覆盖，插件事件队列固定为 128 并丢弃最新项。声明 `PUSH_VALUES = True` 后宿主只取一次
   初始快照并停止周期轮询。heartrate 的扫描、连接、曲线与心率缓存均迁移到 push；100 个连续
   心率采样合并为 1 帧，真实 heartrate Worker 验证无周期 update 定时器。
+- 2026-08-22：阶段 D 完成。Worker 握手与初始化能力明确协商 `host_services.v1` 和
+  `event_bus.v2`；HostServices 首批日志、通知 RPC 复用 PF-04 的确定错误模型，EventBus 支持
+  publish/subscribe/unsubscribe/request/response。请求不含可覆盖的插件 ID，宿主按子插件实例
+  绑定身份、声明权限与 topic scope。回归覆盖授权通知、权限拒绝及跨运行时事件请求响应。
 
 ### 风险与回滚
 
