@@ -45,6 +45,27 @@ plugins_py/
 
 - 另需保留 `{ "id": "pybridge", ... }` 条目作为总开关；删掉它则所有 Python 子插件都不加载。
 
+### Bridge Protocol V2
+
+内置 worker 连接后首先发送版本化 hello：
+
+```json
+{
+  "type": "hello",
+  "protocol": 2,
+  "pluginId": "py_hello",
+  "capabilities": ["requestResponseV1", "hostServicesV1", "eventBusV2"]
+}
+```
+
+一次性 token 同帧发送但不在文档示例展示。宿主校验 token、协议范围和绑定的插件 ID；缺少
+`protocol/pluginId/capabilities` 的旧 hello 按 V1 兼容。初始化响应里的动态 capabilities 仍用于
+说明当前插件是否实现 `set_config/validate_config`，不要与握手阶段的传输能力混淆。
+
+协议帧为 4 字节大端长度加 UTF-8 JSON 对象。收发两端统一限制单帧 4 MiB、嵌套深度 32，
+不接受非对象顶层消息；整数、浮点和插件返回对象仍按本文 JSON/QML 安全集合转换。第三方插件
+只实现 `main.py` 契约，不自行连接 socket，也不依赖这些内部帧细节。
+
 ### 配置版本与迁移
 
 `plugin.json.configVersion` 是当前目标版本，必须为正整数，缺失视为 1。升级格式时在
