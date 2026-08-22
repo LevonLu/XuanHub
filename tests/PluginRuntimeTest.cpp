@@ -103,6 +103,13 @@ private Q_SLOTS:
         QCOMPARE(plugin.receivedHostServices, context.hostServices);
         QCOMPARE(runtime->applyConfig({}).status,
                  PluginRuntime::ApplyStatus::Applied);
+        QCOMPARE(runtime->validateConfig({}).status,
+                 PluginRuntime::ValidationStatus::Valid);
+        const auto rejectedValidation = runtime->validateConfig(
+            {{QStringLiteral("reject"), true}});
+        QCOMPARE(rejectedValidation.status,
+                 PluginRuntime::ValidationStatus::Rejected);
+        QCOMPARE(rejectedValidation.error, QStringLiteral("rejected"));
         QCOMPARE(runtime->applyConfig({{QStringLiteral("reject"), true}}).status,
                  PluginRuntime::ApplyStatus::Rejected);
         const auto migration = runtime->migrateConfig(

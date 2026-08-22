@@ -19,7 +19,12 @@ struct BarPluginContext;
 class PluginRuntime final {
 public:
     enum class ApplyStatus { Unsupported, Applied, RequiresRestart, Rejected };
+    enum class ValidationStatus { Unsupported, Valid, Rejected };
     enum class MigrationStatus { NotRequired, Unsupported, Migrated, Rejected };
+    struct ValidationResult {
+        ValidationStatus status = ValidationStatus::Unsupported;
+        QString error;
+    };
     struct ApplyResult {
         ApplyStatus status = ApplyStatus::Unsupported;
         QString error;
@@ -42,6 +47,7 @@ public:
     bool initialize(xuanhub::BarPluginContext* context, QString* error = nullptr);
     QObject* viewModel() const;
     QUrl qmlUrl() const;
+    ValidationResult validateConfig(const QVariantMap& config) const;
     ApplyResult applyConfig(const QVariantMap& config);
     MigrationResult migrateConfig(int currentVersion,
                                   const QVariantMap& config) const;

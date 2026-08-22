@@ -130,10 +130,27 @@ QUrl PluginRuntime::qmlUrl() const {
     return m_v2 ? m_v2->qmlUrl() : m_v1->qmlUrl();
 }
 
-PluginRuntime::ApplyResult PluginRuntime::applyConfig(const QVariantMap& config) {
+PluginRuntime::ValidationResult PluginRuntime::validateConfig(
+    const QVariantMap& config) const {
     if (m_v2) {
         const auto validation = m_v2->validateConfig(config);
-        if (!validation.valid) return {ApplyStatus::Rejected, validation.error};
+        return validation.valid
+            ? ValidationResult{ValidationStatus::Valid, {}}
+            : ValidationResult{ValidationStatus::Rejected, validation.error};
+    }
+    auto* configurable = qobject_cast<xuanhub::IBarPluginConfigurable*>(m_instance);
+    if (!configurable) return {};
+    const QString error = configurable->validateConfig(config);
+    return error.isEmpty()
+        ? ValidationResult{ValidationStatus::Valid, {}}
+        : ValidationResult{ValidationStatus::Rejected, error};
+}
+
+PluginRuntime::ApplyResult PluginRuntime::applyConfig(const QVariantMap& config) {
+    const ValidationResult validation = validateConfig(config);
+    if (validation.status == ValidationStatus::Rejected)
+        return {ApplyStatus::Rejected, validation.error};
+    if (m_v2) {
         const auto result = m_v2->applyConfig(config);
         switch (result.disposition) {
         case xuanhub::PluginConfigApplyDisposition::Applied:
@@ -146,9 +163,6 @@ PluginRuntime::ApplyResult PluginRuntime::applyConfig(const QVariantMap& config)
     }
     auto* configurable = qobject_cast<xuanhub::IBarPluginConfigurable*>(m_instance);
     if (!configurable) return {};
-    const QString validationError = configurable->validateConfig(config);
-    if (!validationError.isEmpty())
-        return {ApplyStatus::Rejected, validationError};
     if (!configurable->applyConfig(config))
         return {ApplyStatus::Rejected, QStringLiteral("V1 applyConfig returned false")};
     return {ApplyStatus::Applied, {}};
