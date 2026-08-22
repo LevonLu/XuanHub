@@ -3,5 +3,13 @@
     "name": "System Info",
     "version": "0.2.1",
     "author": "XuanHub",
+    "actions": [
+        {
+            "id": "refresh",
+            "label": "立即刷新",
+            "placements": ["quickMenu", "tray", "pluginMenu"],
+            "icon": "refresh"
+        }
+    ],
     "settingsQml": "SysInfoSettings.qml"
 }

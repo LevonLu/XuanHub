@@ -32,6 +32,7 @@ public:
 public slots:
     void start(int intervalMs = 1000);
     void stop();
+    void refresh();
 
 signals:
     // cpu/mem/gpu 均为 0.0-100.0；<0 表示该项本次未能采集（UI 保留旧值或显示 ---）

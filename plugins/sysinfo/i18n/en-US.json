@@ -4,6 +4,9 @@
     "plugin.sysinfo.metadata": {
       "System Info": "System Info"
     },
+    "plugin.sysinfo.actions": {
+      "立即刷新": "Refresh now"
+    },
     "plugin.sysinfo.settingsPage": {
       "不显示": "Hidden",
       "内存": "Memory",

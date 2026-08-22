@@ -123,6 +123,10 @@ void SysInfoWorker::stop() {
     m_collector.reset();
 }
 
+void SysInfoWorker::refresh() {
+    if (m_collector) tick();
+}
+
 void SysInfoWorker::tick() {
     // ── 内存占用率：GlobalMemoryStatusEx，瞬时值，无需差值 ──
     double memPct = -1.0;

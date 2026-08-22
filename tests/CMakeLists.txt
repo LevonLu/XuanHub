@@ -357,7 +357,7 @@ if(Python_Interpreter_FOUND)
         Qt6::Test
         crypt32
     )
-    add_dependencies(xuanhub_plugin_manager_tests clock xuanhub_menu pybridge)
+    add_dependencies(xuanhub_plugin_manager_tests clock sysinfo xuanhub_menu pybridge)
     add_custom_command(TARGET xuanhub_plugin_manager_tests POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:barplugin>" "$<TARGET_FILE_DIR:xuanhub_plugin_manager_tests>"

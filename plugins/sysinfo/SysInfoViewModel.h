@@ -36,6 +36,7 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     int itemsPerColumn() const { return m_itemsPerColumn; }
+    Q_INVOKABLE QVariant invokeAction(const QString& actionId);
 
     // 由 Plugin::init 调用：layoutData 是 [{metric, prefix, color}, ...]（来自 config 解析）
     // itemsPerColumn 为每列显示项数（决定 Grid 的行数，多余项向右另起一列）。
@@ -44,6 +45,7 @@ public:
 
 signals:
     void itemsPerColumnChanged();
+    void refreshRequested();
 
     // ── 指标值接收（worker 跨线程信号，AutoConnection 排队到 GUI 线程）──
 public slots:

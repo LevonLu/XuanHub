@@ -101,8 +101,9 @@ private Q_SLOTS:
         xuanhub::EventBus bus;
         PluginManager manager(&bus, QDir::tempPath());
         const PluginConfigEntry clock = entry(QStringLiteral("clock"));
+        const PluginConfigEntry sysinfo = entry(QStringLiteral("sysinfo"));
         const PluginConfigEntry menu = entry(QStringLiteral("xuanhub_menu"));
-        manager.loadFrom(pluginsDir, {clock, menu});
+        manager.loadFrom(pluginsDir, {clock, sysinfo, menu});
 
         QVERIFY(manager.loadedPlugin(clock.id));
         QCOMPARE(manager.loadedPlugin(clock.id)->apiVersion, 2);
@@ -120,6 +121,11 @@ private Q_SLOTS:
         QCOMPARE(migration->config.value(QStringLiteral("format")).toString(),
                  QStringLiteral("HH:mm:ss"));
         QCOMPARE(manager.loadedPlugin(menu.id)->apiVersion, 1);
+        QCOMPARE(manager.loadedPlugin(sysinfo.id)->actions.size(), 1);
+        const QVariantMap refreshed = manager.invokeAction(
+            sysinfo.id, QStringLiteral("refresh"));
+        QVERIFY(refreshed.value(QStringLiteral("accepted")).toBool());
+        QVERIFY(!refreshed.value(QStringLiteral("pending")).toBool());
         const QObject* menuViewModel = manager.loadedPlugin(menu.id)->viewModel;
         const QObject* clockViewModel = manager.loadedPlugin(clock.id)->viewModel;
         QVERIFY(menuViewModel);

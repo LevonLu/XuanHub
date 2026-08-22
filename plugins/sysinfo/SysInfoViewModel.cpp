@@ -5,6 +5,14 @@
 
 SysInfoViewModel::SysInfoViewModel(QObject* parent) : QAbstractListModel(parent) {}
 
+QVariant SysInfoViewModel::invokeAction(const QString& actionId) {
+    if (actionId != QStringLiteral("refresh")) {
+        return QVariantMap{{QStringLiteral("accepted"), false}};
+    }
+    emit refreshRequested();
+    return QVariantMap{{QStringLiteral("accepted"), true}};
+}
+
 int SysInfoViewModel::rowCount(const QModelIndex& parent) const {
     return parent.isValid() ? 0 : m_items.size();
 }

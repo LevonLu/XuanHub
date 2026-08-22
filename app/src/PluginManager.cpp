@@ -243,7 +243,7 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                 continue;
             }
 
-            const auto descriptor = runtime->descriptor();
+            auto descriptor = runtime->descriptor();
             if (!runtime->descriptorMatches(manifest.descriptor, &runtimeError)) {
                 qWarning() << "[Plugin] sidecar/runtime descriptor mismatch:" << path
                            << "manifest=" << manifestId << manifest.descriptor.version
@@ -254,6 +254,9 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                 delete loader;
                 continue;
             }
+            // V1 运行时接口没有 actions 字段；声明式动作来自已在发现阶段完成
+            // 信任边界校验的 sidecar。V2 两侧已做逐字段一致性校验，覆盖后值相同。
+            descriptor.actions = manifest.descriptor.actions;
             // 按 id 去重：同名插件（多目录/多 DLL 副本）只加载第一份
             if (m_loadedIds.contains(descriptor.id)) {
                 qWarning() << "[Plugin] duplicate id, skip:" << descriptor.id << "->" << path;

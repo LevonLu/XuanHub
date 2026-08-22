@@ -85,6 +85,9 @@ bool SysInfoPlugin::init(BarPluginContext* ctx) {
     connect(m_worker.data(), &SysInfoWorker::metricsChanged,
             m_vm.data(),     &SysInfoViewModel::onMetricsChanged,
             Qt::AutoConnection);
+    connect(m_vm.data(), &SysInfoViewModel::refreshRequested,
+            m_worker.data(), &SysInfoWorker::refresh,
+            Qt::QueuedConnection);
     connect(m_thread.data(), &QThread::finished,
             m_worker.data(), &QObject::deleteLater);
 

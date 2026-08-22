@@ -4,6 +4,9 @@
     "plugin.sysinfo.metadata": {
       "System Info": "系统信息"
     },
+    "plugin.sysinfo.actions": {
+      "立即刷新": "立即刷新"
+    },
     "plugin.sysinfo.settingsPage": {
       "不显示": "不显示",
       "内存": "内存",
