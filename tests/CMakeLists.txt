@@ -264,6 +264,10 @@ add_executable(xuanhub_plugin_manifest_tests
     PluginManifestTest.cpp
     ${CMAKE_SOURCE_DIR}/app/src/PluginManifest.h
     ${CMAKE_SOURCE_DIR}/app/src/PluginManifest.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/PythonPluginManifest.h
+    ${CMAKE_SOURCE_DIR}/app/src/PythonPluginManifest.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/PluginContractValidator.h
+    ${CMAKE_SOURCE_DIR}/app/src/PluginContractValidator.cpp
     ${CMAKE_SOURCE_DIR}/app/src/SemanticVersion.h
     ${CMAKE_SOURCE_DIR}/app/src/SemanticVersion.cpp
 )
@@ -298,6 +302,10 @@ add_executable(xuanhub_plugin_package_tests
     ${CMAKE_SOURCE_DIR}/app/src/PluginPackageStore.cpp
     ${CMAKE_SOURCE_DIR}/app/src/PluginManifest.h
     ${CMAKE_SOURCE_DIR}/app/src/PluginManifest.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/PythonPluginManifest.h
+    ${CMAKE_SOURCE_DIR}/app/src/PythonPluginManifest.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/PluginContractValidator.h
+    ${CMAKE_SOURCE_DIR}/app/src/PluginContractValidator.cpp
     ${CMAKE_SOURCE_DIR}/app/src/SemanticVersion.h
     ${CMAKE_SOURCE_DIR}/app/src/SemanticVersion.cpp
 )
@@ -360,6 +368,10 @@ add_executable(xuanhub_plugin_update_service_tests
     ${CMAKE_SOURCE_DIR}/app/src/PluginPackageValidator.cpp
     ${CMAKE_SOURCE_DIR}/app/src/PluginManifest.h
     ${CMAKE_SOURCE_DIR}/app/src/PluginManifest.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/PythonPluginManifest.h
+    ${CMAKE_SOURCE_DIR}/app/src/PythonPluginManifest.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/PluginContractValidator.h
+    ${CMAKE_SOURCE_DIR}/app/src/PluginContractValidator.cpp
     ${CMAKE_SOURCE_DIR}/app/src/SemanticVersion.h
     ${CMAKE_SOURCE_DIR}/app/src/SemanticVersion.cpp
 )
@@ -496,7 +508,8 @@ if(Python_Interpreter_FOUND)
         COMMAND "${Python_EXECUTABLE}" -B -m unittest discover
             -s tests -p test_xuanhub_plugin_cli.py -v)
     set_tests_properties(xuanhub_plugin_cli_tests PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        ENVIRONMENT "PYTHONUTF8=1;XUANHUB_PLUGIN_CONTRACT_PROBE=$<TARGET_FILE:xuanhub_plugin_contract_probe>")
 
     # 每个内置插件都通过同一公开 CLI；单独注册测试便于 CI 直接定位到具体插件。
     set(XUANHUB_BUILTIN_PLUGIN_DIRS

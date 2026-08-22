@@ -1,5 +1,6 @@
 // PluginManifestTest.cpp — 插件代码加载前的 Manifest 安全校验回归测试
 #include "PluginManifest.h"
+#include "PluginContractValidator.h"
 
 #include <QDir>
 #include <QFile>
@@ -272,6 +273,56 @@ private Q_SLOTS:
             directory.path(), QStringLiteral("demo.dll"), testEnvironment());
         QVERIFY(!result.ok);
         QVERIFY(result.error.contains(QStringLiteral("JSON")));
+    }
+
+    void validatesPythonSettingsAndI18nWithSharedContract() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        QVERIFY(QDir().mkpath(QDir(directory.path()).filePath(QStringLiteral("i18n"))));
+        const QJsonObject manifest{
+            {QStringLiteral("id"), QStringLiteral("py_contract")},
+            {QStringLiteral("name"), QStringLiteral("Contract")},
+            {QStringLiteral("version"), QStringLiteral("1.0.0")},
+            {QStringLiteral("apiVersion"), 2},
+            {QStringLiteral("qml"), QStringLiteral("Demo.qml")},
+            {QStringLiteral("settings"), QJsonArray{QJsonObject{
+                {QStringLiteral("group"), QStringLiteral("General")},
+                {QStringLiteral("fields"), QJsonArray{QJsonObject{
+                    {QStringLiteral("key"), QStringLiteral("mode")},
+                    {QStringLiteral("type"), QStringLiteral("enum")},
+                    {QStringLiteral("default"), QStringLiteral("daily")},
+                    {QStringLiteral("options"), QJsonArray{QJsonObject{
+                        {QStringLiteral("value"), QStringLiteral("daily")},
+                        {QStringLiteral("label"), QStringLiteral("Daily")}}}}}}}}}}};
+        QVERIFY(writeFile(QDir(directory.path()).filePath(QStringLiteral("plugin.json")),
+                          QJsonDocument(manifest).toJson(QJsonDocument::Compact)));
+        QVERIFY(writeFile(QDir(directory.path()).filePath(QStringLiteral("main.py"))));
+        QVERIFY(writeFile(QDir(directory.path()).filePath(QStringLiteral("Demo.qml"))));
+        for (const QString& locale : {QStringLiteral("zh-CN"), QStringLiteral("en-US")}) {
+            const QJsonObject catalog{
+                {QStringLiteral("locale"), locale},
+                {QStringLiteral("contexts"), QJsonObject{
+                    {QStringLiteral("plugin.py_contract.main"), QJsonObject{
+                        {QStringLiteral("你好"), QStringLiteral("Hello")}}}}}};
+            QVERIFY(writeFile(QDir(directory.path()).filePath(
+                QStringLiteral("i18n/%1.json").arg(locale)),
+                QJsonDocument(catalog).toJson(QJsonDocument::Compact)));
+        }
+        const auto valid = PluginContractValidator::validate(
+            directory.path(), QStringLiteral("python"), {}, testEnvironment());
+        QVERIFY2(valid.ok(), qPrintable(valid.errors.join(QStringLiteral("; "))));
+
+        QJsonObject badCatalog{
+            {QStringLiteral("locale"), QStringLiteral("en-US")},
+            {QStringLiteral("contexts"), QJsonObject{
+                {QStringLiteral("xuanhub.foreign"), QJsonObject{
+                    {QStringLiteral("你好"), QStringLiteral("Hello")}}}}}};
+        QVERIFY(writeFile(QDir(directory.path()).filePath(QStringLiteral("i18n/en-US.json")),
+                          QJsonDocument(badCatalog).toJson(QJsonDocument::Compact)));
+        const auto rejected = PluginContractValidator::validate(
+            directory.path(), QStringLiteral("python"), {}, testEnvironment());
+        QVERIFY(!rejected.ok());
+        QVERIFY(rejected.errors.join(QLatin1Char(' ')).contains(QStringLiteral("escapes")));
     }
 };
 

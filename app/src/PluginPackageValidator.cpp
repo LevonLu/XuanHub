@@ -1,9 +1,9 @@
 // PluginPackageValidator.cpp — 先验证 ZIP 结构、哈希与 Manifest，再展开到临时目录
 #include "PluginPackageValidator.h"
 
+#include "PluginContractValidator.h"
 #include "SemanticVersion.h"
 #include "barplugin/HostServices.h"
-#include "barplugin/PluginPathValidator.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -418,47 +418,6 @@ bool requiredString(const QJsonObject& object, const QString& key,
     return true;
 }
 
-bool optionalString(const QJsonObject& object, const QString& key,
-                    QString* output, QString* error) {
-    const QJsonValue value = object.value(key);
-    if (value.isUndefined()) return true;
-    if (!value.isString()) {
-        *error = QStringLiteral("manifest field '%1' must be a string").arg(key);
-        return false;
-    }
-    *output = value.toString().trimmed();
-    return true;
-}
-
-bool stringArray(const QJsonObject& object, const QString& key,
-                 QStringList* output, QString* error) {
-    const QJsonValue value = object.value(key);
-    if (value.isUndefined()) return true;
-    if (!value.isArray()) {
-        *error = QStringLiteral("manifest field '%1' must be an array").arg(key);
-        return false;
-    }
-    static const QRegularExpression itemPattern(
-        QStringLiteral(R"(^[A-Za-z0-9._:*-]{1,128}$)"));
-    QSet<QString> seen;
-    for (const QJsonValue& item : value.toArray()) {
-        const QString text = item.toString();
-        const bool validWildcard = !text.contains(QLatin1Char('*'))
-            || (key == QLatin1String("permissions")
-                && text.count(QLatin1Char('*')) == 1
-                && text.endsWith(QStringLiteral(".*")));
-        if (!item.isString() || !itemPattern.match(text).hasMatch()
-            || !validWildcard || seen.contains(text)) {
-            *error = QStringLiteral("manifest field '%1' contains an invalid or duplicate value")
-                         .arg(key);
-            return false;
-        }
-        seen.insert(text);
-        output->append(text);
-    }
-    return true;
-}
-
 bool decodeCanonicalBase64(const QJsonObject& object, const QString& key,
                            QByteArray* output, QString* error) {
     const QJsonValue value = object.value(key);
@@ -609,83 +568,6 @@ bool verifyPackageSignature(const QJsonObject& packageObject,
     *algorithm = actualAlgorithm;
     *keyId = actualKeyId;
     return true;
-}
-
-PluginManifestResult loadPythonManifest(
-    const QString& payloadDirectory,
-    const PluginValidationEnvironment& environment) {
-    QFile file(QDir(payloadDirectory).filePath(QStringLiteral("plugin.json")));
-    if (!file.open(QIODevice::ReadOnly)) {
-        return {false, {}, QStringLiteral("cannot open Python plugin manifest")};
-    }
-    QJsonParseError parseError;
-    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
-    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-        return {false, {}, QStringLiteral("invalid Python plugin manifest JSON: %1")
-            .arg(parseError.errorString())};
-    }
-    const QJsonObject object = document.object();
-    xuanhub::PluginDescriptor descriptor;
-    QString error;
-    if (!requiredString(object, QStringLiteral("id"), &descriptor.id, &error)
-        || !requiredString(object, QStringLiteral("name"), &descriptor.displayName, &error)
-        || !requiredString(object, QStringLiteral("version"), &descriptor.version, &error)) {
-        return {false, {}, error};
-    }
-    static const QRegularExpression idPattern(
-        QStringLiteral(R"(^[A-Za-z0-9._-]{1,128}$)"));
-    if (!idPattern.match(descriptor.id).hasMatch())
-        return {false, {}, QStringLiteral("Python plugin id is invalid")};
-    if (!SemanticVersion::parse(descriptor.version, nullptr, &error))
-        return {false, {}, QStringLiteral("Python plugin version is invalid: %1").arg(error)};
-    const QJsonValue apiVersion = object.value(QStringLiteral("apiVersion"));
-    if (!apiVersion.isUndefined()) {
-        if (!apiVersion.isDouble() || apiVersion.toDouble() != apiVersion.toInt()
-            || (apiVersion.toInt() != 1 && apiVersion.toInt() != 2)) {
-            return {false, {}, QStringLiteral("unsupported Python plugin apiVersion")};
-        }
-        descriptor.apiVersion = apiVersion.toInt();
-    }
-    const QJsonValue configVersion = object.value(QStringLiteral("configVersion"));
-    if (!configVersion.isUndefined()) {
-        if (!configVersion.isDouble() || configVersion.toDouble() != configVersion.toInt()
-            || configVersion.toInt() < 1) {
-            return {false, {}, QStringLiteral("Python configVersion must be positive")};
-        }
-        descriptor.configVersion = configVersion.toInt();
-    }
-    if (!optionalString(object, QStringLiteral("author"),
-                        &descriptor.author, &error)
-        || !optionalString(object, QStringLiteral("minHostVersion"),
-                           &descriptor.minHostVersion, &error)
-        || !optionalString(object, QStringLiteral("maxHostVersion"),
-                           &descriptor.maxHostVersion, &error)
-        || !optionalString(object, QStringLiteral("qml"),
-                           &descriptor.entry.qml, &error)
-        || !optionalString(object, QStringLiteral("settingsQml"),
-                           &descriptor.entry.settingsQml, &error)) {
-        return {false, {}, error};
-    }
-    if (!PluginManifest::validateHostCompatibility(
-            descriptor, environment.hostVersion, &error)
-        || !stringArray(object, QStringLiteral("capabilities"),
-                        &descriptor.capabilities, &error)
-        || !stringArray(object, QStringLiteral("permissions"),
-                        &descriptor.permissions, &error)) {
-        return {false, {}, error};
-    }
-    descriptor.entry.backend = QStringLiteral("main.py");
-    if (!xuanhub::validatePluginFilePath(payloadDirectory, QStringLiteral("backend"),
-                                         descriptor.entry.backend, &error)
-        || !xuanhub::validatePluginFilePath(payloadDirectory, QStringLiteral("qml"),
-                                            descriptor.entry.qml, &error)
-        || (!descriptor.entry.settingsQml.isEmpty()
-            && !xuanhub::validatePluginFilePath(
-                payloadDirectory, QStringLiteral("settingsQml"),
-                descriptor.entry.settingsQml, &error))) {
-        return {false, {}, error};
-    }
-    return {true, descriptor, {}};
 }
 
 bool extractEntries(QZipReader* reader, const QVector<ZipEntry>& entries,
@@ -863,7 +745,7 @@ PluginPackageValidationResult PluginPackageValidator::validateAndExtract(
 
     const QString payloadDirectory =
         QDir(temporaryDirectory->path()).filePath(QStringLiteral("payload"));
-    PluginManifestResult runtimeResult;
+    QString discoveredBackend;
     if (runtime == QLatin1String("native")) {
         QFile manifestFile(QDir(payloadDirectory).filePath(QStringLiteral("metadata.json")));
         if (!manifestFile.open(QIODevice::ReadOnly))
@@ -871,18 +753,20 @@ PluginPackageValidationResult PluginPackageValidator::validateAndExtract(
         QJsonParseError runtimeParseError;
         const QJsonDocument runtimeDocument =
             QJsonDocument::fromJson(manifestFile.readAll(), &runtimeParseError);
-        const QString backend = runtimeDocument.isObject()
+        discoveredBackend = runtimeDocument.isObject()
             ? runtimeDocument.object().value(QStringLiteral("entry"))
                   .toObject().value(QStringLiteral("backend")).toString()
             : QString();
-        if (runtimeParseError.error != QJsonParseError::NoError || backend.isEmpty())
+        if (runtimeParseError.error != QJsonParseError::NoError
+            || discoveredBackend.isEmpty())
             return failed(QStringLiteral("native payload manifest has no entry.backend"));
-        runtimeResult = PluginManifest::load(
-            payloadDirectory, QFileInfo(backend).fileName(), environment);
-    } else {
-        runtimeResult = loadPythonManifest(payloadDirectory, environment);
     }
+    const PluginContractValidationResult contract = PluginContractValidator::validate(
+        payloadDirectory, runtime, QFileInfo(discoveredBackend).fileName(), environment);
+    const PluginManifestResult& runtimeResult = contract.manifest;
     if (!runtimeResult.ok) return failed(runtimeResult.error);
+    if (!contract.errors.isEmpty())
+        return failed(contract.errors.join(QStringLiteral("; ")));
     if (runtimeResult.descriptor.id != packageId
         || runtimeResult.descriptor.version != packageVersion) {
         return failed(QStringLiteral("package identity does not match payload manifest"));

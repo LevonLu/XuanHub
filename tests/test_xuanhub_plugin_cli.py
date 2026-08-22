@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -98,6 +99,22 @@ class ValidatorTest(unittest.TestCase):
             codes = {item["code"] for item in result["diagnostics"]}
             self.assertIn("i18n.context_escape", codes)
             self.assertIn("tree.user_absolute_path", codes)
+
+    def test_uses_authoritative_host_probe_when_available(self) -> None:
+        probe_text = os.environ.get("XUANHUB_PLUGIN_CONTRACT_PROBE", "")
+        if not probe_text or not Path(probe_text).is_file():
+            self.skipTest("host contract probe is not built")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_plugin(root)
+            manifest_path = root / "plugin.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["minHostVersion"] = "99.0.0"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            result = CLI.Validator(root, Path(probe_text)).validate()
+            self.assertFalse(result["ok"])
+            self.assertIn("host.contract_rejected",
+                          {item["code"] for item in result["diagnostics"]})
 
 
 class CreateTemplateTest(unittest.TestCase):

@@ -66,8 +66,9 @@ class Diagnostic:
 
 
 class Validator:
-    def __init__(self, plugin_dir: Path) -> None:
+    def __init__(self, plugin_dir: Path, host_probe: Path | None = None) -> None:
         self.plugin_dir = plugin_dir.resolve()
+        self.host_probe = host_probe
         self.diagnostics: list[Diagnostic] = []
         self.manifest: dict[str, Any] = {}
         self.manifest_path: Path | None = None
@@ -110,8 +111,59 @@ class Validator:
             self._validate_settings()
             self._validate_qml()
             self._validate_i18n()
+            self._validate_with_host_probe()
         self._scan_tree()
         return self.result()
+
+    def _find_host_probe(self) -> Path | None:
+        if self.host_probe:
+            return self.host_probe.resolve()
+        configured = os.environ.get("XUANHUB_PLUGIN_CONTRACT_PROBE", "").strip()
+        if configured:
+            return Path(configured).resolve()
+        repository = Path(__file__).resolve().parents[1]
+        executable = "xuanhub_plugin_contract_probe.exe" if os.name == "nt" \
+            else "xuanhub_plugin_contract_probe"
+        for candidate in (
+            repository / "build" / "default" / "dist" / "Release" / executable,
+            repository / "build" / "default" / "dist" / "Debug" / executable,
+        ):
+            if candidate.is_file():
+                return candidate
+        return None
+
+    def _validate_with_host_probe(self) -> None:
+        probe = self._find_host_probe()
+        if probe is None:
+            return
+        if not probe.is_file():
+            self.add("error", "host.probe_missing", "指定的宿主契约探针不存在", probe)
+            return
+        # 原生源码模板尚无 DLL 时只能做无 Qt 静态预检；构建产物会进入权威校验。
+        if self.runtime == "native":
+            entry = self.manifest.get("entry", {})
+            backend = entry.get("backend") if isinstance(entry, dict) else None
+            if not isinstance(backend, str) or not (self.plugin_dir / backend).is_file():
+                return
+        try:
+            completed = subprocess.run(
+                [str(probe), str(self.plugin_dir)], check=False,
+                capture_output=True, text=True, encoding="utf-8", timeout=15,
+            )
+            payload = json.loads(completed.stdout)
+            if not isinstance(payload, dict) or not isinstance(payload.get("errors"), list):
+                raise ValueError("invalid probe output")
+        except (OSError, subprocess.TimeoutExpired, UnicodeError,
+                json.JSONDecodeError, ValueError) as error:
+            self.add("error", "host.probe_failed", f"宿主契约探针执行失败：{error}", probe)
+            return
+        for warning in payload.get("warnings", []):
+            self.add("warning", "host.contract_warning", str(warning), self.manifest_path or "")
+        if payload.get("id") and payload["id"] != self.plugin_id:
+            self.add("error", "host.identity_mismatch", "宿主与 CLI 解析到不同插件 ID",
+                     self.manifest_path or "")
+        for error in payload["errors"]:
+            self.add("error", "host.contract_rejected", str(error), self.manifest_path or "")
 
     def result(self) -> dict[str, Any]:
         errors = sum(item.severity == "error" for item in self.diagnostics)
@@ -847,6 +899,8 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--json", action="store_true", dest="json_output")
     validate = subparsers.add_parser("validate", help="只读校验插件目录")
     validate.add_argument("plugin_dir", type=Path)
+    validate.add_argument("--host-probe", type=Path,
+                          help="显式指定宿主权威契约探针；默认自动发现构建产物")
     validate.add_argument("--json", action="store_true", dest="json_output", help="输出稳定 JSON")
     test = subparsers.add_parser("test", help="通过真实 Protocol V2 Worker 测试 Python 插件")
     test.add_argument("plugin_dir", type=Path)
@@ -918,7 +972,7 @@ def main(argv: list[str] | None = None) -> int:
               if args.json_output else format_text(result))
         return 0 if result["ok"] else 1
     if args.command == "validate":
-        result = Validator(args.plugin_dir).validate()
+        result = Validator(args.plugin_dir, args.host_probe).validate()
         if args.json_output:
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         else:

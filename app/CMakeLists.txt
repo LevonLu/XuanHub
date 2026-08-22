@@ -42,6 +42,10 @@ qt_add_executable(XuanHub WIN32
     src/SemanticVersion.cpp
     src/PluginManifest.h
     src/PluginManifest.cpp
+    src/PythonPluginManifest.h
+    src/PythonPluginManifest.cpp
+    src/PluginContractValidator.h
+    src/PluginContractValidator.cpp
     src/PluginRuntime.h
     src/PluginRuntime.cpp
     src/PluginHostServices.h
@@ -150,6 +154,30 @@ target_link_libraries(XuanHub PRIVATE
     crypt32              # Windows DPAPI（插件 API Key 密钥库）
     bcrypt               # .xuanplugin ECDSA P-256 发布者签名校验
 )
+
+# 开发者 CLI 在 Qt 构建可用时调用这个轻量探针，确保 Manifest、设置 Schema
+# 与 i18n 使用安装/运行链路中的同一份 C++ 校验代码；纯 Python 开发仍可离线预检。
+add_executable(xuanhub_plugin_contract_probe
+    src/PluginContractProbeMain.cpp
+    src/PluginContractValidator.h
+    src/PluginContractValidator.cpp
+    src/PythonPluginManifest.h
+    src/PythonPluginManifest.cpp
+    src/PluginManifest.h
+    src/PluginManifest.cpp
+    src/SemanticVersion.h
+    src/SemanticVersion.cpp
+)
+target_include_directories(xuanhub_plugin_contract_probe PRIVATE src)
+target_link_libraries(xuanhub_plugin_contract_probe PRIVATE Qt6::Core barplugin)
+target_compile_definitions(xuanhub_plugin_contract_probe PRIVATE
+    XUANHUB_VERSION="${PROJECT_VERSION}")
+set_target_properties(xuanhub_plugin_contract_probe PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${XUANHUB_BIN_DIR}")
+add_custom_command(TARGET xuanhub_plugin_contract_probe POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:barplugin>" "$<TARGET_FILE_DIR:xuanhub_plugin_contract_probe>"
+    VERBATIM)
 
 target_compile_definitions(XuanHub PRIVATE
     XUANHUB_VERSION="${PROJECT_VERSION}"
