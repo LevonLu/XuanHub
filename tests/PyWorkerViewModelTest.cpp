@@ -125,6 +125,25 @@ private Q_SLOTS:
                  QStringLiteral("canceled"));
     }
 
+    void boundsQueuedPluginEvents() {
+        PyWorkerViewModel viewModel(QStringLiteral("push_queue"), {}, {}, {}, {}, nullptr);
+        viewModel.m_authenticated = true;
+        viewModel.m_protocolVersion = 2;
+        viewModel.m_protocolCapabilities = {QStringLiteral("pushEvents")};
+        QSignalSpy events(&viewModel, &PyWorkerViewModel::pluginEvent);
+        for (int index = 1; index <= 129; ++index) {
+            viewModel.handlePluginEvent({
+                {QStringLiteral("type"), QStringLiteral("plugin_event")},
+                {QStringLiteral("sequence"), index},
+                {QStringLiteral("event"), QStringLiteral("sample")},
+                {QStringLiteral("data"), QJsonObject{
+                    {QStringLiteral("index"), index}}},
+            });
+        }
+        QCOMPARE(viewModel.m_pluginEventQueue.size(), 128);
+        QTRY_COMPARE_WITH_TIMEOUT(events.size(), 128, 3000);
+    }
+
     void reaperGraceTimerSurvivesEarlyWorkerExit() {
         // 两个 worker 在 750ms 宽限期内先后自行退出，覆盖曾导致热重载闪退的
         // finished/deleteLater 与 grace timer 竞态。旧实现会在这里访问悬空 QProcess。
@@ -156,7 +175,7 @@ private Q_SLOTS:
         QVERIFY(mainFile.open(QIODevice::WriteOnly | QIODevice::Text));
         QVERIFY(mainFile.write(R"PY(
 from pathlib import Path
-from xuanhub_host import report_progress
+from xuanhub_host import emit_event, emit_values, report_progress
 state = {"count": 0, "prefix": "", "stopFile": "", "locale": "unset"}
 def init(config):
     state["prefix"] = config.get("prefix", "")
@@ -175,6 +194,9 @@ def invoke(name, args):
     if name == "fail": raise RuntimeError("boom")
     if name == "progress":
         report_progress(0.4, {"phase": "work"})
+    if name == "push":
+        emit_values({"pushed": 7})
+        emit_event("demo", {"value": 9})
     return state["count"]
 def stop():
     Path(state["stopFile"]).write_text("stopped", encoding="utf-8")
@@ -258,6 +280,14 @@ def stop():
                          .value(QStringLiteral("phase")).toString(),
                      QStringLiteral("work"));
             QTRY_COMPARE_WITH_TIMEOUT(callFinished.size(), 3, 5000);
+            QSignalSpy pluginEvents(&viewModel, &PyWorkerViewModel::pluginEvent);
+            viewModel.call(QStringLiteral("push"), {});
+            QTRY_COMPARE_WITH_TIMEOUT(
+                viewModel.values().value(QStringLiteral("pushed")).toInt(), 7, 5000);
+            QTRY_COMPARE_WITH_TIMEOUT(pluginEvents.size(), 1, 5000);
+            QCOMPARE(pluginEvents.at(0).at(0).toString(), QStringLiteral("demo"));
+            QCOMPARE(pluginEvents.at(0).at(1).toMap()
+                         .value(QStringLiteral("value")).toInt(), 9);
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("count")).toInt(), 3, 5000);
         }
         QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(stopFile), 3000);

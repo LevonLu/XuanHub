@@ -29,6 +29,9 @@ constexpr int kMaxUpdateIntervalMs = 60000;
 constexpr int kCircuitFailureLimit = 5;
 constexpr qint64 kCircuitFailureWindowMs = 10 * 60 * 1000;
 constexpr int kMaxQueuedEvents = 128;
+constexpr int kMaxQueuedPluginEvents = 128;
+constexpr int kValuePatchFrameMs = 16;
+constexpr int kPluginEventBatchSize = 16;
 constexpr int kMaxEventRequestTimeoutMs = 10000;
 
 QString processStatusText(QProcess::ExitStatus status) {
@@ -69,6 +72,8 @@ PyWorkerViewModel::PyWorkerViewModel(QString id, QString dirPath, QVariantMap cf
     m_startTimer.setSingleShot(true);
     m_requestTimer.setSingleShot(true);
     m_updateTimer.setSingleShot(true);
+    m_valuePatchTimer.setSingleShot(true);
+    m_pluginEventTimer.setSingleShot(true);
     connect(&m_startTimer, &QTimer::timeout, this, [this] {
         failWorker(QStringLiteral("worker connection timed out"), true);
     });
@@ -76,6 +81,10 @@ PyWorkerViewModel::PyWorkerViewModel(QString id, QString dirPath, QVariantMap cf
     connect(&m_updateTimer, &QTimer::timeout, this, [this] {
         enqueue({QStringLiteral("update"), {}});
     });
+    connect(&m_valuePatchTimer, &QTimer::timeout,
+            this, &PyWorkerViewModel::flushValuePatch);
+    connect(&m_pluginEventTimer, &QTimer::timeout,
+            this, &PyWorkerViewModel::flushPluginEvents);
 }
 
 void PyWorkerViewModel::onLocaleChanged(QVariantMap payload) {
@@ -137,6 +146,12 @@ bool PyWorkerViewModel::start() {
     m_protocolCapabilities.clear();
     m_queue.clear();
     m_eventQueue.clear();
+    m_pluginEventQueue.clear();
+    m_pendingValuePatch.clear();
+    m_pushedValues.clear();
+    m_valuePatchTimer.stop();
+    m_pluginEventTimer.stop();
+    m_lastPushSequence = 0;
     m_eventRequestIds.clear();
     m_eventDeliveryInFlight.clear();
     m_inFlight = {};
@@ -366,6 +381,8 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
                 QStringLiteral("callResults"),
                 QStringLiteral("callProgress"),
                 QStringLiteral("cancelQueued"),
+                QStringLiteral("pushValues"),
+                QStringLiteral("pushEvents"),
                 QStringLiteral("hostServicesV1"),
                 QStringLiteral("eventBusV2")}}
         }});
@@ -377,6 +394,16 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
     if (message.value(QStringLiteral("type")).toString()
         == QLatin1String("host_service")) {
         handleHostServiceRequest(message);
+        return;
+    }
+    if (message.value(QStringLiteral("type")).toString()
+        == QLatin1String("values_patch")) {
+        handleValuesPatch(message);
+        return;
+    }
+    if (message.value(QStringLiteral("type")).toString()
+        == QLatin1String("plugin_event")) {
+        handlePluginEvent(message);
         return;
     }
     if (message.value(QStringLiteral("type")).toString()
@@ -494,7 +521,12 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
         if (!result.isObject()) {
             qWarning() << "[PyBridge]" << m_id << ": update() must return a dict";
         } else {
-            const QVariantMap next = result.toObject().toVariantMap();
+            QVariantMap next = result.toObject().toVariantMap();
+            // V2 push 是独立覆盖层；兼容周期 pull 不得删掉只由 push 提供的字段。
+            for (auto it = m_pushedValues.constBegin();
+                 it != m_pushedValues.constEnd(); ++it) {
+                next.insert(it.key(), it.value());
+            }
             if (next != m_values) {
                 m_values = next;
                 Q_EMIT valuesChanged();
@@ -514,6 +546,85 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
         scheduleUpdate(0);
     if (op == QLatin1String("update")) scheduleUpdate();
     dispatchNext();
+}
+
+bool PyWorkerViewModel::acceptPushSequence(const QJsonObject& message,
+                                           const QString& capability) {
+    if (m_protocolVersion < 2 || !m_protocolCapabilities.contains(capability)) {
+        failWorker(QStringLiteral("worker used undeclared push capability: %1")
+                       .arg(capability), false);
+        return false;
+    }
+    bool ok = false;
+    const quint64 sequence = message.value(QStringLiteral("sequence"))
+                                 .toVariant().toULongLong(&ok);
+    if (!ok || sequence == 0) {
+        failWorker(QStringLiteral("worker push sequence is invalid"), false);
+        return false;
+    }
+    if (sequence <= m_lastPushSequence) {
+        qWarning() << "[PyBridge]" << m_id << ": ignored stale push sequence"
+                   << sequence << "after" << m_lastPushSequence;
+        return false;
+    }
+    m_lastPushSequence = sequence;
+    return true;
+}
+
+void PyWorkerViewModel::handleValuesPatch(const QJsonObject& message) {
+    if (!message.value(QStringLiteral("patch")).isObject()) {
+        failWorker(QStringLiteral("worker values patch must be an object"), false);
+        return;
+    }
+    if (!acceptPushSequence(message, QStringLiteral("pushValues"))) return;
+    const QVariantMap patch = message.value(QStringLiteral("patch"))
+                                  .toObject().toVariantMap();
+    for (auto it = patch.constBegin(); it != patch.constEnd(); ++it) {
+        m_pendingValuePatch.insert(it.key(), it.value());
+        m_pushedValues.insert(it.key(), it.value());
+    }
+    if (!m_valuePatchTimer.isActive()) m_valuePatchTimer.start(kValuePatchFrameMs);
+}
+
+void PyWorkerViewModel::handlePluginEvent(const QJsonObject& message) {
+    const QString event = message.value(QStringLiteral("event")).toString();
+    if (event.isEmpty() || event.size() > 128
+        || !message.value(QStringLiteral("data")).isObject()) {
+        failWorker(QStringLiteral("worker plugin event is invalid"), false);
+        return;
+    }
+    if (!acceptPushSequence(message, QStringLiteral("pushEvents"))) return;
+    if (m_pluginEventQueue.size() >= kMaxQueuedPluginEvents) {
+        qWarning() << "[PyBridge]" << m_id
+                   << ": plugin event queue full, dropping newest event";
+        return;
+    }
+    m_pluginEventQueue.enqueue({
+        event, message.value(QStringLiteral("data")).toObject().toVariantMap()});
+    if (!m_pluginEventTimer.isActive()) m_pluginEventTimer.start(0);
+}
+
+void PyWorkerViewModel::flushValuePatch() {
+    if (m_pendingValuePatch.isEmpty()) return;
+    QVariantMap next = m_values;
+    for (auto it = m_pendingValuePatch.constBegin();
+         it != m_pendingValuePatch.constEnd(); ++it) {
+        next.insert(it.key(), it.value());
+    }
+    m_pendingValuePatch.clear();
+    if (next == m_values) return;
+    m_values = std::move(next);
+    Q_EMIT valuesChanged();
+}
+
+void PyWorkerViewModel::flushPluginEvents() {
+    int delivered = 0;
+    while (!m_pluginEventQueue.isEmpty() && delivered < kPluginEventBatchSize) {
+        const auto event = m_pluginEventQueue.dequeue();
+        Q_EMIT pluginEvent(event.first, event.second);
+        ++delivered;
+    }
+    if (!m_pluginEventQueue.isEmpty()) m_pluginEventTimer.start(0);
 }
 
 void PyWorkerViewModel::onEventBusEnvelope(QVariantMap envelope) {
@@ -820,6 +931,8 @@ void PyWorkerViewModel::failWorker(const QString& reason, bool retry,
     m_startTimer.stop();
     m_requestTimer.stop();
     m_updateTimer.stop();
+    m_valuePatchTimer.stop();
+    m_pluginEventTimer.stop();
     m_authenticated = false;
     m_supportsHotConfig = false;
     m_supportsConfigValidation = false;
@@ -835,6 +948,9 @@ void PyWorkerViewModel::failWorker(const QString& reason, bool retry,
     }
     m_queue.clear();
     m_eventQueue.clear();
+    m_pluginEventQueue.clear();
+    m_pendingValuePatch.clear();
+    m_pushedValues.clear();
     m_eventRequestIds.clear();
     m_eventDeliveryInFlight.clear();
     m_inFlight = {};
@@ -923,10 +1039,15 @@ void PyWorkerViewModel::stopWorker() {
     m_startTimer.stop();
     m_requestTimer.stop();
     m_updateTimer.stop();
+    m_valuePatchTimer.stop();
+    m_pluginEventTimer.stop();
     m_supportsHotConfig = false;
     m_supportsConfigValidation = false;
     m_queue.clear();
     m_eventQueue.clear();
+    m_pluginEventQueue.clear();
+    m_pendingValuePatch.clear();
+    m_pushedValues.clear();
     m_eventRequestIds.clear();
     m_eventDeliveryInFlight.clear();
     if (m_socket) {

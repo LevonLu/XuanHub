@@ -7,6 +7,7 @@
 #include <QElapsedTimer>
 #include <QJsonObject>
 #include <QHash>
+#include <QPair>
 #include <QPointer>
 #include <QProcess>
 #include <QQueue>
@@ -89,6 +90,7 @@ Q_SIGNALS:
                       const QVariantMap& error);
     void callProgress(const QString& callId, double progress,
                       const QVariantMap& details);
+    void pluginEvent(const QString& event, const QVariantMap& data);
 
 private:
     friend class PyWorkerViewModelTest;
@@ -104,6 +106,11 @@ private:
     void handleMessage(const QJsonObject& message);
     void handleHostServiceRequest(const QJsonObject& message);
     void handleEventBusRequest(const QJsonObject& message);
+    void handleValuesPatch(const QJsonObject& message);
+    void handlePluginEvent(const QJsonObject& message);
+    bool acceptPushSequence(const QJsonObject& message, const QString& capability);
+    void flushValuePatch();
+    void flushPluginEvents();
     void flushEventBusEvents();
     bool sendMessage(const QJsonObject& message);
     void enqueue(Request request, bool front = false);
@@ -138,16 +145,22 @@ private:
     QTimer m_startTimer;
     QTimer m_requestTimer;
     QTimer m_updateTimer;
+    QTimer m_valuePatchTimer;
+    QTimer m_pluginEventTimer;
     QElapsedTimer m_failureClock;
     xuanhub::pybridge::FrameCodec m_frameCodec;
     QQueue<Request> m_queue;
     QQueue<QJsonObject> m_eventQueue;
+    QQueue<QPair<QString, QVariantMap>> m_pluginEventQueue;
+    QVariantMap m_pendingValuePatch;
+    QVariantMap m_pushedValues;
     QHash<QString, QString> m_eventRequestIds; // EventBus request id -> Worker request id
     Request m_inFlight;
     quint64 m_inFlightId = 0;
     quint64 m_nextRequestId = 1;
     quint64 m_nextCallId = 1;
     quint64 m_nextEventDeliveryId = 1;
+    quint64 m_lastPushSequence = 0;
     QString m_eventDeliveryInFlight;
     QString m_token;
     bool m_authenticated = false;
