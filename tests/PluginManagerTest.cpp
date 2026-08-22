@@ -118,11 +118,20 @@ private Q_SLOTS:
         QVERIFY(menuViewModel);
         PluginConfigEntry updatedClock = clock;
         updatedClock.config.insert(QStringLiteral("format"), QStringLiteral("HH:mm"));
+        const auto validConfig = manager.validateConfig(clock.id, updatedClock.config);
+        QVERIFY(validConfig.supported);
+        QVERIFY(validConfig.valid);
+        const auto invalidConfig = manager.validateConfig(
+            clock.id, {{QStringLiteral("format"), QVariantMap{{QStringLiteral("bad"), true}}}});
+        QVERIFY(invalidConfig.supported);
+        QVERIFY(!invalidConfig.valid);
+        QVERIFY(!invalidConfig.error.isEmpty());
         QCOMPARE(manager.applyConfig(updatedClock),
                  PluginManager::ConfigApplyResult::Applied);
         QCOMPARE(manager.loadedPlugin(clock.id)->viewModel, clockViewModel);
         QCOMPARE(manager.applyConfig(menu),
                  PluginManager::ConfigApplyResult::Unsupported);
+        QVERIFY(!manager.validateConfig(menu.id, {}).supported);
         const PluginConfigEntry missing = entry(QStringLiteral("missing_plugin"));
         QVERIFY(!manager.loadOne(pluginsDir, missing));
         QCOMPARE(manager.loadedPlugin(menu.id)->viewModel, menuViewModel);

@@ -242,6 +242,22 @@ bool SettingsViewModel::apply() {
             setErrorMessage(err);
             return false;
         }
+        // Schema 只能描述通用约束；原生插件还可执行自身的业务终校。此入口只调用
+        // validateConfig，不应用配置，保存失败时运行中的插件状态保持不变。
+        if (m_pluginManager) {
+            for (const QJsonValue& value : plugins) {
+                const QJsonObject object = value.toObject();
+                const QString id = object.value(QStringLiteral("id")).toString();
+                const auto validation = m_pluginManager->validateConfig(
+                    id, object.value(QStringLiteral("config")).toObject().toVariantMap());
+                if (validation.supported && !validation.valid) {
+                    setErrorMessage(QCoreApplication::translate(
+                        "xuanhub.settings.errors", "插件 %1 拒绝配置：%2")
+                                        .arg(id, validation.error));
+                    return false;
+                }
+            }
+        }
     } else {
         // 插件页没有实际编辑时保留原始数组。模型加载阶段会为旧中文枚举建立
         // 稳定值草稿，但语言/主题保存不应顺带写回这些迁移并触发插件全量重载。

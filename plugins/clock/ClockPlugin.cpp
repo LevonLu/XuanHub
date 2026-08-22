@@ -40,7 +40,7 @@ PluginInitResult ClockPlugin::initialize(const PluginContext2& context) {
 xuanhub::PluginConfigValidationResult ClockPlugin::validateConfig(
     const QVariantMap& config) const {
     const QVariant value = config.value(QStringLiteral("format"));
-    if (value.isValid() && !value.canConvert<QString>())
+    if (value.isValid() && value.metaType().id() != QMetaType::QString)
         return PluginConfigValidationResult::rejected(
             QStringLiteral("format must be a string"));
     return PluginConfigValidationResult::accepted();

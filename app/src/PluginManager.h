@@ -40,6 +40,11 @@ public:
     };
 
     enum class ConfigApplyResult { Applied, Unsupported, Rejected };
+    struct ConfigValidationResult {
+        bool supported = false;
+        bool valid = true;
+        QString error;
+    };
     struct ConfigMigrationSuggestion {
         int currentVersion = 1;
         int targetVersion = 1;
@@ -73,6 +78,8 @@ public:
     bool stopOne(const QString& id);
     bool restartOne(const QString& pluginsDir, const PluginConfigEntry& entry);
     bool updateLayout(const PluginConfigEntry& entry);
+    ConfigValidationResult validateConfig(const QString& id,
+                                          const QVariantMap& config) const;
     ConfigApplyResult applyConfig(const PluginConfigEntry& entry);
     QStringList dependentPluginIds(const QString& id) const;
     const LoadedPlugin* loadedPlugin(const QString& id) const;

@@ -671,6 +671,25 @@ bool PluginManager::updateLayout(const PluginConfigEntry& entry) {
     return false;
 }
 
+PluginManager::ConfigValidationResult PluginManager::validateConfig(
+    const QString& id, const QVariantMap& config) const {
+    // host 子插件的验证需要一次隔离 Worker 往返，后续由异步桥接补齐；这里不能
+    // 偷用 applySubPluginConfig，否则点击保存前就会修改正在运行的插件状态。
+    if (m_subPluginHostId.contains(id)) return {};
+    auto* runtime = m_runtimeById.value(id);
+    if (!runtime) return {};
+    const PluginRuntime::ValidationResult result = runtime->validateConfig(config);
+    switch (result.status) {
+    case PluginRuntime::ValidationStatus::Unsupported:
+        return {};
+    case PluginRuntime::ValidationStatus::Valid:
+        return {true, true, {}};
+    case PluginRuntime::ValidationStatus::Rejected:
+        return {true, false, result.error};
+    }
+    return {};
+}
+
 PluginManager::ConfigApplyResult PluginManager::applyConfig(
     const PluginConfigEntry& entry) {
     const QString hostId = m_subPluginHostId.value(entry.id);
