@@ -59,7 +59,8 @@ class PluginManagerTest final : public QObject {
 
 private Q_SLOTS:
     void initTestCase() {
-        QCoreApplication::setApplicationVersion(QStringLiteral("0.2.1"));
+        // 测试宿主版本必须跟随根 CMake 唯一版本源，避免发布升级后把内置 V2 插件误判为不兼容。
+        QCoreApplication::setApplicationVersion(QStringLiteral(XUANHUB_VERSION));
     }
 
     void malformedManifestIsRejectedBeforePluginLoad() {
@@ -419,6 +420,7 @@ private Q_SLOTS:
         manager.loadFrom(pluginsDir, {host, child, clock});
 
         QVERIFY2(manager.loadedPlugin(child.id), "py_hello failed to start in test runtime");
+        QVERIFY2(manager.loadedPlugin(clock.id), "clock failed to start in test runtime");
         const QObject* clockViewModel = manager.loadedPlugin(clock.id)->viewModel;
         const QObject* childViewModel = manager.loadedPlugin(child.id)->viewModel;
         PluginConfigEntry updatedChild = child;

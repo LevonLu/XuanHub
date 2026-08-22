@@ -635,6 +635,9 @@ if(Python_Interpreter_FOUND)
         Qt6::Test
         crypt32
     )
+    target_compile_definitions(xuanhub_plugin_manager_tests PRIVATE
+        XUANHUB_VERSION="${PROJECT_VERSION}"
+    )
     add_dependencies(xuanhub_plugin_manager_tests clock sysinfo xuanhub_menu pybridge)
     add_custom_command(TARGET xuanhub_plugin_manager_tests POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
