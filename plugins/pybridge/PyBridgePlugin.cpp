@@ -195,7 +195,7 @@ PythonManifestResult readPluginJson(const QDir& directory) {
         return result;
     }
     const QRegularExpression declarationPattern(
-        QStringLiteral(R"(^[A-Za-z0-9._:-]{1,128}$)"));
+        QStringLiteral(R"(^[A-Za-z0-9._:*-]{1,128}$)"));
     for (const QString& key : {QStringLiteral("capabilities"),
                                QStringLiteral("permissions")}) {
         const QJsonValue declaration = result.object.value(key);
@@ -207,7 +207,12 @@ PythonManifestResult readPluginJson(const QDir& directory) {
         QSet<QString> seen;
         for (const QJsonValue& value : declaration.toArray()) {
             const QString item = value.toString();
+            const bool validWildcard = !item.contains(QLatin1Char('*'))
+                || (key == QLatin1String("permissions")
+                    && item.count(QLatin1Char('*')) == 1
+                    && item.endsWith(QStringLiteral(".*")));
             if (!value.isString() || !declarationPattern.match(item).hasMatch()
+                || !validWildcard
                 || seen.contains(item)) {
                 result.error = QStringLiteral("%1 contains an invalid or duplicate value")
                                    .arg(key);

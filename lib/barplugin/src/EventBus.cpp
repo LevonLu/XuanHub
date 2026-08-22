@@ -272,6 +272,9 @@ void EventBus::deliver(const QString& topic, const QVariantMap& rawPayload,
         }
     }
     const QString source = v2Envelope.value(QStringLiteral("source")).toString();
+    qDebug() << "[EventBus] trace" << topic << "source=" << source
+             << "subscribers=" << subscriberCount
+             << "maxSyncDurationMs=" << maxDurationMs;
     emit traceRecorded(topic, source, subscriberCount, maxDurationMs, 0);
     if (emitLegacySignal) emit dispatched(topic, rawPayload);
 }
