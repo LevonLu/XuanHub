@@ -258,6 +258,7 @@ private Q_SLOTS:
             {QStringLiteral("configVersion"), 2},
             {QStringLiteral("qml"), QStringLiteral("Migration.qml")},
             {QStringLiteral("layout"), QJsonObject{
+                {QStringLiteral("region"), QStringLiteral("center")},
                 {QStringLiteral("minWidth"), 40},
                 {QStringLiteral("preferredWidth"), 120},
                 {QStringLiteral("priority"), 75},
@@ -280,6 +281,7 @@ private Q_SLOTS:
         xuanhub::EventBus bus;
         PluginManager manager(&bus, QDir::tempPath());
         PluginConfigEntry child = entry(pluginId);
+        child.position.clear();
         child.configVersion = 1;
         manager.loadFrom(pluginsDir,
                          {entry(QStringLiteral("pybridge")), child});
@@ -288,6 +290,7 @@ private Q_SLOTS:
         QCOMPARE(manager.loadedPlugin(pluginId)->actions.first().id,
                  QStringLiteral("refresh"));
         QVERIFY(manager.loadedPlugin(pluginId)->layout.declared);
+        QCOMPARE(manager.loadedPlugin(pluginId)->position, QStringLiteral("center"));
         QCOMPARE(manager.loadedPlugin(pluginId)->layout.preferredWidth, 120);
         QCOMPARE(manager.loadedPlugin(pluginId)->layout.priority, 75);
         QCOMPARE(manager.loadedPlugin(pluginId)->layout.overflow,

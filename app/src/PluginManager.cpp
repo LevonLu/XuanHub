@@ -39,6 +39,15 @@ QString sanitizePosition(QString pos, const QString& id) {
     return pos;
 }
 
+QString effectivePosition(QString configured,
+                          const xuanhub::PluginLayoutPreference& preference,
+                          const QString& id) {
+    // Manifest region 只是默认偏好；用户在 config.json 中显式选择的位置始终优先。
+    if (configured.isEmpty() && preference.declared && !preference.region.isEmpty())
+        configured = preference.region;
+    return sanitizePosition(configured, id);
+}
+
 QVariantMap actionResult(bool accepted, bool pending = false,
                          const QString& errorCode = {},
                          const QString& errorMessage = {}) {
@@ -389,7 +398,8 @@ void PluginManager::loadFromImpl(const QString& pluginsDir,
                 continue;
             }
 
-            const QString pos = sanitizePosition(entry->position, descriptor.id);
+            const QString pos = effectivePosition(entry->position, descriptor.layout,
+                                                  descriptor.id);
 
             // qmlUrl：契约是相对 DLL 目录的文件名，拼成绝对 file URL；
             // 绝对 URL 原样采用——旧实现对 file:///C:/... 取 rel.path() 得到带
@@ -487,7 +497,7 @@ bool PluginManager::createHostedPlugin(const QString& hostId,
         SLOT(onHostedMigrationFailed(QString,int,int,QString)));
     LoadedPlugin lp;
     lp.id = entry.id;
-    lp.position = sanitizePosition(entry.position, entry.id);
+    lp.position = effectivePosition(entry.position, sp.layout, entry.id);
     lp.order = entry.order;
     lp.width = entry.width;
     lp.viewModel = sp.viewModel;
@@ -770,7 +780,7 @@ bool PluginManager::restartOne(const QString& pluginsDir,
 bool PluginManager::updateLayout(const PluginConfigEntry& entry) {
     for (auto& plugin : m_loaded) {
         if (plugin.id != entry.id) continue;
-        plugin.position = sanitizePosition(entry.position, entry.id);
+        plugin.position = effectivePosition(entry.position, plugin.layout, entry.id);
         plugin.order = entry.order;
         plugin.width = entry.width;
         return true;
