@@ -4,7 +4,7 @@
     "version": "0.1.0",
     "apiVersion": 2,
     "configVersion": 2,
-    "minHostVersion": "0.2.1",
+    "minHostVersion": "0.4.0",
     "maxHostVersion": "0.x",
     "author": "XuanHub",
     "entry": {

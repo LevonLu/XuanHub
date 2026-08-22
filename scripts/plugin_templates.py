@@ -144,7 +144,7 @@ def _native_files(plugin_id: str, name: str, author: str) -> dict[str, str]:
             "author": author,
             "apiVersion": 2,
             "configVersion": 1,
-            "minHostVersion": "0.2.1",
+            "minHostVersion": "0.4.0",
             "maxHostVersion": "0.x",
             "entry": {"backend": f"{plugin_id}.dll", "qml": qml_name},
             "capabilities": ["barItem"],
@@ -192,7 +192,7 @@ xuanhub::PluginDescriptor @@CLASS@@Plugin::descriptor() const {
     value.version = QStringLiteral("0.1.0");
     value.apiVersion = 2;
     value.configVersion = 1;
-    value.minHostVersion = QStringLiteral("0.2.1");
+    value.minHostVersion = QStringLiteral("0.4.0");
     value.maxHostVersion = QStringLiteral("0.x");
     value.author = QStringLiteral("@@AUTHOR@@");
     value.entry.backend = QStringLiteral("@@PLUGIN_ID@@.dll");

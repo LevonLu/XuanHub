@@ -10,7 +10,7 @@ PluginDescriptor DemoPlugin::descriptor() const {
     value.displayName = QStringLiteral("V2 Demo");
     value.version = QStringLiteral("1.0.0");
     value.apiVersion = 2;
-    value.minHostVersion = QStringLiteral("0.2.1");
+    value.minHostVersion = QStringLiteral("0.4.0");
     value.maxHostVersion = QStringLiteral("0.x");
     value.author = QStringLiteral("Example");
     value.entry.backend = QStringLiteral("v2_demo.dll");

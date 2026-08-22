@@ -11,7 +11,7 @@ PluginDescriptor ClockPlugin::descriptor() const {
     value.version = QStringLiteral("0.1.0");
     value.apiVersion = 2;
     value.configVersion = 2;
-    value.minHostVersion = QStringLiteral("0.2.1");
+    value.minHostVersion = QStringLiteral("0.4.0");
     value.maxHostVersion = QStringLiteral("0.x");
     value.author = QStringLiteral("XuanHub");
     value.entry.backend = QStringLiteral("clock.dll");

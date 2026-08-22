@@ -3,7 +3,7 @@
     "name": "V2 Demo",
     "version": "1.0.0",
     "apiVersion": 2,
-    "minHostVersion": "0.2.1",
+    "minHostVersion": "0.4.0",
     "maxHostVersion": "0.x",
     "author": "Example",
     "entry": {
