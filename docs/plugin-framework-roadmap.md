@@ -896,7 +896,7 @@ C++ V2 提供等价接口。迁移在临时副本执行，全部成功后再原�
 - [x] 支持 object/array、条件显示、条件启用、regex 和 multiline。
 - [x] 枚举继续使用稳定 value 与可翻译 label。
 - [x] 自绘页与通用 schema 共用同一个 ConfigDraftModel。
-- [ ] 加入插件侧最终验证钩子。
+- [x] 加入插件侧最终验证钩子。
 
 #### 阶段 C：通用密钥路径
 
@@ -929,7 +929,10 @@ C++ V2 提供等价接口。迁移在临时副本执行，全部成功后再原�
   建议、失败隔离及版本差异热重载；Python 契约测试 11/11，真实 Worker 集成测试通过。
 - 2026-08-22：阶段 B 的通用表单已支持 object/array JSON 编辑、条件显示/启用、regex 与
   multiline；schema 表单和 settingsQml 均经 SettingsPluginModel/SettingsPluginProxy 访问同一
-  草稿，枚举保持稳定 value 与可翻译 label 分离。插件侧保存前最终验证仍待完成。
+  草稿，枚举保持稳定 value 与可翻译 label 分离。
+- 2026-08-22：阶段 B 完成。已加载的原生 V1/V2 插件和提供 `validate_config()` 的 Python
+  插件均在写文件前执行只读终校；Python 经隔离 IPC 验证并设 5 秒上限，拒绝或超时不会调用
+  `applyConfig/set_config`，也不会修改配置文件。
 
 ### 风险与回滚
 
