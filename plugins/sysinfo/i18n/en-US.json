@@ -7,6 +7,29 @@
     "plugin.sysinfo.actions": {
       "立即刷新": "Refresh now"
     },
+    "plugin.sysinfo.main": {
+      "系统信息": "System information",
+      "最近 60 次采样": "Last 60 samples",
+      "CPU 使用率": "CPU usage",
+      "内存使用率": "Memory usage",
+      "GPU 使用率": "GPU usage",
+      "网络速率": "Network throughput",
+      "利用率": "Utilization",
+      "当前频率": "Current frequency",
+      "最高频率": "Maximum frequency",
+      "逻辑处理器": "Logical processors",
+      "已用内存": "In use",
+      "总内存": "Total memory",
+      "可用内存": "Available",
+      "缓存": "Cached",
+      "已提交 / 限制": "Committed / limit",
+      "显存占用 / 预算": "VRAM used / budget",
+      "图形适配器": "Graphics adapter",
+      "下载 / 上传": "Download / upload",
+      "累计接收": "Total received",
+      "累计发送": "Total sent",
+      "活动接口": "Active interfaces"
+    },
     "plugin.sysinfo.settingsPage": {
       "不显示": "Hidden",
       "内存": "Memory",

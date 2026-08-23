@@ -16,7 +16,7 @@ using namespace xuanhub;
 static const PluginMetadata kMeta = {
     QStringLiteral("sysinfo"),
     QStringLiteral("System Info"),
-    QStringLiteral("0.2.1"),
+    QStringLiteral("0.3.0"),
     QStringLiteral("XuanHub"),
 };
 
@@ -76,6 +76,7 @@ bool SysInfoPlugin::init(BarPluginContext* ctx) {
     // 钳制采样间隔：0 会让 worker 线程每事件循环都 tick（PDH collect + GetIfTable2）
     // 占满一个核并狂发跨线程信号；负值 QTimer 直接不启动。200ms 下限兼顾流畅与开销
     m_intervalMs = qBound(200, cfg.value(QStringLiteral("intervalMs"), 1000).toInt(), 60000);
+    qRegisterMetaType<SysInfoSnapshot>("SysInfoSnapshot");
     m_worker = new SysInfoWorker();
     m_vm = new SysInfoViewModel();
     m_vm->setLayout(parseLayout(cfg), cfg.value(QStringLiteral("itemsPerColumn"), 1).toInt());

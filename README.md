@@ -1,15 +1,15 @@
 # 玄枢 / XuanHub
 
-基于 **Qt6 / QML** 的 Windows 插件化状态栏框架（对标 polybar / waybar / Rainmeter）。当前版本 0.4.0。
+基于 **Qt6 / QML** 的 Windows 插件化状态栏框架。当前版本 0.4.0。
 
-状态栏以无边框、置顶窗口的形式占据主屏顶部或底部边缘（经 Win32 AppBar 向系统申请工作区，其他窗口最大化时不会遮挡它）；栏上的一切内容——时钟、网速、启动器……——都是可插拔的插件。插件有两种形态：
+XuanHub 提供两种工作模式：`appbar` 以无边框、置顶窗口占据主屏顶部或底部边缘，并经 Win32 AppBar 向系统申请工作区；`taskbar` 则嵌入 Windows 原生任务栏左侧，背景透明且不额外占用桌面工作区。栏上的一切内容——时钟、网速、启动器……——都是可插拔的插件。插件有两种形态：
 
 - **C++ 插件**：独立 DLL，性能最好，可直接调用 Win32 API；
 - **Python 子插件**：由内置的 `pybridge` 桥接插件承载，每个插件运行在独立的 `python.exe` worker 中；**写插件不需要 Qt、MSVC 或 C++ 编译环境**。
 
 ## 特性
 
-- 贴边占位：顶部/底部可选，AppBar 工作区保留，退出自动归还
+- 双工作模式：`appbar` 支持顶部/底部贴边并保留工作区，`taskbar` 嵌入原生任务栏并随内容收缩
 - 插件化：DLL 热插拔，增删插件目录 + 重启即可装卸；三栏布局（左 / 中 / 右），顺序可配
 - Python 桥接：每个 `plugins_py/` 子插件运行在独立 Python worker 进程，异常、超时或崩溃不会拖垮宿主；界面仍是 QML，逻辑用 Python 写
 - 主题系统：纯 JSON 主题包 × dark/light 双模式，可多主题包切换，全部插件自动跟随
@@ -21,7 +21,7 @@
 
 - Windows 10 / 11，x64
 - **基础功能零依赖**：宿主与 C++ 插件开箱即用，分发包已附带 MSVC 运行库
-- **Python 子插件需要 CPython 3.12+**。Bundle 便携包已内置运行时；不含 Bundle 的构建会依次从 `PYTHONHOME`、注册表、`py` launcher 和 PATH 定位用户安装的 Python。未找到时仅停用 Python 子插件，宿主与 C++ 插件不受影响
+- **官方 v0.4.0 便携包已内置 CPython 3.13.6 运行时**，Python 子插件开箱即用，无需另装 Python。正式发行仅提供这一种便携包，不区分 Bundle / 非 Bundle 版本
 
 ---
 
@@ -60,7 +60,9 @@
     "monitor": "primary",
     "opacity": 1.0,
     "themeId": "xuanhub-default",
-    "theme": "dark"
+    "theme": "dark",
+    "mode": "appbar",
+    "taskbarOffsetX": 0
   },
   "plugins": [
     { "id": "sysinfo",  "position": "right", "order": 0, "config": { "intervalMs": 1000 } },
@@ -81,6 +83,8 @@
 | `opacity` | 0.0–1.0 | 栏体不透明度，缺省 1.0 |
 | `themeId` | 主题包 id | 对应 `themes/<id>/`，缺省 `xuanhub-default` |
 | `theme` | `dark` / `light` | 明暗模式，缺省 `dark` |
+| `mode` | `appbar` / `taskbar` | 工作模式，缺省 `appbar`；`taskbar` 会嵌入 Windows 原生任务栏 |
+| `taskbarOffsetX` | 整数（像素） | `taskbar` 模式下的水平位置微调，缺省 0 |
 
 `plugins` 数组每项：
 
@@ -469,7 +473,7 @@ python scripts/xuanhub_plugin.py test plugins_py/my_plugin
 只开发 Python 插件时，不需要 clone 后构建整个工程，也不需要安装 Qt、Visual Studio 或 CMake。可直接把官方便携包当作开发宿主：
 
 1. 从 GitHub Releases 下载 Windows x64 便携包，解压到一个可写目录；不要放进需要管理员权限才能修改的目录。
-2. 优先选择标注为 **Bundle** 的包，它已经包含 Python 运行时。若使用非 Bundle 包，安装 CPython 3.12 或更高版本，并确保 `py -3` 或 PATH 能找到它。
+2. 官方便携包已经包含 Python 运行时，无需另行安装 Python。
 3. 复制便携包里的 `plugins_py/hello/` 作为模板，例如改名为 `plugins_py/mytool/`，然后修改其中的 `plugin.json`、`main.py` 和 QML 文件。无需运行任何 CMake 命令。
 4. 确认 `plugin.json.id` 全局唯一并使用 `py_` 前缀，例如 `py_mytool`；`qml` 字段应指向该目录中的主界面文件。
 5. 启动或重启 `XuanHub.exe`，打开“托盘菜单 → 设置...”，在插件列表中启用新插件并选择位置。设置窗口会自动维护 `pybridge` 总开关。
@@ -489,7 +493,7 @@ python scripts/xuanhub_plugin.py test plugins_py/my_plugin
 - 纯 Python 逻辑可以直接用本机 Python 运行单元测试，不依赖 Qt；让 `main.py` 保持只依赖普通 Python 模块，便于脱离宿主测试。
 - 修改便携目录中的 `main.py`、`plugin.json` 或 QML 后，退出并重新启动 XuanHub 验证。配置值可以通过设置窗口或保存 `config.json` 触发热重载；QML 组件存在进程内缓存，改 QML 后必须重启。
 - 便携模式的日志就在 `XuanHub.exe` 同目录的 `xuanhub.log`；Python traceback、worker 启动失败和 QML 加载错误都记录在这里。
-- 标准库可直接使用。第三方纯 Python 包可以随插件目录一起分发；需要原生扩展的依赖必须与便携包的 Python 版本和 x64 架构匹配，可安装到便携包的 `Lib/site-packages/`。若希望直接使用本机 Python 的 `site-packages`，应选择非 Bundle 宿主，因为 Bundle 中 exe 同目录的 Python 具有最高优先级。
+- 标准库可直接使用。第三方纯 Python 包可以随插件目录一起分发；需要原生扩展的依赖必须与便携包内置的 CPython 版本和 x64 架构匹配。依赖应在 `plugin.json` 中声明，具体规则见 [`plugins_py/README.md`](plugins_py/README.md)。
 - 不要把真实 API Key 写进 `plugin.json`、源码或示例配置。敏感设置应通过插件设置 schema 标记为 `secret`，由 XuanHub 使用 Windows DPAPI 保存。
 
 准备分享插件时，只打包自己的 `plugins_py/<name>/` 目录，排除 `__pycache__`、`*.pyc`、日志、测试凭据和本机配置；使用者解压到其 XuanHub 的 `plugins_py/` 后重启即可发现。
@@ -615,13 +619,13 @@ def update():
     return dict(_cache)
 ```
 
-`urllib`（含 HTTPS）开箱即用。非 Bundle 模式使用用户安装的 Python（≥3.12），其标准库、编译扩展和 `site-packages` 对插件可见；Bundle 模式优先使用 exe 同目录的 Python，第三方依赖需放入该运行时的 `Lib/site-packages/` 或随插件目录分发。
+`urllib`（含 HTTPS）开箱即用。官方便携包优先使用 exe 同目录内置的 Python；第三方纯 Python 依赖可随插件目录分发，需要原生扩展的依赖必须匹配内置 Python 的版本与 x64 架构。
 
 ## 调试
 
 - 日志：便携模式为 `<exeDir>/xuanhub.log`，普通模式为 `%APPDATA%/XuanHub/xuanhub.log`（Python traceback 也在其中）；
 - 直接编辑便携包时无需构建，改 `main.py` / `plugin.json` / `*.qml` 后重启宿主；在源码构建树中开发时，重新构建会通过 POST_BUILD 把 `plugins_py/` 同步到运行目录；
-- 已知限制：Python 子插件暂无 EventBus 接入；运行需要 Bundle 中的或用户安装的 CPython ≥3.12，未找到时自动停用并弹出托盘提示。
+- Python 子插件通过 pybridge 使用内置运行时；若运行时文件缺失或损坏，只会停用 Python 子插件并弹出托盘提示，不影响宿主与 C++ 插件。
 
 ---
 
@@ -637,7 +641,7 @@ cmake --build --preset default-debug   # Debug
 
 运行产物统一在 `build/default/dist/<CONFIG>/`（含 `XuanHub.exe`、插件目录、Qt 依赖，链接后自动 windeployqt）。仓库根的 `config/config.json` 是开发示例，需手动拷到该目录才会以便携模式生效。pybridge 始终参与构建，不链接 CPython；运行时找不到 Python ≥3.12 时只停用 Python 子插件。
 
-`pixi run package` / `package-bundle` / `package-bundle-full` 会从构建输出创建全新的 `dist/XuanHub-v<版本>-portable-x64/` staging，再生成 ZIP。打包不会复用运行目录里的配置、日志、锁或 DPAPI 密钥库；成品固定使用内置默认配置，并在压缩前检查敏感文件、密钥形状和本机用户路径。`pixi run package-nozip` 只保留通过同一安全检查的 staging 目录。
+正式发行提供单一的 `XuanHub-v<版本>-portable-x64.zip`，其中包含 Python 运行时，不再区分 Bundle / 非 Bundle 版本。仓库中的 `package-bundle` 等名称只是打包脚本的内部策略入口：它们会从构建输出创建全新的 staging，不复用运行目录里的配置、日志、锁或 DPAPI 密钥库；成品固定使用内置默认配置，并在压缩前检查敏感文件、密钥形状和本机用户路径。`pixi run package-nozip` 只保留通过同一安全检查的 staging 目录。
 
 ## 仓库目录速览
 

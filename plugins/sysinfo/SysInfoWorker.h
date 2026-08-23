@@ -1,5 +1,5 @@
 // SysInfoWorker.h — 系统信息后台采集线程（QThread + moveToThread）
-// 单 Worker 统一采集 5 项指标，各自独立、互不阻塞：
+// 单 Worker 统一采集状态栏指标与详情弹窗数据，各自独立、互不阻塞：
 //   - CPU：PDH（Performance Data Helper）计数器 \Processor(_Total)\% Processor Time，
 //     与任务管理器同源，官方稳定；差值型采集（两次 collect 求增量）。
 //   - 内存：GlobalMemoryStatusEx 的 dwMemoryLoad（直接给 0-100 百分比，瞬时值）。
@@ -15,6 +15,8 @@
 #include <QObject>
 #include <QTimer>
 #include <QElapsedTimer>
+#include <QMetaType>
+#include <QString>
 
 #include <memory>
 #include <vector>
@@ -22,6 +24,36 @@
 
 // Win32 采集类型前向声明（.cpp 内部用，头里只放指针以减编译依赖）
 struct SysInfoCollector;
+
+// 跨线程快照只包含值类型；worker 负责采集，GUI 线程的 ViewModel 负责格式化与历史缓存。
+struct SysInfoSnapshot {
+    double cpuPct = -1.0;
+    double memPct = -1.0;
+    double gpuPct = -1.0;
+    quint64 netDownBps = 0;
+    quint64 netUpBps = 0;
+
+    int cpuCurrentMhz = 0;
+    int cpuMaxMhz = 0;
+    int logicalProcessors = 0;
+
+    quint64 memoryUsedBytes = 0;
+    quint64 memoryTotalBytes = 0;
+    quint64 memoryAvailableBytes = 0;
+    quint64 memoryCachedBytes = 0;
+    quint64 memoryCommitUsedBytes = 0;
+    quint64 memoryCommitLimitBytes = 0;
+
+    QString gpuName;
+    quint64 gpuMemoryUsedBytes = 0;
+    quint64 gpuMemoryBudgetBytes = 0;
+
+    quint64 networkReceivedBytes = 0;
+    quint64 networkSentBytes = 0;
+    int activeNetworkInterfaces = 0;
+};
+
+Q_DECLARE_METATYPE(SysInfoSnapshot)
 
 class SysInfoWorker : public QObject {
     Q_OBJECT
@@ -35,10 +67,7 @@ public slots:
     void refresh();
 
 signals:
-    // cpu/mem/gpu 均为 0.0-100.0；<0 表示该项本次未能采集（UI 保留旧值或显示 ---）
-    // netDownBps/netUpBps 为每秒字节数（quint64，无失败语义，恒 >=0）
-    void metricsChanged(double cpu, double mem, double gpu,
-                        quint64 netDownBps, quint64 netUpBps);
+    void metricsChanged(const SysInfoSnapshot& snapshot);
 
 private:
     void tick();

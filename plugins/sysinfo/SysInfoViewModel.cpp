@@ -63,31 +63,58 @@ void SysInfoViewModel::setLayout(const QVariantList& layoutData, int itemsPerCol
     if (m_itemsPerColumn != oldItemsPerColumn) emit itemsPerColumnChanged();
 }
 
-void SysInfoViewModel::onMetricsChanged(double cpuPct, double memPct, double gpuPct,
-                                        quint64 netDownBps, quint64 netUpBps) {
+void SysInfoViewModel::onMetricsChanged(const SysInfoSnapshot& snapshot) {
     // 仅当本次成功采集（>=0）才更新；失败项保留上次值（不回退 ---）
     // —— GPU 在 PDH 不可用且 DXGI 也失败时会持续 <0，UI 始终显示首次的 "---"
-    if (cpuPct >= 0.0) {
-        const QString t = formatPct(cpuPct);
+    if (snapshot.cpuPct >= 0.0) {
+        const QString t = formatPct(snapshot.cpuPct);
         if (t != m_cpuText) { m_cpuText = t; emitTextChanged(QStringLiteral("cpu")); }
     }
-    if (memPct >= 0.0) {
-        const QString t = formatPct(memPct);
+    if (snapshot.memPct >= 0.0) {
+        const QString t = formatPct(snapshot.memPct);
         if (t != m_memText) { m_memText = t; emitTextChanged(QStringLiteral("mem")); }
     }
-    if (gpuPct >= 0.0) {
-        const QString t = formatPct(gpuPct);
+    if (snapshot.gpuPct >= 0.0) {
+        const QString t = formatPct(snapshot.gpuPct);
         if (t != m_gpuText) { m_gpuText = t; emitTextChanged(QStringLiteral("gpu")); }
     }
     // 网络项无失败语义（恒 >=0），始终更新
     {
-        const QString t = formatRate(netDownBps);
+        const QString t = formatRate(snapshot.netDownBps);
         if (t != m_netDownText) { m_netDownText = t; emitTextChanged(QStringLiteral("netDown")); }
     }
     {
-        const QString t = formatRate(netUpBps);
+        const QString t = formatRate(snapshot.netUpBps);
         if (t != m_netUpText) { m_netUpText = t; emitTextChanged(QStringLiteral("netUp")); }
     }
+
+    m_cpuCurrentFrequencyText = formatFrequency(snapshot.cpuCurrentMhz);
+    m_cpuMaxFrequencyText = formatFrequency(snapshot.cpuMaxMhz);
+    m_logicalProcessorCount = snapshot.logicalProcessors;
+    m_memoryUsedText = formatBytes(snapshot.memoryUsedBytes);
+    m_memoryTotalText = formatBytes(snapshot.memoryTotalBytes);
+    m_memoryAvailableText = formatBytes(snapshot.memoryAvailableBytes);
+    m_memoryCachedText = formatBytes(snapshot.memoryCachedBytes);
+    m_memoryCommitText = snapshot.memoryCommitLimitBytes > 0
+        ? formatBytes(snapshot.memoryCommitUsedBytes) + QStringLiteral(" / ")
+            + formatBytes(snapshot.memoryCommitLimitBytes)
+        : QStringLiteral("---");
+    m_gpuName = snapshot.gpuName.isEmpty() ? QStringLiteral("---") : snapshot.gpuName;
+    m_gpuMemoryText = snapshot.gpuMemoryBudgetBytes > 0
+        ? formatBytes(snapshot.gpuMemoryUsedBytes) + QStringLiteral(" / ")
+            + formatBytes(snapshot.gpuMemoryBudgetBytes)
+        : QStringLiteral("---");
+    m_networkReceivedText = formatBytes(snapshot.networkReceivedBytes);
+    m_networkSentText = formatBytes(snapshot.networkSentBytes);
+    m_activeNetworkInterfaces = snapshot.activeNetworkInterfaces;
+
+    appendHistory(m_cpuHistory, snapshot.cpuPct);
+    appendHistory(m_memoryHistory, snapshot.memPct);
+    appendHistory(m_gpuHistory, snapshot.gpuPct);
+    appendHistory(m_netDownHistory, static_cast<double>(snapshot.netDownBps));
+    appendHistory(m_netUpHistory, static_cast<double>(snapshot.netUpBps));
+    emit detailsChanged();
+    emit historyChanged();
 }
 
 QString SysInfoViewModel::textForMetric(const QString& metric) const {
@@ -124,4 +151,31 @@ QString SysInfoViewModel::formatRate(quint64 bytesPerSec) {
     if (bytesPerSec < 1024ULL * 1024ULL * 1024ULL)
         return QString::number(bytesPerSec / (1024.0 * 1024.0), 'f', 1) + QStringLiteral(" MB/s");
     return QString::number(bytesPerSec / (1024.0 * 1024.0 * 1024.0), 'f', 1) + QStringLiteral(" GB/s");
+}
+
+QString SysInfoViewModel::formatBytes(quint64 bytes) {
+    if (bytes == 0) return QStringLiteral("0 B");
+    if (bytes < 1024ULL)
+        return QString::number(bytes) + QStringLiteral(" B");
+    if (bytes < 1024ULL * 1024ULL)
+        return QString::number(bytes / 1024.0, 'f', 1) + QStringLiteral(" KB");
+    if (bytes < 1024ULL * 1024ULL * 1024ULL)
+        return QString::number(bytes / (1024.0 * 1024.0), 'f', 1) + QStringLiteral(" MB");
+    return QString::number(bytes / (1024.0 * 1024.0 * 1024.0), 'f', 1) + QStringLiteral(" GB");
+}
+
+QString SysInfoViewModel::formatFrequency(int mhz) {
+    if (mhz <= 0) return QStringLiteral("---");
+    if (mhz < 1000) return QString::number(mhz) + QStringLiteral(" MHz");
+    return QString::number(mhz / 1000.0, 'f', 2) + QStringLiteral(" GHz");
+}
+
+void SysInfoViewModel::appendHistory(QVariantList& history, double value) {
+    // 采样失败时延续上一点，避免图线突然掉到零；尚无有效点时从零开始。
+    if (value < 0.0)
+        value = history.isEmpty() ? 0.0 : history.constLast().toDouble();
+    history.append(value);
+    constexpr int kHistoryLimit = 60;
+    while (history.size() > kHistoryLimit)
+        history.removeFirst();
 }

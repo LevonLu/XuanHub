@@ -2,6 +2,7 @@
 #include "SysInfoWorker.h"
 
 #include <QDebug>
+#include <QtGlobal>
 
 // winsock2 必须在 windows.h 之前（否则 win.h 抢先引入 winsock.h 冲突），
 // WIN32_LEAN_AND_MEAN 仅减少 windows.h 的展开量，不改变与 winsock2 的先后依赖。
@@ -15,6 +16,8 @@
 #include <windows.h>
 #include <pdh.h>
 #include <pdhmsg.h>
+#include <powrprof.h>
+#include <psapi.h>
 // DXGI/D3D11 显存查询（GPU 利用率 PDH 取不到时的回落路径）
 #include <d3d11.h>
 #include <dxgi1_4.h>   // IDXGIAdapter3（QueryVideoMemoryInfo 自此引入）
@@ -23,6 +26,8 @@
 #pragma comment(lib, "pdh.lib")
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "PowrProf.lib")
+#pragma comment(lib, "Psapi.lib")
 
 // ── 内部采集器：封装 PDH 查询句柄与 DXGI 适配器 ──────────────────────
 // 单独成结构体便于 RAII（worker 析构时自动释放），且头文件不必暴露 Win32 头
@@ -40,6 +45,7 @@ struct SysInfoCollector {
     // DXGI 显存回落：首适配器的 IDXGIAdapter3（lazy 初始化，采集失败不重试到死）
     IDXGIFactory1* dxgiFactory = nullptr;
     IDXGIAdapter3* dxgiAdapter = nullptr;
+    QString gpuName;
 
     ~SysInfoCollector() {
         if (cpuQuery) PdhCloseQuery(cpuQuery);
@@ -47,6 +53,17 @@ struct SysInfoCollector {
         if (dxgiAdapter) dxgiAdapter->Release();
         if (dxgiFactory) dxgiFactory->Release();
     }
+};
+
+// Windows SDK 公开了 CallNtPowerInformation 与 ProcessorInformation，但部分 SDK 版本
+// 没有附带对应输出结构声明；该六 ULONG 布局是该信息级别的稳定公开契约。
+struct ProcessorPowerInformation {
+    ULONG number;
+    ULONG maxMhz;
+    ULONG currentMhz;
+    ULONG mhzLimit;
+    ULONG maxIdleState;
+    ULONG currentIdleState;
 };
 
 SysInfoWorker::SysInfoWorker(QObject* parent) : QObject(parent) {}
@@ -101,6 +118,7 @@ void SysInfoWorker::start(int intervalMs) {
             if (desc.VendorId != 0x1414 && desc.VendorId != 0 &&
                 desc.DedicatedVideoMemory > 0) {
                 if (SUCCEEDED(a1->QueryInterface(IID_PPV_ARGS(&m_collector->dxgiAdapter)))) {
+                    m_collector->gpuName = QString::fromWCharArray(desc.Description).trimmed();
                     a1->Release();
                     break;
                 }
@@ -128,15 +146,28 @@ void SysInfoWorker::refresh() {
 }
 
 void SysInfoWorker::tick() {
+    SysInfoSnapshot snapshot;
+
     // ── 内存占用率：GlobalMemoryStatusEx，瞬时值，无需差值 ──
-    double memPct = -1.0;
     MEMORYSTATUSEX mem{};
     mem.dwLength = sizeof(mem);
-    if (GlobalMemoryStatusEx(&mem))
-        memPct = static_cast<double>(mem.dwMemoryLoad);   // 已是 0-100
+    if (GlobalMemoryStatusEx(&mem)) {
+        snapshot.memPct = static_cast<double>(mem.dwMemoryLoad);   // 已是 0-100
+        snapshot.memoryTotalBytes = mem.ullTotalPhys;
+        snapshot.memoryAvailableBytes = mem.ullAvailPhys;
+        snapshot.memoryUsedBytes = mem.ullTotalPhys - mem.ullAvailPhys;
+    }
+
+    PERFORMANCE_INFORMATION performance{};
+    performance.cb = sizeof(performance);
+    if (GetPerformanceInfo(&performance, sizeof(performance))) {
+        const quint64 pageSize = static_cast<quint64>(performance.PageSize);
+        snapshot.memoryCachedBytes = static_cast<quint64>(performance.SystemCache) * pageSize;
+        snapshot.memoryCommitUsedBytes = static_cast<quint64>(performance.CommitTotal) * pageSize;
+        snapshot.memoryCommitLimitBytes = static_cast<quint64>(performance.CommitLimit) * pageSize;
+    }
 
     // ── CPU 占用率：PDH 差值型 ──
-    double cpuPct = -1.0;
     if (m_collector && m_collector->cpuQuery && m_collector->cpuCounter) {
         // 每帧都 collect（首帧建立基准，后续帧 collect 后才能 format）
         if (PdhCollectQueryData(m_collector->cpuQuery) == ERROR_SUCCESS) {
@@ -146,15 +177,32 @@ void SysInfoWorker::tick() {
             if (PdhGetFormattedCounterValue(m_collector->cpuCounter,
                                             PDH_FMT_DOUBLE | PDH_FMT_NOCAP100,
                                             nullptr, &fmt) == ERROR_SUCCESS) {
-                cpuPct = fmt.doubleValue;
-                if (cpuPct < 0.0) cpuPct = 0.0;
-                if (cpuPct > 100.0) cpuPct = 100.0;
+                snapshot.cpuPct = qBound(0.0, fmt.doubleValue, 100.0);
             }
         }
     }
 
+    // ProcessorInformation 一次返回所有逻辑处理器的当前/最高频率；取平均当前频率更接近
+    // 任务管理器总览语义，最高频率取各核心最大值。
+    const DWORD logicalCount = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
+    snapshot.logicalProcessors = logicalCount == 0 ? 0 : static_cast<int>(logicalCount);
+    if (logicalCount > 0) {
+        std::vector<ProcessorPowerInformation> power(logicalCount);
+        const ULONG bytes = static_cast<ULONG>(power.size() * sizeof(ProcessorPowerInformation));
+        if (CallNtPowerInformation(ProcessorInformation, nullptr, 0,
+                                   power.data(), bytes) == 0) {
+            quint64 currentTotal = 0;
+            ULONG maxMhz = 0;
+            for (const auto& item : power) {
+                currentTotal += item.currentMhz;
+                maxMhz = qMax(maxMhz, item.maxMhz);
+            }
+            snapshot.cpuCurrentMhz = static_cast<int>(currentTotal / power.size());
+            snapshot.cpuMaxMhz = static_cast<int>(maxMhz);
+        }
+    }
+
     // ── GPU 占用率：优先 PDH 引擎利用率，回落 DXGI 显存 ──
-    double gpuPct = -1.0;
     if (m_collector && m_collector->gpuPdhAvailable) {
         // 与 CPU 共用同一轮 collect 逻辑：gpuQuery 独立 collect
         if (PdhCollectQueryData(m_collector->gpuQuery) == ERROR_SUCCESS) {
@@ -189,27 +237,30 @@ void SysInfoWorker::tick() {
                     if (any) {
                         // 各引擎节点的 utilization 是 0-100（任务管理器语义），
                         // 取所有 3D 引擎之和并钳到 100（多 GPU/多引擎叠加极少超 100，钳制保险）
-                        gpuPct = sum;
-                        if (gpuPct < 0.0) gpuPct = 0.0;
-                        if (gpuPct > 100.0) gpuPct = 100.0;
+                        snapshot.gpuPct = qBound(0.0, sum, 100.0);
                     }
                 }
             }
         }
     }
     // PDH 不可用或本帧失败 → 尝试 DXGI 显存占用（粗略近似 GPU 忙碌度，不精确但聊胜于无）
-    if (gpuPct < 0.0 && m_collector && m_collector->dxgiAdapter) {
+    if (m_collector) snapshot.gpuName = m_collector->gpuName;
+    if (m_collector && m_collector->dxgiAdapter) {
         DXGI_QUERY_VIDEO_MEMORY_INFO info{};
         if (SUCCEEDED(m_collector->dxgiAdapter->QueryVideoMemoryInfo(
                 0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &info)) && info.Budget > 0) {
-            gpuPct = static_cast<double>(info.CurrentUsage) * 100.0
-                     / static_cast<double>(info.Budget);
-            if (gpuPct > 100.0) gpuPct = 100.0;
+            snapshot.gpuMemoryUsedBytes = info.CurrentUsage;
+            snapshot.gpuMemoryBudgetBytes = info.Budget;
+            if (snapshot.gpuPct < 0.0) {
+                snapshot.gpuPct = qBound(0.0,
+                    static_cast<double>(info.CurrentUsage) * 100.0
+                        / static_cast<double>(info.Budget),
+                    100.0);
+            }
         }
     }
 
     // ── 网络上下行速率：GetIfTable2 累计字节差值（迁自 netstat，四要点原样保留）──
-    quint64 netDownBps = 0, netUpBps = 0;
     quint64 in = 0, out = 0;
     {
         PMIB_IF_TABLE2 table = nullptr;
@@ -218,6 +269,7 @@ void SysInfoWorker::tick() {
                 // 跳过回环口与离线口，只统计在线物理/虚拟网卡
                 if (table->Table[i].Type == IF_TYPE_SOFTWARE_LOOPBACK) continue;
                 if (table->Table[i].OperStatus != IfOperStatusUp) continue;
+                ++snapshot.activeNetworkInterfaces;
                 in  += table->Table[i].InOctets;   // 下行（接收）
                 out += table->Table[i].OutOctets;   // 上行（发送）
             }
@@ -241,11 +293,13 @@ void SysInfoWorker::tick() {
     if (in >= m_lastIn && out >= m_lastOut && elapsedMs > 0) {
         const quint64 dIn  = in  - m_lastIn;
         const quint64 dOut = out - m_lastOut;
-        netDownBps = dIn  * 1000ULL / quint64(elapsedMs);
-        netUpBps   = dOut * 1000ULL / quint64(elapsedMs);
+        snapshot.netDownBps = dIn  * 1000ULL / quint64(elapsedMs);
+        snapshot.netUpBps   = dOut * 1000ULL / quint64(elapsedMs);
     }
     m_lastIn  = in;
     m_lastOut = out;
+    snapshot.networkReceivedBytes = in;
+    snapshot.networkSentBytes = out;
 
-    emit metricsChanged(cpuPct, memPct, gpuPct, netDownBps, netUpBps);
+    emit metricsChanged(snapshot);
 }
