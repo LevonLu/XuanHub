@@ -59,4 +59,5 @@ python scripts/xuanhub_plugin.py package <插件目录或运行时目录> --outp
 
 ## 发布记录
 
+- [`v0.4.1`](releases/v0.4.1.md)：主题 Schema v2、玄枢菜单动态操作与插件运行诊断修正。
 - [`v0.4.0`](releases/v0.4.0.md)：插件框架 SDK V2、跨运行时服务、插件生态与开发工具链。

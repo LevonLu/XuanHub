@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(XuanHub
-    VERSION 0.4.0
+    VERSION 0.4.1
     DESCRIPTION "玄枢 / XuanHub — Qt6/QML Windows 插件化状态栏框架"
     LANGUAGES CXX)
 
