@@ -65,6 +65,37 @@ add_custom_command(TARGET xuanhub_locale_tests POST_BUILD
 )
 add_test(NAME xuanhub_locale_tests COMMAND xuanhub_locale_tests)
 
+add_executable(xuanhub_theme_tests
+    ThemeTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/ThemeRegistry.h
+    ${CMAKE_SOURCE_DIR}/app/src/ThemeRegistry.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/ThemeManager.h
+    ${CMAKE_SOURCE_DIR}/app/src/ThemeManager.cpp
+)
+set_target_properties(xuanhub_theme_tests PROPERTIES AUTOMOC ON)
+target_include_directories(xuanhub_theme_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/app/src
+    ${CMAKE_SOURCE_DIR}/lib/barplugin/include
+)
+target_link_libraries(xuanhub_theme_tests PRIVATE
+    barplugin Qt6::Core Qt6::Gui Qt6::Test
+)
+target_compile_definitions(xuanhub_theme_tests PRIVATE
+    XUANHUB_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+add_custom_command(TARGET xuanhub_theme_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:barplugin>" "$<TARGET_FILE_DIR:xuanhub_theme_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Core>" "$<TARGET_FILE_DIR:xuanhub_theme_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Gui>" "$<TARGET_FILE_DIR:xuanhub_theme_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Test>" "$<TARGET_FILE_DIR:xuanhub_theme_tests>"
+    VERBATIM
+)
+add_test(NAME xuanhub_theme_tests COMMAND xuanhub_theme_tests)
+
 add_executable(xuanhub_qml_smoke
     QmlSmokeMain.cpp
 )
@@ -87,6 +118,24 @@ add_test(NAME xuanhub_qml_smoke_hello
         "${CMAKE_SOURCE_DIR}/plugins_py/hello/Hello.qml"
         "${CMAKE_SOURCE_DIR}/app/qml/PluginPopup.qml")
 set_tests_properties(xuanhub_qml_smoke_hello PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORM_PLUGIN_PATH=${XUANHUB_BIN_DIR}/platforms;QT_QPA_FONTDIR=$ENV{WINDIR}/Fonts"
+    TIMEOUT 15)
+
+add_executable(xuanhub_plugin_slot_health_tests
+    PluginSlotHealthTest.cpp
+)
+set_target_properties(xuanhub_plugin_slot_health_tests PROPERTIES AUTOMOC ON)
+set_target_properties(xuanhub_plugin_slot_health_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${XUANHUB_BIN_DIR}")
+target_compile_definitions(xuanhub_plugin_slot_health_tests PRIVATE
+    XUANHUB_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+target_link_libraries(xuanhub_plugin_slot_health_tests PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test
+)
+add_dependencies(xuanhub_plugin_slot_health_tests XuanHub)
+add_test(NAME xuanhub_plugin_slot_health_tests
+    COMMAND xuanhub_plugin_slot_health_tests)
+set_tests_properties(xuanhub_plugin_slot_health_tests PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORM_PLUGIN_PATH=${XUANHUB_BIN_DIR}/platforms;QT_QPA_FONTDIR=$ENV{WINDIR}/Fonts"
     TIMEOUT 15)
 

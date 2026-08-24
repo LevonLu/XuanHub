@@ -6,16 +6,42 @@ import XuanHub
 
 Item {
     id: wrapper
+    required property var model
     property bool overflowHost: false
     property double qmlLoadStartedAt: Date.now()
+    // 加载耗时是一次性指标。Python worker 会频繁发 healthChanged；若每次都用
+    // Date.now() 回算，这里会错误地把插件已运行时长持续累加到“启动耗时”。
+    property int qmlLoadDurationMs: -1
     property int backendLoadDurationMs: 0
+    readonly property var itemStyle: themeManager && themeManager.appearance
+                                     ? (themeManager.appearance.items || ({})) : ({})
+    readonly property bool itemDecorated: itemStyle.decoration !== "none"
+    readonly property real itemPaddingX: Number(itemStyle.paddingX || 0)
+    readonly property real itemPaddingY: Number(itemStyle.paddingY || 0)
+
+    function paletteColor(name, fallback) {
+        if (name === "transparent") return "transparent"
+        if (themeManager && themeManager.colors
+                && themeManager.colors[name] !== undefined)
+            return themeManager.colors[name]
+        return fallback
+    }
+
+    function withOpacity(value, opacity) {
+        const c = value
+        return Qt.rgba(c.r, c.g, c.b,
+                       c.a * Math.max(0, Math.min(1, Number(opacity))))
+    }
 
     function reportHealth() {
         var next = {}
+        var workerLoadDurationMs = 0
         if (model.viewModel && model.viewModel.health !== undefined) {
             var workerHealth = model.viewModel.health
             for (var key in workerHealth)
                 next[key] = workerHealth[key]
+            workerLoadDurationMs = Math.max(
+                0, Number(workerHealth.loadDurationMs || 0))
         } else if (slot.status === Loader.Loading) {
             next.state = "starting"
         } else if (slot.status === Loader.Ready) {
@@ -27,8 +53,13 @@ Item {
                                 .arg(slot.source)
         }
         if (slot.status === Loader.Ready || slot.status === Loader.Error) {
+            if (wrapper.qmlLoadDurationMs < 0) {
+                wrapper.qmlLoadDurationMs = Math.max(
+                    1, Math.round(Date.now() - wrapper.qmlLoadStartedAt))
+            }
             next.loadDurationMs = wrapper.backendLoadDurationMs
-                                  + Math.max(0, Date.now() - wrapper.qmlLoadStartedAt)
+                                  + wrapper.qmlLoadDurationMs
+                                  + workerLoadDurationMs
         }
         pluginModel.reportHealth(model.id, next)
     }
@@ -76,7 +107,7 @@ Item {
     // slot.item.width 用 Math.max(0, ...) 防御：插件忘声明 width 时为 0，
     // 负值会扰乱 ListView contentWidth（零宽不可见的情形由 onLoaded 告警提示）
     readonly property real naturalSlotWidth: model.width > 0 ? model.width
-        : (slot.item ? Math.max(0, slot.item.width)
+        : (slot.item ? Math.max(0, slot.item.width + itemPaddingX * 2)
                      : (slot.status === Loader.Error ? errorBadge.width : 0))
     width: overflowHost ? naturalSlotWidth
                         : (Number(model.effectiveWidth || 0) > 0
@@ -85,22 +116,61 @@ Item {
     // 自然内容宽度上报：设置窗口「手动」宽度的初始值取它。
     // 手动定宽时 slot.item.width 仍是内容自然宽度（Loader 不改 item 宽度），
     // 故上报值不受定宽影响；保持声明式绑定，不做命令式赋值。
-    readonly property int contentWidth: slot.item ? slot.item.width : 0
+    readonly property int contentWidth: slot.item
+                                        ? Math.ceil(slot.item.width + itemPaddingX * 2) : 0
     onContentWidthChanged: pluginModel.reportContentWidth(model.id, contentWidth)
+
+    Rectangle {
+        id: itemSurface
+        anchors.fill: parent
+        visible: wrapper.itemDecorated
+        property color normalColor: wrapper.paletteColor(
+            wrapper.itemStyle.background || "panel", "#313244")
+        property color hoverColor: wrapper.paletteColor(
+            wrapper.itemStyle.hoverBackground || "hover", "#45475a")
+        color: wrapper.withOpacity(slotHover.hovered ? hoverColor : normalColor,
+                                   Number(wrapper.itemStyle.opacity !== undefined
+                                          ? wrapper.itemStyle.opacity : 1))
+        radius: wrapper.itemStyle.decoration === "pill"
+                ? height / 2 : Number(wrapper.itemStyle.radius || 0)
+        border.width: Number(wrapper.itemStyle.borderWidth || 0)
+        border.color: wrapper.paletteColor(
+            wrapper.itemStyle.borderColor || "border", "#45475a")
+
+        Behavior on color {
+            ColorAnimation {
+                duration: Number((themeManager.appearance.motion || {}).duration || 0)
+            }
+        }
+    }
+
+    HoverHandler { id: slotHover }
 
     Loader {
         id: slot
         // 锚定上下边：item 高度被调整为槽高（插件 QML 里写的 height 仅作回退）；
         // 宽度不显式指定，Loader 自动跟随 item 内容宽度
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
+        x: wrapper.itemPaddingX
+        y: wrapper.itemPaddingY
+        height: Math.max(0, parent.height - wrapper.itemPaddingY * 2)
         source: model.qmlUrl
+
+        onSourceChanged: {
+            // 同一槽位切换 QML 源时开始一轮新的加载计时；后续健康更新仍复用完成值。
+            wrapper.qmlLoadStartedAt = Date.now()
+            wrapper.qmlLoadDurationMs = -1
+        }
 
         onLoaded: {
             if (slot.item) {
                 slot.item.plugin = model.viewModel
                 if (slot.item.pluginContext !== undefined)
                     slot.item.pluginContext = model.pluginContext
+                // 可选布局契约：需要按胶囊实际内容区自适应的插件声明
+                // hostContentHeight，框架将 Loader 已扣除内边距后的高度以绑定传入。
+                // 不碰未声明该属性的既有插件，保持旧插件尺寸语义。
+                if (slot.item.hostContentHeight !== undefined)
+                    slot.item.hostContentHeight = Qt.binding(function() { return slot.height })
             }
             // 零宽/负宽告警：插件根 Item 忘声明正 width 时槽位宽 0，加载
             // 成功却完全不可见且无任何日志——此处显式提示（模型里有插件 id）

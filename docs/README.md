@@ -28,7 +28,7 @@
 | [`xuanplugin-format.md`](xuanplugin-format.md) | 离线插件包、哈希、签名和安全边界 |
 | [`xuanplugin-update-index.md`](xuanplugin-update-index.md) | 在线更新索引及发布者身份连续性 |
 | [`native-worker-isolation-evaluation.md`](native-worker-isolation-evaluation.md) | 原生后端隔离原型结论和产品化门槛 |
-| [`themes/README.md`](../themes/README.md) | 主题包格式和色板规则 |
+| [`themes/README.md`](../themes/README.md) | Theme Schema v2、外观令牌和可信 Bar 外壳扩展契约 |
 
 ## 插件开发闭环
 

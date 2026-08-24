@@ -6,9 +6,20 @@ Item {
     id: root
     property var plugin
     property var pluginContext
+    // 由 PluginSlot 传入：已经扣除了胶囊区域和单项上下内边距的实际可用高度。
+    // 未经宿主加载时回退 parent/grid，便于独立预览。
+    property real hostContentHeight: 0
+    readonly property real availableContentHeight: hostContentHeight > 0
+                                                ? hostContentHeight
+                                                : (parent && parent.height > 0
+                                                   ? parent.height : grid.implicitHeight)
+    // 指标内容高于可用空间时等比缩放文字、图标和行间距，保证多行布局完整可见。
+    readonly property real contentScale: grid.implicitHeight > 0
+                                         ? Math.min(1, availableContentHeight / grid.implicitHeight)
+                                         : 1
 
     width: grid.implicitWidth + 16
-    height: grid.implicitHeight + 8
+    height: availableContentHeight
 
     function colors() {
         if (pluginContext && pluginContext.colors) return pluginContext.colors
@@ -33,6 +44,8 @@ Item {
     Grid {
         id: grid
         anchors.centerIn: parent
+        transformOrigin: Item.Center
+        scale: root.contentScale
         rows: plugin ? plugin.itemsPerColumn : 1
         flow: Grid.TopToBottom
         columnSpacing: 10

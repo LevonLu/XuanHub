@@ -1,11 +1,11 @@
-// ThemeRegistry.h — 主题包注册表（M9）
-// 扫描 themes/*/theme.json，解析 + 校验，缓存所有已安装主题包的元数据与双模式色板。
-// 设计取舍：纯 JSON 声明式主题包，零 C++ 代码（不走 QPluginLoader），扫描机制与
-// SettingsPluginModel 的磁盘发现逻辑对齐（只读 json 文件即可枚举）。
+// ThemeRegistry.h — 主题包与 Bar 外壳扩展注册表
+// 扫描 themes/*/theme.json，解析 + 校验，缓存色板、外观令牌与可选的可信 QML 外壳。
+// 普通主题仍是纯 JSON；声明 barChrome 的主题扩展会执行本地 QML，选择该主题即表示信任。
 // 兜底：内置硬编码默认主题（themes/xuanhub-default 丢失时也保证可用）。
 #pragma once
 #include <QObject>
 #include <QString>
+#include <QUrl>
 #include <QVariantMap>
 #include <QVector>
 
@@ -19,6 +19,11 @@ public:
         QString author;
         QVariantMap dark;    // 深色模式色板（字段集见 kColorFields）
         QVariantMap light;   // 浅色模式色板
+        QVariantMap appearance;       // 两种模式共用的 Theme Schema v2 外观令牌
+        QVariantMap darkAppearance;   // 深色模式覆盖
+        QVariantMap lightAppearance;  // 浅色模式覆盖
+        QUrl chromeUrl;                // 可选的可信 Bar 外壳 QML
+        QStringList chromeModes;       // appbar/taskbar；空表示两者都支持
     };
 
     explicit ThemeRegistry(QObject* parent = nullptr);

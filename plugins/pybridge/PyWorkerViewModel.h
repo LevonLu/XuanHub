@@ -149,6 +149,8 @@ private:
     QTimer m_valuePatchTimer;
     QTimer m_pluginEventTimer;
     QElapsedTimer m_failureClock;
+    // 从拉起 python.exe 到首次成功 update()；完成后失效，避免运行期更新继续累加。
+    QElapsedTimer m_startupClock;
     xuanhub::pybridge::FrameCodec m_frameCodec;
     QQueue<Request> m_queue;
     QQueue<QJsonObject> m_eventQueue;

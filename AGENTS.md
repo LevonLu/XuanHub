@@ -38,6 +38,8 @@ cmake --build --preset default-debug   # Debug
 
 常用命令封装为 pixi 任务（见 `pixi.toml`）：`pixi run build`、`build-debug`、`run`、`run-settings`、`package` / `package-bundle` / `package-nozip`、`setup-config`、`deploy`、`log`、`clean`。
 
+**代理执行约定**：配置和编译优先使用 `pixi run build` / `pixi run build-debug`，不要直接调用宿主环境里的 CMake、MSBuild 或自行拼接 Visual Studio 环境。pixi 是本仓库的统一构建入口，可避免 PATH、工具版本和开发机环境差异；只有排查 pixi 任务本身或执行其未覆盖的精确诊断目标时，才直接调用底层工具，并在结果中说明原因。
+
 - 运行时输出统一在 **`build/default/dist/<CONFIG>/`**：`XuanHub.exe`、`barplugin.dll`、`plugins/<id>/<id>.dll + <Id>.qml + metadata.json`（根目录由顶层 `XUANHUB_BIN_DIR` 定义）。pybridge 额外同步 `plugins_py/` 整树（含 `bridge_worker.py`），不再产出或加载 `pybackend.dll`。
 - **注意**：根 `config/config.json` 是开发示例，CMake 不自动拷贝，需手动复制到 dist（或 `pixi run setup-config`）；没有时退用 `%APPDATA%/XuanHub/config.json`（首运行从 qrc 播种）。
 - 运行：直接执行 `build/default/dist/Release/XuanHub.exe`。普通模式的日志写 `%APPDATA%/XuanHub/xuanhub.log`、单实例锁写 `%TEMP%/XuanHub.lock`；exe 同目录存在 `portable` 标记时，配置、密钥库、日志和锁均改放 exe 同目录。日志每次启动 Truncate，同时输出到 `OutputDebugString`。
@@ -136,10 +138,11 @@ sidecar 与运行时 Descriptor 必须一致；V1 继续兼容，但新插件契
 V2 的命名空间、异步投递、保留状态、请求响应、权限和背压规则以
 `docs/plugin-sdk-v2.md` 的“EventBus V2”为准；不要从上述 V1 topic 示例推导新协议。
 
-### 主题系统（多主题包 × 双模式）
+### 主题系统（多主题包 × 双模式 × 可选外壳扩展）
 
-- 主题包是纯 JSON 目录 `<exeDir>/themes/<id>/theme.json`，`ThemeRegistry` 启动扫描 + 校验（`bg/fg/accent` 必填，其余 fallback）。契约见 `themes/README.md`。
-- QML 统一 `themeManager.colors.<field>` 取色，不本地维护色板。配置双字段：`bar.themeId`（缺省 `xuanhub-default`）+ `bar.theme`（dark/light，缺省 dark）。
+- 主题包目录为 `<exeDir>/themes/<id>/`。`theme.json` 的 `dark/light` 继续提供色板，Theme Schema v2 的 `appearance/darkAppearance/lightAppearance` 提供经过 allowlist、类型检查和数值钳制的圆角、间距、区域与插件槽装饰令牌；契约见 `themes/README.md`。
+- 复杂主题可在 `extension` 声明 `barChrome` API 1 QML 入口。路径必须是主题目录内真实存在的相对 `.qml` 文件，最终规范路径不得越界；该入口是会执行代码的可信扩展，选择主题即表示信任。`Bar.qml` 只负责加载与契约注入，缺字段或 Loader.Error 时必须回退 `StandardBarChrome.qml`，不得让 bar 空白。
+- QML 统一以 `themeManager.colors.<field>` 取色、`themeManager.appearance.<group>.<field>` 取外观令牌，不本地维护色板。配置双字段：`bar.themeId`（缺省 `xuanhub-default`）+ `bar.theme`（dark/light，缺省 dark）。
 - 托盘 "切换深色/浅色" 仅切模式（不写回文件，热重载时回滚）；主题包切换走设置窗口。热重载时重扫 `themes/` 再 `applyTheme`。`themes/` 全丢时有硬编码默认主题兜底。
 
 ### 配置（`config.json`）

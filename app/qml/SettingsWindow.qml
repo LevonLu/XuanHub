@@ -1037,6 +1037,20 @@ Pane {
                                         }
                                     }
                                 }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: {
+                                        const ids = settingsVM.themePackIds
+                                        const flags = settingsVM.themePackExtensionFlags
+                                        const index = ids.indexOf(settingsVM.themeId)
+                                        return index >= 0 && index < flags.length && flags[index]
+                                    }
+                                    text: root.trText("此主题包含可执行的 Bar 外壳扩展，请仅使用可信来源")
+                                    color: root.c.warning
+                                    font.pixelSize: UiMetrics.fontTiny
+                                    wrapMode: Text.WordWrap
+                                }
                             }
 
                             UiCard {

@@ -545,6 +545,15 @@ void SettingsViewModel::setAutoStart(bool v) {
     emit autoStartChanged();
 }
 
+QVariantList SettingsViewModel::themePackExtensionFlags() const {
+    QVariantList flags;
+    if (!m_registry) return flags;
+    flags.reserve(m_registry->packs().size());
+    for (const auto& pack : m_registry->packs())
+        flags.append(!pack.chromeUrl.isEmpty());
+    return flags;
+}
+
 void SettingsViewModel::setLanguage(const QString& v) {
     const QString normalized = LocaleManager::normalizeRequested(v);
     if (m_language == normalized) return;

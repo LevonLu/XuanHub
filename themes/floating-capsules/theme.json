@@ -1,0 +1,68 @@
+{
+  "id": "floating-capsules",
+  "name": "Floating Capsules",
+  "version": "0.1.1",
+  "author": "XuanHub",
+  "dark": {
+    "bg": "#151B2B",
+    "panel": "#222C3E",
+    "fg": "#EDF2FF",
+    "muted": "#A6B3CC",
+    "accent": "#8FAAFF",
+    "danger": "#FF91A8",
+    "success": "#72D5A3",
+    "warning": "#F2C66D",
+    "hover": "#32415A",
+    "border": "#475772",
+    "onAccent": "#17243A"
+  },
+  "light": {
+    "bg": "#F4F7FC",
+    "panel": "#FFFFFF",
+    "fg": "#1F2A3D",
+    "muted": "#66748D",
+    "accent": "#526FDD",
+    "danger": "#C94762",
+    "success": "#2F8B62",
+    "warning": "#A86F16",
+    "hover": "#E7EEFB",
+    "border": "#CAD5E5",
+    "onAccent": "#ffffff"
+  },
+  "appearance": {
+    "window": {
+      "outerPaddingX": 12,
+      "outerPaddingY": 5
+    },
+    "bar": {
+      "background": "transparent",
+      "opacity": 0,
+      "radius": 0,
+      "borderWidth": 0
+    },
+    "regions": {
+      "decoration": "pill",
+      "background": "panel",
+      "opacity": 1,
+      "radius": 14,
+      "borderWidth": 1,
+      "borderColor": "border",
+      "paddingX": 5,
+      "paddingY": 3,
+      "spacing": 8
+    },
+    "items": {
+      "decoration": "none",
+      "paddingX": 5,
+      "paddingY": 2,
+      "spacing": 3
+    },
+    "typography": {
+      "fontSize": 12,
+      "fontWeight": 500
+    },
+    "motion": {
+      "duration": 120
+    }
+  }
+}

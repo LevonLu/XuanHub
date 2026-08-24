@@ -7,7 +7,7 @@ PluginContextObject::PluginContextObject(PluginHostServices* services,
                                          QObject* localeNotifier,
                                          QObject* themeNotifier,
                                          QObject* parent)
-    : QObject(parent), m_services(services) {
+    : QObject(parent), m_services(services), m_themeNotifier(themeNotifier) {
     if (localeNotifier)
         connect(localeNotifier, SIGNAL(localeChanged()), this, SIGNAL(localeChanged()));
     if (themeNotifier)
@@ -46,6 +46,11 @@ QString PluginContextObject::activeLocale() const {
 
 QVariantMap PluginContextObject::colors() const {
     return m_services ? m_services->currentPalette() : QVariantMap{};
+}
+
+QVariantMap PluginContextObject::appearance() const {
+    return m_themeNotifier
+        ? m_themeNotifier->property("appearance").toMap() : QVariantMap{};
 }
 
 void PluginContextObject::setScreenGeometry(const QVariantMap& geometry) {

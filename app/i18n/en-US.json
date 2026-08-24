@@ -19,6 +19,7 @@
       "主题": "Theme",
       "选择主题包和明暗模式；保存后立即热重载": "Choose a theme pack and color mode; changes reload immediately after saving",
       "主题包": "Theme pack",
+      "此主题包含可执行的 Bar 外壳扩展，请仅使用可信来源": "This theme contains executable Bar chrome. Only use extensions from sources you trust.",
       "决定色板与整体视觉风格": "Controls the palette and overall visual style",
       "模式": "Mode",
       "浅色和深色模式均可跟随主题包": "Light and dark modes both use the selected theme pack",

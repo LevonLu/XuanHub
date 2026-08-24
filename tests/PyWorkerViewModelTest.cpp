@@ -501,6 +501,12 @@ def update():
         QVERIFY(viewModel.start());
         QTRY_COMPARE_WITH_TIMEOUT(
             viewModel.values().value(QStringLiteral("published")).toBool(), true, 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(
+            viewModel.health().value(QStringLiteral("loadDurationMs")).toLongLong() > 0,
+            5000);
+        const qint64 startupDuration = viewModel.health()
+                                           .value(QStringLiteral("loadDurationMs"))
+                                           .toLongLong();
 
         xuanhub::PluginEventScope peerScope(&bus, QStringLiteral("peer"));
         QVERIFY(peerScope.publish(QStringLiteral("plugin.peer.message"),
@@ -512,6 +518,8 @@ def update():
                      .value(QStringLiteral("queued")).toBool(), true);
         QTRY_COMPARE_WITH_TIMEOUT(
             viewModel.values().value(QStringLiteral("answer")).toInt(), 42, 5000);
+        QCOMPARE(viewModel.health().value(QStringLiteral("loadDurationMs")).toLongLong(),
+                 startupDuration);
     }
 
     void respectsConfiguredUpdateInterval() {

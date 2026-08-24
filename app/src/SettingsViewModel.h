@@ -33,6 +33,8 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(QString themeId READ themeId WRITE setThemeId NOTIFY themeIdChanged)
     Q_PROPERTY(QStringList themePackNames READ themePackNames NOTIFY themePacksReloaded)
     Q_PROPERTY(QStringList themePackIds READ themePackIds NOTIFY themePacksReloaded)
+    Q_PROPERTY(QVariantList themePackExtensionFlags READ themePackExtensionFlags
+               NOTIFY themePacksReloaded)
     Q_PROPERTY(bool autoStart READ autoStart WRITE setAutoStart NOTIFY autoStartChanged)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     Q_PROPERTY(QAbstractItemModel* pluginModel READ pluginModel CONSTANT)
@@ -63,6 +65,7 @@ public:
     QString themeId() const { return m_themeId; }      // 主题包 id
     QStringList themePackNames() const;                // 已安装主题包显示名（下拉用）
     QStringList themePackIds() const;                  // 与 names 同序的 id（保存映射用）
+    QVariantList themePackExtensionFlags() const;      // 与 names 同序，提示可信 QML 扩展
     bool autoStart() const { return m_autoStart; }
     QString language() const { return m_language; }
     QAbstractItemModel* pluginModel() const;   // 实现在 .cpp（头里模型是不完整类型）

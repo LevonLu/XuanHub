@@ -19,6 +19,7 @@ class PluginContextObject final : public QObject {
     Q_PROPERTY(QStringList capabilities READ capabilities CONSTANT)
     Q_PROPERTY(QString activeLocale READ activeLocale NOTIFY localeChanged)
     Q_PROPERTY(QVariantMap colors READ colors NOTIFY themeChanged)
+    Q_PROPERTY(QVariantMap appearance READ appearance NOTIFY themeChanged)
     Q_PROPERTY(QVariantMap screenGeometry READ screenGeometry WRITE setScreenGeometry
                NOTIFY screenGeometryChanged)
     Q_PROPERTY(QString barEdge READ barEdge WRITE setBarEdge NOTIFY barEdgeChanged)
@@ -35,6 +36,7 @@ public:
     QStringList capabilities() const;
     QString activeLocale() const;
     QVariantMap colors() const;
+    QVariantMap appearance() const;
     QVariantMap screenGeometry() const { return m_screenGeometry; }
     QString barEdge() const { return m_barEdge; }
 
@@ -69,6 +71,7 @@ private:
     static QVariantMap resultMap(const xuanhub::HostServiceResult& result);
 
     PluginHostServices* m_services = nullptr;
+    QObject* m_themeNotifier = nullptr;
     QVariantMap m_screenGeometry;
     QString m_barEdge = QStringLiteral("top");
 };

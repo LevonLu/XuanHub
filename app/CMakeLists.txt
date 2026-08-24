@@ -120,6 +120,7 @@ qt_add_qml_module(XuanHub
     QML_FILES
         qml/main.qml
         qml/Bar.qml
+        qml/StandardBarChrome.qml
         qml/PluginSlot.qml
         qml/PluginPopup.qml
         qml/SettingsWindow.qml

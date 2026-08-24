@@ -165,7 +165,8 @@ API；隔离 Python 插件的 HostServices 请求会强制检查实际授予权�
 密钥库、Cookie、完整用户路径或凭据明文。
 
 插件 bar QML 根对象除 `property var plugin` 外应声明 `property var pluginContext`。
-它提供 `pluginId/apiVersion/trustLevel/declaredPermissions/grantedPermissions`、主题色、语言、
+它提供 `pluginId/apiVersion/trustLevel/declaredPermissions/grantedPermissions`、主题色、
+Theme Schema v2 的 `appearance`、语言、
 屏幕与 bar 边缘，以及 `log/notify/readText/writeText/openSettings/openUrl` 等受控调用。
 旧的 `themeManager/barWindow/barScreenGeometry/i18n` 全局仍保留一个兼容周期，新插件不要依赖。
 

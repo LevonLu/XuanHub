@@ -166,6 +166,8 @@ bool PyWorkerViewModel::start() {
         return false;
     }
     m_health.startedAt = QDateTime::currentDateTimeUtc();
+    m_health.loadDurationMs = 0;
+    m_startupClock.start();
     setHealthState(xuanhub::PluginState::Starting);
     m_server = server;
     m_token = nextToken();
@@ -1039,6 +1041,12 @@ bool PyWorkerViewModel::recordWorkerFailure(qint64 elapsedMs) {
 }
 
 void PyWorkerViewModel::markWorkerHealthy() {
+    if (m_startupClock.isValid()) {
+        // Python 插件真正可用的边界是 import/init 后首次 update() 成功，而不是
+        // 代理对象创建完成。只在这里采样一次，后续周期更新保持同一个启动耗时。
+        m_health.loadDurationMs = qMax<qint64>(1, m_startupClock.elapsed());
+        m_startupClock.invalidate();
+    }
     m_restartAttempt = 0;
     if (!m_failureTimesMs.isEmpty()) {
         m_failureTimesMs.clear();
@@ -1069,6 +1077,7 @@ void PyWorkerViewModel::scheduleRestart() {
 void PyWorkerViewModel::stopWorker() {
     if (m_stopping) return;
     m_stopping = true;
+    m_startupClock.invalidate();
     m_startTimer.stop();
     m_requestTimer.stop();
     m_updateTimer.stop();

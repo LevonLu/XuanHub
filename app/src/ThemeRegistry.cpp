@@ -4,10 +4,14 @@
 #include <QColor>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSet>
 #include <QDebug>
+
+#include <tuple>
 
 namespace {
 // 色板 schema 字段超集（11 个语义色）。bg/fg/accent 必填，其余可缺失走 fallback。
@@ -21,6 +25,236 @@ const QStringList kColorFields = {
 const QStringList kRequiredFields = {
     QStringLiteral("bg"), QStringLiteral("fg"), QStringLiteral("accent")
 };
+
+QVariantMap builtinAppearance() {
+    return {
+        {QStringLiteral("window"), QVariantMap{
+            {QStringLiteral("outerPaddingX"), 0.0},
+            {QStringLiteral("outerPaddingY"), 0.0},
+        }},
+        {QStringLiteral("bar"), QVariantMap{
+            {QStringLiteral("background"), QStringLiteral("bg")},
+            {QStringLiteral("opacity"), 1.0},
+            {QStringLiteral("radius"), 0.0},
+            {QStringLiteral("borderWidth"), 0.0},
+            {QStringLiteral("borderColor"), QStringLiteral("border")},
+        }},
+        {QStringLiteral("regions"), QVariantMap{
+            {QStringLiteral("decoration"), QStringLiteral("none")},
+            {QStringLiteral("background"), QStringLiteral("panel")},
+            {QStringLiteral("opacity"), 1.0},
+            {QStringLiteral("radius"), 8.0},
+            {QStringLiteral("borderWidth"), 0.0},
+            {QStringLiteral("borderColor"), QStringLiteral("border")},
+            {QStringLiteral("paddingX"), 0.0},
+            {QStringLiteral("paddingY"), 0.0},
+            {QStringLiteral("spacing"), 0.0},
+        }},
+        {QStringLiteral("items"), QVariantMap{
+            {QStringLiteral("decoration"), QStringLiteral("none")},
+            {QStringLiteral("background"), QStringLiteral("panel")},
+            {QStringLiteral("hoverBackground"), QStringLiteral("hover")},
+            {QStringLiteral("opacity"), 1.0},
+            {QStringLiteral("radius"), 6.0},
+            {QStringLiteral("borderWidth"), 0.0},
+            {QStringLiteral("borderColor"), QStringLiteral("border")},
+            {QStringLiteral("paddingX"), 0.0},
+            {QStringLiteral("paddingY"), 0.0},
+            {QStringLiteral("spacing"), 0.0},
+        }},
+        {QStringLiteral("typography"), QVariantMap{
+            {QStringLiteral("fontFamily"), QString()},
+            {QStringLiteral("fontSize"), 12.0},
+            {QStringLiteral("fontWeight"), 400},
+        }},
+        {QStringLiteral("motion"), QVariantMap{
+            {QStringLiteral("duration"), 120},
+        }},
+    };
+}
+
+double boundedNumber(const QJsonValue& value, double minimum, double maximum,
+                     double fallback, const QString& path) {
+    if (!value.isDouble()) {
+        qWarning() << "[Theme]" << path << "must be a number -> ignored";
+        return fallback;
+    }
+    const double number = value.toDouble();
+    if (number < minimum || number > maximum) {
+        qWarning() << "[Theme]" << path << "outside" << minimum << ".." << maximum
+                   << "-> clamped";
+    }
+    return qBound(minimum, number, maximum);
+}
+
+QString enumValue(const QJsonValue& value, const QStringList& allowed,
+                  const QString& fallback, const QString& path) {
+    const QString candidate = value.toString();
+    if (!allowed.contains(candidate)) {
+        qWarning() << "[Theme]" << path << "invalid value" << candidate << "-> ignored";
+        return fallback;
+    }
+    return candidate;
+}
+
+// 外观令牌使用显式 allowlist，避免任意 JSON 值进入布局表达式导致负尺寸、超大窗口或
+// 类型不稳定。返回值只包含主题实际声明的字段，由 ThemeManager 深合并默认值。
+QVariantMap parseAppearance(const QJsonObject& root, const QString& label,
+                            const QString& jsonPath) {
+    QVariantMap result;
+    auto parseNumberGroup = [&](const QString& groupName,
+                                const QList<std::tuple<QString, double, double>>& specs) {
+        const QJsonObject group = root.value(groupName).toObject();
+        if (group.isEmpty()) return;
+        QVariantMap parsed;
+        for (const auto& spec : specs) {
+            const QString key = std::get<0>(spec);
+            if (!group.contains(key)) continue;
+            parsed.insert(key, boundedNumber(group.value(key), std::get<1>(spec),
+                                              std::get<2>(spec), std::get<1>(spec),
+                                              jsonPath + QStringLiteral(": ") + label
+                                                  + QLatin1Char('.') + groupName
+                                                  + QLatin1Char('.') + key));
+        }
+        if (!parsed.isEmpty()) result.insert(groupName, parsed);
+    };
+
+    parseNumberGroup(QStringLiteral("window"), {
+        {QStringLiteral("outerPaddingX"), 0.0, 64.0},
+        {QStringLiteral("outerPaddingY"), 0.0, 32.0},
+    });
+
+    for (const QString& groupName : {QStringLiteral("bar"), QStringLiteral("regions"),
+                                     QStringLiteral("items")}) {
+        const QJsonObject group = root.value(groupName).toObject();
+        if (group.isEmpty()) continue;
+        QVariantMap parsed = result.value(groupName).toMap();
+        if (group.contains(QStringLiteral("background"))) {
+            parsed.insert(QStringLiteral("background"), enumValue(
+                group.value(QStringLiteral("background")),
+                {QStringLiteral("transparent"), QStringLiteral("bg"),
+                 QStringLiteral("panel"), QStringLiteral("accent")},
+                QStringLiteral("transparent"),
+                jsonPath + QStringLiteral(": ") + label + QLatin1Char('.') + groupName
+                    + QStringLiteral(".background")));
+        }
+        if (groupName != QStringLiteral("bar")
+            && group.contains(QStringLiteral("decoration"))) {
+            parsed.insert(QStringLiteral("decoration"), enumValue(
+                group.value(QStringLiteral("decoration")),
+                {QStringLiteral("none"), QStringLiteral("panel"), QStringLiteral("pill")},
+                QStringLiteral("none"),
+                jsonPath + QStringLiteral(": ") + label + QLatin1Char('.') + groupName
+                    + QStringLiteral(".decoration")));
+        }
+        if (group.contains(QStringLiteral("borderColor"))) {
+            parsed.insert(QStringLiteral("borderColor"), enumValue(
+                group.value(QStringLiteral("borderColor")), kColorFields,
+                QStringLiteral("border"),
+                jsonPath + QStringLiteral(": ") + label + QLatin1Char('.') + groupName
+                    + QStringLiteral(".borderColor")));
+        }
+        if (groupName == QStringLiteral("items")
+            && group.contains(QStringLiteral("hoverBackground"))) {
+            parsed.insert(QStringLiteral("hoverBackground"), enumValue(
+                group.value(QStringLiteral("hoverBackground")), kColorFields,
+                QStringLiteral("hover"),
+                jsonPath + QStringLiteral(": ") + label
+                    + QStringLiteral(".items.hoverBackground")));
+        }
+        const QList<std::tuple<QString, double, double>> numeric = {
+            {QStringLiteral("opacity"), 0.0, 1.0},
+            {QStringLiteral("radius"), 0.0, 64.0},
+            {QStringLiteral("borderWidth"), 0.0, 8.0},
+            {QStringLiteral("paddingX"), 0.0, 32.0},
+            {QStringLiteral("paddingY"), 0.0, 16.0},
+            {QStringLiteral("spacing"), 0.0, 32.0},
+        };
+        for (const auto& spec : numeric) {
+            const QString key = std::get<0>(spec);
+            if (!group.contains(key)) continue;
+            parsed.insert(key, boundedNumber(group.value(key), std::get<1>(spec),
+                                              std::get<2>(spec), std::get<1>(spec),
+                                              jsonPath + QStringLiteral(": ") + label
+                                                  + QLatin1Char('.') + groupName
+                                                  + QLatin1Char('.') + key));
+        }
+        if (!parsed.isEmpty()) result.insert(groupName, parsed);
+    }
+
+    const QJsonObject typography = root.value(QStringLiteral("typography")).toObject();
+    if (!typography.isEmpty()) {
+        QVariantMap parsed;
+        if (typography.contains(QStringLiteral("fontFamily"))) {
+            const QString family = typography.value(QStringLiteral("fontFamily")).toString().left(128);
+            parsed.insert(QStringLiteral("fontFamily"), family);
+        }
+        if (typography.contains(QStringLiteral("fontSize")))
+            parsed.insert(QStringLiteral("fontSize"), boundedNumber(
+                typography.value(QStringLiteral("fontSize")), 8.0, 32.0, 12.0,
+                jsonPath + QStringLiteral(": ") + label + QStringLiteral(".typography.fontSize")));
+        if (typography.contains(QStringLiteral("fontWeight")))
+            parsed.insert(QStringLiteral("fontWeight"), qRound(boundedNumber(
+                typography.value(QStringLiteral("fontWeight")), 100.0, 900.0, 400.0,
+                jsonPath + QStringLiteral(": ") + label + QStringLiteral(".typography.fontWeight"))));
+        if (!parsed.isEmpty()) result.insert(QStringLiteral("typography"), parsed);
+    }
+
+    const QJsonObject motion = root.value(QStringLiteral("motion")).toObject();
+    if (motion.contains(QStringLiteral("duration"))) {
+        result.insert(QStringLiteral("motion"), QVariantMap{
+            {QStringLiteral("duration"), qRound(boundedNumber(
+                motion.value(QStringLiteral("duration")), 0.0, 1000.0, 120.0,
+                jsonPath + QStringLiteral(": ") + label + QStringLiteral(".motion.duration")))},
+        });
+    }
+    return result;
+}
+
+QUrl parseChromeExtension(const QJsonObject& root, const QString& themeDir,
+                          const QString& jsonPath, QStringList* modes) {
+    const QJsonObject extension = root.value(QStringLiteral("extension")).toObject();
+    if (extension.isEmpty()) return {};
+    if (extension.value(QStringLiteral("type")).toString() != QStringLiteral("barChrome")
+        || extension.value(QStringLiteral("apiVersion")).toInt() != 1) {
+        qWarning() << "[Theme]" << jsonPath
+                   << "extension must be barChrome apiVersion 1 -> ignored";
+        return {};
+    }
+    const QString relative = extension.value(QStringLiteral("qml")).toString();
+    if (relative.isEmpty() || QDir::isAbsolutePath(relative)
+        || relative.contains(QLatin1Char(':'))
+        || !relative.endsWith(QStringLiteral(".qml"), Qt::CaseInsensitive)) {
+        qWarning() << "[Theme]" << jsonPath << "invalid extension.qml -> ignored";
+        return {};
+    }
+    const QString clean = QDir::cleanPath(relative);
+    if (clean == QStringLiteral("..") || clean.startsWith(QStringLiteral("../"))) {
+        qWarning() << "[Theme]" << jsonPath << "extension.qml escapes theme directory -> ignored";
+        return {};
+    }
+    const QFileInfo baseInfo(themeDir);
+    const QFileInfo qmlInfo(QDir(themeDir).absoluteFilePath(clean));
+    const QString baseCanonical = QDir::fromNativeSeparators(baseInfo.canonicalFilePath());
+    const QString qmlCanonical = QDir::fromNativeSeparators(qmlInfo.canonicalFilePath());
+    const QString prefix = QDir::cleanPath(baseCanonical) + QLatin1Char('/');
+    if (baseCanonical.isEmpty() || qmlCanonical.isEmpty()
+        || !QDir::cleanPath(qmlCanonical).startsWith(prefix, Qt::CaseInsensitive)) {
+        qWarning() << "[Theme]" << jsonPath
+                   << "extension.qml missing or resolves outside theme directory -> ignored";
+        return {};
+    }
+    const QJsonArray supports = extension.value(QStringLiteral("supports")).toArray();
+    for (const QJsonValue& value : supports) {
+        const QString mode = value.toString();
+        if ((mode == QStringLiteral("appbar") || mode == QStringLiteral("taskbar"))
+            && !modes->contains(mode)) {
+            modes->append(mode);
+        }
+    }
+    qWarning() << "[Theme] loading trusted barChrome extension from" << qmlCanonical;
+    return QUrl::fromLocalFile(qmlCanonical);
+}
 
 // 解析单个模式（"dark"/"light"）的色板对象。
 // 色值必须是 QColor 可解析的字符串，否则视为缺失（记告警）；
@@ -79,6 +313,7 @@ ThemeRegistry::ThemeRegistry(QObject* parent) : QObject(parent) {
         {QStringLiteral("border"),  QStringLiteral("#ccd0da")},
         {QStringLiteral("onAccent"),QStringLiteral("#ffffff")},
     };
+    m_builtinDefault.appearance = builtinAppearance();
 }
 
 void ThemeRegistry::reload(const QString& themesDir) {
@@ -126,6 +361,16 @@ void ThemeRegistry::reload(const QString& themesDir) {
                        << "-> skip";
             continue;
         }
+        pack.appearance = parseAppearance(root.value(QStringLiteral("appearance")).toObject(),
+                                          QStringLiteral("appearance"), jsonPath);
+        pack.darkAppearance = parseAppearance(
+            root.value(QStringLiteral("darkAppearance")).toObject(),
+            QStringLiteral("darkAppearance"), jsonPath);
+        pack.lightAppearance = parseAppearance(
+            root.value(QStringLiteral("lightAppearance")).toObject(),
+            QStringLiteral("lightAppearance"), jsonPath);
+        pack.chromeUrl = parseChromeExtension(root, QFileInfo(jsonPath).absolutePath(),
+                                              jsonPath, &pack.chromeModes);
         seenIds.insert(pack.id);
         m_packs.append(pack);
         qDebug() << "[Theme] loaded pack" << pack.id << "(" << pack.name << ")";
