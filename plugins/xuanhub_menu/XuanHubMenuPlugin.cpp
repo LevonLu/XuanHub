@@ -4,6 +4,7 @@
 #include "barplugin/BarPluginContext.h"
 
 #include <QDebug>
+#include <QMetaType>
 
 using namespace xuanhub;
 
@@ -22,6 +23,7 @@ bool XuanHubMenuPlugin::init(BarPluginContext* ctx) {
         return false;
     }
     m_vm = new XuanHubMenuViewModel(ctx->eventBus, ctx->eventScope);
+    m_vm->applyConfig(ctx->pluginConfig);
     return true;
 }
 
@@ -29,6 +31,35 @@ QObject* XuanHubMenuPlugin::viewModel() { return m_vm; }
 
 QUrl XuanHubMenuPlugin::qmlUrl() const {
     return QUrl(QStringLiteral("XuanHubMenu.qml"));
+}
+
+QString XuanHubMenuPlugin::validateConfig(const QVariantMap& config) const {
+    const auto enabled = config.constFind(QStringLiteral("pluginActionsEnabled"));
+    if (enabled != config.cend() && enabled->metaType().id() != QMetaType::Bool)
+        return QStringLiteral("pluginActionsEnabled must be a boolean");
+
+    const auto disabled = config.constFind(QStringLiteral("disabledPluginActions"));
+    if (disabled == config.cend()) return {};
+    if (disabled->metaType().id() != QMetaType::QVariantMap)
+        return QStringLiteral("disabledPluginActions must be an object");
+    const QVariantMap byPlugin = disabled->toMap();
+    for (auto it = byPlugin.cbegin(); it != byPlugin.cend(); ++it) {
+        if (it.key().isEmpty() || it.value().metaType().id() != QMetaType::QVariantList)
+            return QStringLiteral("disabledPluginActions entries must be arrays");
+        for (const QVariant& value : it.value().toList()) {
+            if (value.metaType().id() != QMetaType::QString
+                || value.toString().isEmpty()) {
+                return QStringLiteral("disabledPluginActions action ids must be strings");
+            }
+        }
+    }
+    return {};
+}
+
+bool XuanHubMenuPlugin::applyConfig(const QVariantMap& config) {
+    if (!m_vm || !validateConfig(config).isEmpty()) return false;
+    m_vm->applyConfig(config);
+    return true;
 }
 
 void XuanHubMenuPlugin::shutdown() {

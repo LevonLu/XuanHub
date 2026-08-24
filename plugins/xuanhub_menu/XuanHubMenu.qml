@@ -21,7 +21,14 @@ Item {
         if (typeof pluginActions === "undefined" || !pluginActions) return []
         // revision 建立动态状态依赖；actions() 返回当前本地化后的快照。
         const currentRevision = pluginActions.revision
-        return pluginActions.actions("quickMenu")
+        const filterRevision = root.plugin ? root.plugin.actionFilterRevision : 0
+        if (root.plugin && !root.plugin.pluginActionsEnabled) return []
+        const actions = pluginActions.actions("quickMenu")
+        return actions.filter(function(action) {
+            return action.pluginId !== "xuanhub_menu"
+                && (!root.plugin
+                    || root.plugin.isPluginActionEnabled(action.pluginId, action.actionId))
+        })
     }
 
     Rectangle {
@@ -36,7 +43,6 @@ Item {
         width: 28
         height: 28
         glyphColor: root.colors.fg
-        centerColor: root.colors.panel
     }
 
     Connections {
@@ -100,12 +106,12 @@ Item {
         signal triggered()
 
         width: parent ? parent.width : 248
-        height: subtitle.length > 0 ? 52 : 44
+        height: subtitle.length > 0 ? 46 : 38
         opacity: enabled ? 1.0 : 0.45
 
         Rectangle {
             anchors.fill: parent
-            radius: 7
+            radius: 5
             color: rowArea.containsMouse ? root.colors.hover : "transparent"
         }
 
@@ -130,7 +136,7 @@ Item {
         Rectangle {
             visible: row.checkable
             anchors.right: parent.right
-            anchors.rightMargin: 10
+            anchors.rightMargin: 0
             anchors.verticalCenter: parent.verticalCenter
             width: 36
             height: 20
@@ -145,16 +151,6 @@ Item {
                 color: row.checked ? root.colors.onAccent : root.colors.fg
                 Behavior on x { NumberAnimation { duration: 100 } }
             }
-        }
-
-        Text {
-            visible: !row.checkable
-            anchors.right: parent.right
-            anchors.rightMargin: 12
-            anchors.verticalCenter: parent.verticalCenter
-            text: "›"
-            color: row.dangerous ? root.colors.danger : root.colors.muted
-            font.pixelSize: 20
         }
 
         MouseArea {
@@ -172,9 +168,8 @@ Item {
         // taskbar 模式下 bar 是 Shell_TrayWnd 的子窗口，不能作为 transient parent。
         transientParent: null
         visible: false
-        width: 280
-        height: Math.min(560, 364 + (root.declaredActions.length > 0
-                                    ? 3 + root.declaredActions.length * 46 : 0))
+        width: 240
+        height: Math.min(520, menuColumn.implicitHeight + 26)
         color: "transparent"
         flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
 
@@ -184,7 +179,7 @@ Item {
         Rectangle {
             anchors.fill: parent
             anchors.margins: 1
-            radius: 10
+            radius: 6
             color: root.colors.bg
             border.width: 1
             border.color: root.colors.border
@@ -200,43 +195,10 @@ Item {
         Column {
             id: menuColumn
             width: parent.width
-            spacing: 2
-
-            Item {
-                width: parent.width
-                height: 50
-                XuanHubGlyph {
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 34
-                    height: 34
-                    glyphColor: root.colors.fg
-                    centerColor: root.colors.panel
-                }
-                Column {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 44
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 1
-                    Text {
-                        text: qsTranslate("plugin.xuanhub_menu.main", "玄枢 XuanHub")
-                        color: root.colors.fg; font.pixelSize: 15; font.bold: true
-                    }
-                    Text {
-                        text: Qt.application.version.length > 0
-                              ? qsTranslate("plugin.xuanhub_menu.main", "快速设置")
-                                + " · v" + Qt.application.version
-                              : qsTranslate("plugin.xuanhub_menu.main", "快速设置")
-                        color: root.colors.muted
-                        font.pixelSize: 11
-                    }
-                }
-            }
-
-            Rectangle { width: parent.width; height: 1; color: root.colors.border }
+            spacing: 1
 
             MenuRow {
-                title: qsTranslate("plugin.xuanhub_menu.main", "打开设置")
+                title: qsTranslate("plugin.xuanhub_menu.main", "设置")
                 subtitle: qsTranslate("plugin.xuanhub_menu.main", "管理主题、布局与插件")
                 onTriggered: {
                     menuWin.hide()

@@ -2,9 +2,7 @@
   "locale": "en-US",
   "contexts": {
     "plugin.xuanhub_menu.main": {
-      "玄枢 XuanHub": "XuanHub",
-      "快速设置": "Quick settings",
-      "打开设置": "Open Settings",
+      "设置": "Settings",
       "管理主题、布局与插件": "Manage themes, layout, and plugins",
       "开机自启": "Start with Windows",
       "任务栏模式": "Taskbar mode",
@@ -14,6 +12,15 @@
     },
     "plugin.xuanhub_menu.metadata": {
       "玄枢菜单": "XuanHub Menu"
+    },
+    "plugin.xuanhub_menu.settingsPage": {
+      "插件快捷操作": "Plugin quick actions",
+      "控制其他插件是否可以在玄枢菜单中加入快捷按钮": "Control whether other plugins can add quick actions to the XuanHub menu",
+      "显示其他插件的快捷操作": "Show quick actions from other plugins",
+      "关闭后，玄枢菜单只保留自身的设置与系统操作": "When off, the XuanHub menu keeps only its own settings and system actions",
+      "单独控制": "Individual controls",
+      "已发现的插件动作会列在这里；新动作默认启用": "Discovered plugin actions appear here; new actions are enabled by default",
+      "当前没有其他插件提供快捷操作": "No other plugins currently provide quick actions"
     }
   }
 }

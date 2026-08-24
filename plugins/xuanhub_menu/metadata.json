@@ -2,5 +2,6 @@
     "id": "xuanhub_menu",
     "name": "玄枢菜单",
     "version": "0.1.0",
-    "author": "XuanHub"
+    "author": "XuanHub",
+    "settingsQml": "XuanHubMenuSettings.qml"
 }

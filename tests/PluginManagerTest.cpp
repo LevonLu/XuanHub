@@ -368,9 +368,44 @@ private Q_SLOTS:
         QCOMPARE(manager.applyConfig(updatedClock),
                  PluginManager::ConfigApplyResult::Applied);
         QCOMPARE(manager.loadedPlugin(clock.id)->viewModel, clockViewModel);
-        QCOMPARE(manager.applyConfig(menu),
-                 PluginManager::ConfigApplyResult::Unsupported);
-        QVERIFY(!manager.validateConfig(menu.id, {}).supported);
+        const auto menuConfigValid = manager.validateConfig(
+            menu.id,
+            {{QStringLiteral("pluginActionsEnabled"), true},
+             {QStringLiteral("disabledPluginActions"), QVariantMap{
+                 {QStringLiteral("sysinfo"),
+                  QVariantList{QStringLiteral("refresh")}}}}});
+        QVERIFY(menuConfigValid.supported);
+        QVERIFY(menuConfigValid.valid);
+        const auto menuConfigInvalid = manager.validateConfig(
+            menu.id,
+            {{QStringLiteral("disabledPluginActions"), QStringLiteral("invalid")}});
+        QVERIFY(menuConfigInvalid.supported);
+        QVERIFY(!menuConfigInvalid.valid);
+
+        PluginConfigEntry filteredMenu = menu;
+        filteredMenu.config = {
+            {QStringLiteral("pluginActionsEnabled"), true},
+            {QStringLiteral("disabledPluginActions"), QVariantMap{
+                {QStringLiteral("sysinfo"),
+                 QVariantList{QStringLiteral("refresh")}}}},
+        };
+        QCOMPARE(manager.applyConfig(filteredMenu),
+                 PluginManager::ConfigApplyResult::Applied);
+        QCOMPARE(manager.loadedPlugin(menu.id)->viewModel, menuViewModel);
+        bool sysinfoRefreshEnabled = true;
+        QVERIFY(QMetaObject::invokeMethod(
+            manager.loadedPlugin(menu.id)->viewModel,
+            "isPluginActionEnabled", Qt::DirectConnection,
+            Q_RETURN_ARG(bool, sysinfoRefreshEnabled),
+            Q_ARG(QString, QStringLiteral("sysinfo")),
+            Q_ARG(QString, QStringLiteral("refresh"))));
+        QVERIFY(!sysinfoRefreshEnabled);
+
+        filteredMenu.config.insert(QStringLiteral("pluginActionsEnabled"), false);
+        QCOMPARE(manager.applyConfig(filteredMenu),
+                 PluginManager::ConfigApplyResult::Applied);
+        QVERIFY(!manager.loadedPlugin(menu.id)->viewModel
+                     ->property("pluginActionsEnabled").toBool());
         const PluginConfigEntry missing = entry(QStringLiteral("missing_plugin"));
         QVERIFY(!manager.loadOne(pluginsDir, missing));
         QCOMPARE(manager.loadedPlugin(menu.id)->viewModel, menuViewModel);

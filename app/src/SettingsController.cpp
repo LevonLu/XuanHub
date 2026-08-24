@@ -3,6 +3,7 @@
 #include "SettingsViewModel.h"
 #include "ThemeManager.h"
 #include "LocaleManager.h"
+#include "PluginActionRegistry.h"
 
 #include <QCoreApplication>
 #include <QCursor>
@@ -22,10 +23,11 @@ SettingsController::SettingsController(ConfigService* config, ThemeManager* them
                                        LocaleManager* locale, const QString& exeDir,
                                        PluginListModel* barPlugins,
                                        PluginManager* pluginManager,
+                                       PluginActionRegistry* pluginActions,
                                        QObject* parent)
     : QObject(parent), m_config(config), m_theme(theme), m_registry(registry),
       m_locale(locale), m_exeDir(exeDir), m_barPlugins(barPlugins),
-      m_pluginManager(pluginManager),
+      m_pluginManager(pluginManager), m_pluginActions(pluginActions),
       m_uitest(QCoreApplication::arguments().contains(QStringLiteral("--uitest"))) {}
 
 SettingsController::~SettingsController() {
@@ -59,6 +61,9 @@ void SettingsController::open() {
         w->rootContext()->setContextProperty(QStringLiteral("settingsVM"), m_vm);
         w->rootContext()->setContextProperty(QStringLiteral("themeManager"), m_theme);
         w->rootContext()->setContextProperty(QStringLiteral("settingsCtl"), this);
+        if (m_pluginActions)
+            w->rootContext()->setContextProperty(QStringLiteral("pluginActions"),
+                                                 m_pluginActions);
         if (m_locale) {
             w->rootContext()->setContextProperty(QStringLiteral("i18n"), m_locale);
             m_locale->registerEngine(w->engine());

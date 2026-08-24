@@ -33,6 +33,12 @@ add_custom_command(TARGET xuanhub_menu POST_BUILD
         "${CMAKE_CURRENT_SOURCE_DIR}/XuanHubGlyph.qml"
         "${XUANHUB_BIN_DIR}/plugins/xuanhub_menu/XuanHubGlyph.qml"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/XuanHubMenuSettings.qml"
+        "${XUANHUB_BIN_DIR}/plugins/xuanhub_menu/XuanHubMenuSettings.qml"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/app/resources/xuanhub-tray-icon-64.png"
+        "${XUANHUB_BIN_DIR}/plugins/xuanhub_menu/xuanhub-tray-icon-64.png"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/metadata.json"
         "${XUANHUB_BIN_DIR}/plugins/xuanhub_menu/metadata.json"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
