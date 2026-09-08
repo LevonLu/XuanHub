@@ -1,6 +1,24 @@
 {
     "id": "pybridge",
     "name": "PyBridge",
-    "version": "0.2.1",
-    "author": "XuanHub"
+    "version": "0.3.0",
+    "apiVersion": 2,
+    "configVersion": 1,
+    "minHostVersion": "0.4.1",
+    "maxHostVersion": "0.x",
+    "author": "XuanHub",
+    "entry": {
+        "backend": "pybridge.dll"
+    },
+    "capabilities": [],
+    "permissions": [
+        "notifications"
+    ],
+    "dependencies": [],
+    "compatibility": {
+        "architecture": "x64",
+        "qtVersion": "6.9.3",
+        "compiler": "msvc2022",
+        "crt": "dynamic"
+    }
 }

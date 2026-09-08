@@ -396,7 +396,11 @@ void SettingsPluginModel::mergeDiscovered(const QJsonObject& meta, const QString
             : xuanhub::HostPluginTrustLevel::Isolated,
         declaredPermissions);
     QUrl settingsQml;
-    const QString rel = meta.value(QStringLiteral("settingsQml")).toString();
+    // 原生 V2 入口只取 entry；旧原生与 Python 清单仍使用顶层字段。
+    const QString rel = kind == QLatin1String("dll") && apiVersion == 2
+        ? meta.value(QStringLiteral("entry")).toObject()
+              .value(QStringLiteral("settingsQml")).toString()
+        : meta.value(QStringLiteral("settingsQml")).toString();
     if (!rel.isEmpty())
         settingsQml = QUrl::fromLocalFile(QDir(dir).absoluteFilePath(rel));
 

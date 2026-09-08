@@ -6,6 +6,8 @@
 > 由 `pybridge` 桥接插件承载：每个子插件运行在独立的 `python.exe` worker 进程中，
 > 宿主只保留异步代理 ViewModel 注入 QML。Python 崩溃、GIL 卡死和扩展模块异常不会进入
 > XuanHub 进程。写 Python 子插件**不需要**碰 C++。
+> `pybridge` DLL 自身使用原生 SDK V2；host 扩展接口、Python Manifest 和 IPC 协议分别版本化，
+> 本次 DLL 升级不改变 Python 插件的配置格式或生命周期函数。
 
 ## 目录结构
 

@@ -4,7 +4,7 @@
 > `IBarPlugin/1.0` 仅用于兼容既有插件，新插件应使用 V2。
 
 SDK V2 用可预检的 `metadata.json` 和独立 IID 替代“先加载 DLL 再判断是否兼容”。
-宿主仍支持 V1，旧插件不需要重新编译；新插件应使用 V2。
+内置 `clock/sysinfo/xuanhub_menu/pybridge` 均使用 V2；V1 适配器仅供外部旧插件兼容。
 
 ## 开发者 CLI
 
@@ -321,6 +321,17 @@ Payload 只允许 JSON/QVariant 安全集合。每订阅者最多排队 256 条�
 6. 保证运行时 Descriptor 与 sidecar 完全一致；宿主发现以 sidecar 为权威，漂移时拒绝加载。
 7. 将 QML 的宿主依赖迁到 `pluginContext`，将系统访问迁到 `hostServices` 并声明最小权限。
 
+内置迁移范例：`sysinfo` 保留采样线程、布局和刷新动作；`xuanhub_menu` 通过
+作用域化 EventBus V2 订阅 `app.quickMenu.state` 保留状态，发布请求/命令时声明精确的
+`events.publish:app.quickMenu.requestState` 和 `events.publish:app.quickMenu.command` 权限。
+`pybridge` 的 DLL 主接口使用 V2，通知通过声明了 `notifications` 权限的 HostServices 发出。
+它继续组合 `IBarPluginHost` 及各 host 扩展接口；这些接口自身的 IID 版本独立于主插件 SDK，
+不应机械改成 `/2.0`。Python 子插件 Manifest 和 Worker 协议也独立版本化。
+
+这三个插件保留原有配置结构及 `configVersion=1`，只更新插件版本与原生 SDK；无需重写
+已有 `config.json`。原生 V2 自绘设置页从 `entry.settingsQml` 读取，不回退到同一清单的
+旧顶层字段。pybridge 自身无可配置项，保留其未知配置键时不会重启正在运行的 Python 子插件。
+
 完整参考见 `plugins/clock/`；不依赖仓库内部目标的第三方参考见
 `examples/plugins/v2_demo/`。
 
@@ -344,7 +355,7 @@ void configApplied(const QString& id, const QVariantMap& config,
 初始化回执在异步 `init` 完成时发射；配置回执携带本次请求的完整配置，仅在实际执行
 完成后发射。超时、进程退出与停止取消必须回报失败。这里的配置只用于进程内匹配，
 不得写入日志或导出诊断。内置 pybridge 已实现此契约。原生 V1 接口继续由
-`PluginRuntime` 单点适配，内置 sysinfo 和菜单仍使用它；新原生插件使用 V2。
+`PluginRuntime` 单点适配；全部内置原生插件均已迁移到 V2，不再实现 V1 接口。
 
 停止流程统一由 `PluginDependencyGraph::stopOrder()` 生成依赖闭包，先停止依赖方和
 host 子实例，再停止提供方。`PluginManager::pluginsAboutToStop(ids)` 是同步解除

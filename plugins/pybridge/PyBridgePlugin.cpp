@@ -24,6 +24,7 @@
 #include <QStandardPaths>
 
 #include "barplugin/EventBus.h"
+#include "barplugin/HostServices.h"
 #include "barplugin/ManagedPluginStore.h"
 #include "barplugin/PluginPathValidator.h"
 #include "barplugin/ProcessReaper.h"
@@ -467,13 +468,31 @@ PythonManifestResult readPluginJson(const QDir& directory) {
 }
 } // namespace
 
-xuanhub::PluginMetadata PyBridgePlugin::metadata() const {
-    return {QStringLiteral("pybridge"), QStringLiteral("PyBridge"),
-            QStringLiteral("0.2.1"), QStringLiteral("XuanHub")};
+xuanhub::PluginDescriptor PyBridgePlugin::descriptor() const {
+    xuanhub::PluginDescriptor value;
+    value.id = QStringLiteral("pybridge");
+    value.displayName = QStringLiteral("PyBridge");
+    value.version = QStringLiteral("0.3.0");
+    value.apiVersion = 2;
+    value.configVersion = 1;
+    value.minHostVersion = QStringLiteral("0.4.1");
+    value.maxHostVersion = QStringLiteral("0.x");
+    value.author = QStringLiteral("XuanHub");
+    value.entry.backend = QStringLiteral("pybridge.dll");
+    value.permissions = {QStringLiteral("notifications")};
+    value.compatibility.architecture = QStringLiteral("x64");
+    value.compatibility.qtVersion = QStringLiteral("6.9.3");
+    value.compatibility.compiler = QStringLiteral("msvc2022");
+    value.compatibility.crt = QStringLiteral("dynamic");
+    return value;
 }
 
-bool PyBridgePlugin::init(xuanhub::BarPluginContext* ctx) {
-    m_ctx = *ctx;
+xuanhub::PluginInitResult PyBridgePlugin::initialize(const xuanhub::PluginContext2& context) {
+    if (m_initialized)
+        return xuanhub::PluginInitResult::failed(QStringLiteral("plugin is already initialized"));
+    const auto validation = validateConfig(context.pluginConfig);
+    if (!validation.valid) return xuanhub::PluginInitResult::failed(validation.error);
+    m_ctx = context;
     if (!pyChecked()) {
         setPyChecked();
         if (qEnvironmentVariableIsSet("XUANHUB_DISABLE_PYTHON")) {
@@ -515,16 +534,31 @@ bool PyBridgePlugin::init(xuanhub::BarPluginContext* ctx) {
         m_pythonExe.clear();
     }
 
-    if (!pyAvailable() && !pyNotified() && m_ctx.eventBus) {
-        setPyNotified();
-        m_ctx.eventBus->publish(QStringLiteral("app.notify"), {
-            {QStringLiteral("title"), QStringLiteral("XuanHub")},
-            {QStringLiteral("message"), QCoreApplication::translate(
-                "plugin.pybridge.notifications",
-                "未找到可用的 Python 3.12+ 运行时，Python 插件已停用。请安装 Python，或使用 Bundle 便携包。")},
-        });
+    if (!pyAvailable() && !pyNotified() && m_ctx.hostServices
+        && m_ctx.hostServices->apiVersion() >= xuanhub::kHostServicesApiVersion
+        && m_ctx.hostServices->hasPermission(QStringLiteral("notifications"))) {
+        auto* notifications = m_ctx.hostServices->notifications();
+        if (notifications && notifications->show(
+                QStringLiteral("XuanHub"), QCoreApplication::translate(
+                    "plugin.pybridge.notifications",
+                    "未找到可用的 Python 3.12+ 运行时，Python 插件已停用。请安装 Python，或使用 Bundle 便携包。")).success) {
+            setPyNotified();
+        }
     }
-    return true;
+    m_initialized = true;
+    return xuanhub::PluginInitResult::succeeded();
+}
+
+xuanhub::PluginConfigValidationResult PyBridgePlugin::validateConfig(const QVariantMap&) const {
+    // 桥接器目前没有自身设置；子插件配置由各自的校验接口处理，保留未知键。
+    return xuanhub::PluginConfigValidationResult::accepted();
+}
+
+xuanhub::PluginConfigApplyResult PyBridgePlugin::applyConfig(const QVariantMap& config) {
+    if (!m_initialized)
+        return xuanhub::PluginConfigApplyResult::rejected(QStringLiteral("plugin is not initialized"));
+    m_ctx.pluginConfig = config;
+    return xuanhub::PluginConfigApplyResult::applied();
 }
 
 QObject* PyBridgePlugin::viewModel() { return nullptr; }
@@ -559,6 +593,8 @@ void PyBridgePlugin::shutdown() {
     // PyWorkerViewModel 会把仍在退出宽限期的 QProcess 交给常驻 reaper；
     // host DLL 卸载前必须同步收口，否则 QProcess 析构可能触及本 DLL 的连接。
     xuanhub::drainReapedProcesses();
+    m_ctx = {};
+    m_initialized = false;
 }
 
 QStringList PyBridgePlugin::subPluginIds() {

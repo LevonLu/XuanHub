@@ -49,6 +49,39 @@ class ConfigServiceTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void settingsQmlFollowsRuntimeManifestEntry_data() {
+        QTest::addColumn<QString>("kind");
+        QTest::addColumn<int>("apiVersion");
+        QTest::addColumn<QString>("expected");
+        QTest::newRow("native-v2") << QStringLiteral("dll") << 2 << QStringLiteral("V2Settings.qml");
+        QTest::newRow("legacy-native") << QStringLiteral("dll") << 1 << QStringLiteral("TopSettings.qml");
+        QTest::newRow("python-v2") << QStringLiteral("python") << 2 << QStringLiteral("TopSettings.qml");
+    }
+
+    void settingsQmlFollowsRuntimeManifestEntry() {
+        QFETCH(QString, kind);
+        QFETCH(int, apiVersion);
+        QFETCH(QString, expected);
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString folder = kind == QLatin1String("dll")
+            ? QStringLiteral("plugins/demo") : QStringLiteral("plugins_py/demo");
+        const QString manifestFile = kind == QLatin1String("dll")
+            ? QStringLiteral("metadata.json") : QStringLiteral("plugin.json");
+        QVERIFY(writeJsonObject(directory.filePath(folder + QLatin1Char('/') + manifestFile), {
+            {QStringLiteral("id"), QStringLiteral("demo")},
+            {QStringLiteral("apiVersion"), apiVersion},
+            {QStringLiteral("settingsQml"), QStringLiteral("TopSettings.qml")},
+            {QStringLiteral("entry"), QJsonObject{
+                {QStringLiteral("settingsQml"), QStringLiteral("V2Settings.qml")}}},
+        }));
+        SettingsPluginModel model;
+        model.reload({}, {}, directory.path(), directory.filePath(QStringLiteral("config.json")));
+        QCOMPARE(model.rowCount(), 1);
+        QCOMPARE(model.data(model.index(0), SettingsPluginModel::SettingsQmlRole).toUrl(),
+                 QUrl::fromLocalFile(directory.filePath(folder + QLatin1Char('/') + expected)));
+    }
+
     void distinguishesSavedPendingAndFailedRuntimeConfig() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());

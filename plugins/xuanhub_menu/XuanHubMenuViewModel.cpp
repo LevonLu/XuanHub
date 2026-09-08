@@ -1,6 +1,5 @@
 // XuanHubMenuViewModel.cpp — 发布快速菜单命令并接收宿主状态快照
 #include "XuanHubMenuViewModel.h"
-#include "barplugin/EventBus.h"
 #include "barplugin/PluginEventScope.h"
 
 #include <utility>
@@ -12,29 +11,27 @@ QString actionKey(const QString& pluginId, const QString& actionId) {
 }
 }
 
-XuanHubMenuViewModel::XuanHubMenuViewModel(xuanhub::EventBus* bus,
-                                           xuanhub::PluginEventScope* eventScope,
+XuanHubMenuViewModel::XuanHubMenuViewModel(xuanhub::PluginEventScope* eventScope,
                                            QObject* parent)
-    : QObject(parent), m_bus(bus) {
-    if (eventScope) {
-        eventScope->subscribe(QStringLiteral("app.quickMenu.state"), this,
-                              "onState(QVariantMap)");
-    } else if (m_bus) {
-        m_bus->subscribe(QStringLiteral("app.quickMenu.state"), this,
-                         "onState(QVariantMap)");
+    : QObject(parent), m_eventScope(eventScope) {
+    if (m_eventScope) {
+        xuanhub::EventSubscriptionOptions options;
+        options.replayRetained = true;
+        m_eventScope->subscribeV2(QStringLiteral("app.quickMenu.state"), this,
+                                  "onState(QVariantMap)", options);
     }
 }
 
 void XuanHubMenuViewModel::requestState() {
-    if (m_bus) m_bus->publish(QStringLiteral("app.quickMenu.requestState"));
+    if (m_eventScope) m_eventScope->publish(QStringLiteral("app.quickMenu.requestState"));
 }
 
 void XuanHubMenuViewModel::invokeAction(const QString& action, bool enabled) {
-    if (!m_bus || action.isEmpty()) return;
+    if (!m_eventScope || action.isEmpty()) return;
     QVariantMap payload;
     payload.insert(QStringLiteral("action"), action);
     payload.insert(QStringLiteral("enabled"), enabled);
-    m_bus->publish(QStringLiteral("app.quickMenu.command"), payload);
+    m_eventScope->publish(QStringLiteral("app.quickMenu.command"), payload);
 }
 
 bool XuanHubMenuViewModel::isPluginActionEnabled(const QString& pluginId,
@@ -68,7 +65,8 @@ void XuanHubMenuViewModel::applyConfig(const QVariantMap& config) {
     emit actionFilterChanged();
 }
 
-void XuanHubMenuViewModel::onState(QVariantMap payload) {
+void XuanHubMenuViewModel::onState(QVariantMap envelope) {
+    const QVariantMap payload = envelope.value(QStringLiteral("data")).toMap();
     const bool autoStart = payload.value(QStringLiteral("autoStartEnabled")).toBool();
     const bool taskbar = payload.value(QStringLiteral("taskbarMode")).toBool();
     const QString theme = payload.value(QStringLiteral("themeMode"),

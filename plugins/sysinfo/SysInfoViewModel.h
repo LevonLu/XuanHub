@@ -86,7 +86,7 @@ public:
     QVariantList netUpHistory() const { return m_netUpHistory; }
     Q_INVOKABLE QVariant invokeAction(const QString& actionId);
 
-    // 由 Plugin::init 调用：layoutData 是 [{metric, prefix, color}, ...]（来自 config 解析）
+    // 由 Plugin::initialize 调用：layoutData 是 [{metric, prefix, color}, ...]（来自 config 解析）
     // itemsPerColumn 为每列显示项数（决定 Grid 的行数，多余项向右另起一列）。
     // 整体替换，begin/endResetModel 驱动 QML Repeater 重建。
     void setLayout(const QVariantList& layoutData, int columns);

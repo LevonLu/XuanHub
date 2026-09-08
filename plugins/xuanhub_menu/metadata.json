@@ -1,7 +1,31 @@
 {
     "id": "xuanhub_menu",
     "name": "玄枢菜单",
-    "version": "0.1.0",
+    "version": "0.2.0",
+    "apiVersion": 2,
+    "configVersion": 1,
+    "minHostVersion": "0.4.1",
+    "maxHostVersion": "0.x",
     "author": "XuanHub",
-    "settingsQml": "XuanHubMenuSettings.qml"
+    "entry": {
+        "backend": "xuanhub_menu.dll",
+        "qml": "XuanHubMenu.qml",
+        "settingsQml": "XuanHubMenuSettings.qml"
+    },
+    "capabilities": [
+        "barItem",
+        "settings",
+        "popup"
+    ],
+    "permissions": [
+        "events.publish:app.quickMenu.requestState",
+        "events.publish:app.quickMenu.command"
+    ],
+    "dependencies": [],
+    "compatibility": {
+        "architecture": "x64",
+        "qtVersion": "6.9.3",
+        "compiler": "msvc2022",
+        "crt": "dynamic"
+    }
 }

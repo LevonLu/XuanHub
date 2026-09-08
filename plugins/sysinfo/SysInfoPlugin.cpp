@@ -1,4 +1,4 @@
-// SysInfoPlugin.cpp
+// SysInfoPlugin.cpp — V2 系统采集插件的配置校验、线程初始化与回收
 #include "SysInfoPlugin.h"
 #include "SysInfoWorker.h"
 #include "SysInfoViewModel.h"
@@ -12,13 +12,6 @@
 #include <QDebug>
 
 using namespace xuanhub;
-
-static const PluginMetadata kMeta = {
-    QStringLiteral("sysinfo"),
-    QStringLiteral("System Info"),
-    QStringLiteral("0.3.0"),
-    QStringLiteral("XuanHub"),
-};
 
 // 默认布局（config 无 items 时播种）：CPU/RAM/GPU/下行/上行，单列
 static QVariantList defaultLayout() {
@@ -69,10 +62,41 @@ static QVariantList parseLayout(const QVariantMap& config) {
     return layout.isEmpty() ? defaultLayout() : layout;
 }
 
-PluginMetadata SysInfoPlugin::metadata() const { return kMeta; }
+xuanhub::PluginDescriptor SysInfoPlugin::descriptor() const {
+    xuanhub::PluginDescriptor value;
+    value.id = QStringLiteral("sysinfo");
+    value.displayName = QStringLiteral("System Info");
+    value.version = QStringLiteral("0.4.0");
+    value.apiVersion = 2;
+    value.configVersion = 1;
+    value.minHostVersion = QStringLiteral("0.4.1");
+    value.maxHostVersion = QStringLiteral("0.x");
+    value.author = QStringLiteral("XuanHub");
+    value.entry.backend = QStringLiteral("sysinfo.dll");
+    value.entry.qml = QStringLiteral("SysInfo.qml");
+    value.entry.settingsQml = QStringLiteral("SysInfoSettings.qml");
+    value.capabilities = {QStringLiteral("barItem"), QStringLiteral("settings"),
+                          QStringLiteral("popup")};
+    value.actions = {{QStringLiteral("refresh"), QStringLiteral("立即刷新"),
+                      {QStringLiteral("quickMenu"), QStringLiteral("tray"),
+                       QStringLiteral("pluginMenu")}, QStringLiteral("refresh"), {}, false}};
+    value.layout.declared = true;
+    value.layout.minWidth = 80;
+    value.layout.priority = 30;
+    value.layout.overflow = QStringLiteral("menu");
+    value.compatibility.architecture = QStringLiteral("x64");
+    value.compatibility.qtVersion = QStringLiteral("6.9.3");
+    value.compatibility.compiler = QStringLiteral("msvc2022");
+    value.compatibility.crt = QStringLiteral("dynamic");
+    return value;
+}
 
-bool SysInfoPlugin::init(BarPluginContext* ctx) {
-    const auto cfg = ctx ? ctx->pluginConfig : QVariantMap();
+PluginInitResult SysInfoPlugin::initialize(const PluginContext2& context) {
+    if (m_vm || m_worker || m_thread)
+        return PluginInitResult::failed(QStringLiteral("plugin is already initialized"));
+    const auto validation = validateConfig(context.pluginConfig);
+    if (!validation.valid) return PluginInitResult::failed(validation.error);
+    const auto& cfg = context.pluginConfig;
     // 钳制采样间隔：0 会让 worker 线程每事件循环都 tick（PDH collect + GetIfTable2）
     // 占满一个核并狂发跨线程信号；负值 QTimer 直接不启动。200ms 下限兼顾流畅与开销
     m_intervalMs = qBound(200, cfg.value(QStringLiteral("intervalMs"), 1000).toInt(), 60000);
@@ -96,21 +120,26 @@ bool SysInfoPlugin::init(BarPluginContext* ctx) {
     QMetaObject::invokeMethod(m_worker.data(), "start",
                               Qt::QueuedConnection,
                               Q_ARG(int, m_intervalMs));
-    return true;
+    return PluginInitResult::succeeded();
 }
 
-QString SysInfoPlugin::validateConfig(const QVariantMap& config) const {
+PluginConfigValidationResult SysInfoPlugin::validateConfig(const QVariantMap& config) const {
     bool intervalOk = false;
     config.value(QStringLiteral("intervalMs"), 1000).toInt(&intervalOk);
-    if (!intervalOk) return QStringLiteral("intervalMs must be an integer");
+    if (!intervalOk) return PluginConfigValidationResult::rejected(
+        QStringLiteral("intervalMs must be an integer"));
     bool columnsOk = false;
     config.value(QStringLiteral("itemsPerColumn"), 1).toInt(&columnsOk);
-    if (!columnsOk) return QStringLiteral("itemsPerColumn must be an integer");
-    return {};
+    if (!columnsOk) return PluginConfigValidationResult::rejected(
+        QStringLiteral("itemsPerColumn must be an integer"));
+    return PluginConfigValidationResult::accepted();
 }
 
-bool SysInfoPlugin::applyConfig(const QVariantMap& config) {
-    if (!m_vm || !m_worker || !validateConfig(config).isEmpty()) return false;
+PluginConfigApplyResult SysInfoPlugin::applyConfig(const QVariantMap& config) {
+    if (!m_vm || !m_worker)
+        return PluginConfigApplyResult::rejected(QStringLiteral("plugin is not initialized"));
+    const auto validation = validateConfig(config);
+    if (!validation.valid) return PluginConfigApplyResult::rejected(validation.error);
     const int interval = qBound(200,
         config.value(QStringLiteral("intervalMs"), 1000).toInt(), 60000);
     m_vm->setLayout(parseLayout(config),
@@ -120,7 +149,7 @@ bool SysInfoPlugin::applyConfig(const QVariantMap& config) {
         QMetaObject::invokeMethod(m_worker.data(), "start", Qt::QueuedConnection,
                                   Q_ARG(int, m_intervalMs));
     }
-    return true;
+    return PluginConfigApplyResult::applied();
 }
 
 QObject* SysInfoPlugin::viewModel() { return m_vm; }
@@ -133,7 +162,7 @@ void SysInfoPlugin::shutdown() {
     // ② quit 让 worker 所在线程事件循环退出
     // ③ wait 阻塞到线程真的退出（保证 worker 不再 emit 信号）
     // ④ 删 ViewModel（GUI 线程对象）
-    // ⑤ 删 QThread（worker 由 init 里连的 finished→deleteLater 兜底回收）
+    // ⑤ 删 QThread（worker 由 initialize 里连的 finished→deleteLater 兜底回收）
     if (m_worker && m_thread && m_thread->isRunning()) {
         // 确认 stop 已在 worker 线程执行后才退出事件循环；只投递 QueuedConnection
         // 后立即 quit 会让退出事件抢在 stop 前处理，资源释放时序不可证明。

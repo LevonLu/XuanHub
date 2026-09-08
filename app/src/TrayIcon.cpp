@@ -35,9 +35,9 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
     if (bus) {
         // bar 上的玄枢菜单是普通插件，不能依赖宿主类型；通过 EventBus 请求动作，
         // 实际执行仍落到托盘控制器，保证两个入口的行为和状态来源一致。
-        bus->subscribe(QStringLiteral("app.quickMenu.command"), this,
+        bus->subscribeV2(QStringLiteral("app.quickMenu.command"), this,
                        "onQuickMenuCommand(QVariantMap)");
-        bus->subscribe(QStringLiteral("app.quickMenu.requestState"), this,
+        bus->subscribeV2(QStringLiteral("app.quickMenu.requestState"), this,
                        "publishQuickMenuState(QVariantMap)");
     }
 
@@ -104,6 +104,12 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
     retranslate();
 
     m_tray->setContextMenu(m_menu);
+    // 菜单插件可在稍后加载并回放状态；主题热切换也应更新已打开的菜单。
+    if (m_theme) connect(m_theme, &ThemeManager::themeChanged, this,
+                         [this] { publishQuickMenuState(); });
+    if (m_config) connect(m_config, &ConfigService::barModeChanged, this,
+                          [this] { publishQuickMenuState(); });
+    publishQuickMenuState();
 }
 
 void TrayIcon::retranslate() {
@@ -235,7 +241,8 @@ void TrayIcon::onAppNotify(QVariantMap payload) {
     });
 }
 
-void TrayIcon::onQuickMenuCommand(QVariantMap payload) {
+void TrayIcon::onQuickMenuCommand(QVariantMap envelope) {
+    const QVariantMap payload = envelope.value(QStringLiteral("data")).toMap();
     const QString action = payload.value(QStringLiteral("action")).toString();
     const bool enabled = payload.value(QStringLiteral("enabled")).toBool();
 
@@ -278,5 +285,5 @@ void TrayIcon::publishQuickMenuState(QVariantMap) {
     state.insert(QStringLiteral("taskbarMode"), mode == QStringLiteral("taskbar"));
     state.insert(QStringLiteral("themeMode"),
                  m_theme ? m_theme->mode() : QStringLiteral("dark"));
-    m_bus->publish(QStringLiteral("app.quickMenu.state"), state);
+    m_bus->setState(QStringLiteral("app.quickMenu.state"), state);
 }

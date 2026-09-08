@@ -1,13 +1,39 @@
 {
     "id": "sysinfo",
     "name": "System Info",
-    "version": "0.3.0",
+    "version": "0.4.0",
+    "apiVersion": 2,
+    "configVersion": 1,
+    "minHostVersion": "0.4.1",
+    "maxHostVersion": "0.x",
     "author": "XuanHub",
+    "entry": {
+        "backend": "sysinfo.dll",
+        "qml": "SysInfo.qml",
+        "settingsQml": "SysInfoSettings.qml"
+    },
+    "capabilities": [
+        "barItem",
+        "settings",
+        "popup"
+    ],
+    "permissions": [],
+    "dependencies": [],
+    "compatibility": {
+        "architecture": "x64",
+        "qtVersion": "6.9.3",
+        "compiler": "msvc2022",
+        "crt": "dynamic"
+    },
     "actions": [
         {
             "id": "refresh",
             "label": "立即刷新",
-            "placements": ["quickMenu", "tray", "pluginMenu"],
+            "placements": [
+                "quickMenu",
+                "tray",
+                "pluginMenu"
+            ],
             "icon": "refresh"
         }
     ],
@@ -15,6 +41,5 @@
         "minWidth": 80,
         "priority": 30,
         "overflow": "menu"
-    },
-    "settingsQml": "SysInfoSettings.qml"
+    }
 }

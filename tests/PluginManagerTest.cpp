@@ -4,6 +4,9 @@
 #include "PluginManager.h"
 #include "PluginReconciler.h"
 #include "PluginChangeSet.h"
+#include "PluginManifest.h"
+#include "PluginRuntime.h"
+#include "barplugin/IBarPlugin2.h"
 #include "barplugin/EventBus.h"
 
 #include <QDir>
@@ -60,6 +63,86 @@ class PluginManagerTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void builtInDllsExposeOnlyV2AndMatchTheirManifests() {
+        const QDir root(qEnvironmentVariable("XUANHUB_TEST_PLUGINS"));
+        auto environment = PluginValidationEnvironment::current();
+        environment.hostVersion = QStringLiteral(XUANHUB_VERSION);
+        for (const QString& id : {QStringLiteral("clock"), QStringLiteral("sysinfo"),
+                                  QStringLiteral("xuanhub_menu"), QStringLiteral("pybridge")}) {
+            const QString directory = root.filePath(id);
+            const auto manifest = PluginManifest::load(directory, id + QStringLiteral(".dll"),
+                                                        environment);
+            QVERIFY2(manifest.ok, qPrintable(id + QStringLiteral(": ") + manifest.error));
+            QCOMPARE(manifest.descriptor.apiVersion, 2);
+            QPluginLoader loader(QDir(directory).filePath(id + QStringLiteral(".dll")));
+            loader.setLoadHints(QLibrary::LoadHints{});
+            const QString iid = loader.metaData().value(QStringLiteral("IID")).toString();
+            QCOMPARE(iid, QStringLiteral("xuanhub.BarPlugin/2.0"));
+            QObject* instance = loader.instance();
+            QVERIFY2(instance, qPrintable(loader.errorString()));
+            QVERIFY(qobject_cast<xuanhub::IBarPlugin2*>(instance));
+            QVERIFY(!qobject_cast<xuanhub::IBarPlugin*>(instance));
+            QString error;
+            auto runtime = PluginRuntime::create(instance, iid, &error);
+            QVERIFY2(runtime, qPrintable(error));
+            QVERIFY2(runtime->descriptorMatches(manifest.descriptor, &error), qPrintable(error));
+            runtime.reset();
+            QVERIFY2(loader.unload(), qPrintable(loader.errorString()));
+        }
+    }
+
+    void nativeMenuUsesScopedV2EventsAndRetainedState() {
+        xuanhub::EventBus bus;
+        QVERIFY(bus.setState(QStringLiteral("app.quickMenu.state"),
+            {{QStringLiteral("themeMode"), QStringLiteral("light")},
+             {QStringLiteral("taskbarMode"), true}}));
+        PluginManager manager(&bus, QDir::tempPath());
+        const auto menu = entry(QStringLiteral("xuanhub_menu"));
+        manager.loadFrom(qEnvironmentVariable("XUANHUB_TEST_PLUGINS"), {menu});
+        QVERIFY2(manager.loadedPlugin(menu.id), qPrintable(manager.loadError(menu.id)));
+        QObject* vm = manager.loadedPlugin(menu.id)->viewModel;
+        // V2 投递必须排队；加载完成后回放宿主当前状态。
+        QCOMPARE(vm->property("themeMode").toString(), QStringLiteral("dark"));
+        QTRY_COMPARE(vm->property("themeMode").toString(), QStringLiteral("light"));
+        QVERIFY(vm->property("taskbarMode").toBool());
+        QSignalSpy trace(&bus, &xuanhub::EventBus::traceRecorded);
+        QVERIFY(QMetaObject::invokeMethod(vm, "requestState"));
+        QCOMPARE(trace.last().at(0).toString(), QStringLiteral("app.quickMenu.requestState"));
+        QCOMPARE(trace.last().at(1).toString(), QStringLiteral("plugin.xuanhub_menu"));
+        QVERIFY(QMetaObject::invokeMethod(vm, "invokeAction",
+            Q_ARG(QString, QStringLiteral("settings")), Q_ARG(bool, false)));
+        QCOMPARE(trace.last().at(0).toString(), QStringLiteral("app.quickMenu.command"));
+        QCOMPARE(trace.last().at(1).toString(), QStringLiteral("plugin.xuanhub_menu"));
+        QPointer<QObject> oldVm(vm);
+        QVERIFY(bus.setState(QStringLiteral("app.quickMenu.state"),
+                             {{QStringLiteral("themeMode"), QStringLiteral("dark")}}));
+        // 排队回调尚未执行时卸载，必须清除作用域后再删除 DLL 中的对象。
+        QVERIFY(manager.stopOne(menu.id));
+        QVERIFY(oldVm.isNull());
+        QCoreApplication::processEvents();
+    }
+
+    void pythonHostConfigUpdatePreservesRunningChild() {
+        xuanhub::EventBus bus;
+        PluginManager manager(&bus, QDir::tempPath());
+        auto bridge = entry(QStringLiteral("pybridge"));
+        const auto child = entry(QStringLiteral("py_hello"));
+        manager.loadFrom(qEnvironmentVariable("XUANHUB_TEST_PLUGINS"), {bridge, child});
+        QVERIFY(manager.isLoaded(bridge.id));
+        QVERIFY2(manager.loadedPlugin(child.id), qPrintable(manager.loadError(child.id)));
+        QObject* vm = manager.loadedPlugin(child.id)->viewModel;
+        QTRY_VERIFY_WITH_TIMEOUT(!vm->property("values").toMap().isEmpty(), 5000);
+        const auto processId = vm->property("health").toMap().value(QStringLiteral("processId"));
+        QVERIFY(processId.toLongLong() > 0);
+        bridge.config.insert(QStringLiteral("futureSetting"), true);
+        QCOMPARE(manager.applyConfig(bridge), PluginManager::ConfigApplyResult::Applied);
+        QCOMPARE(manager.loadedPlugin(child.id)->viewModel, vm);
+        QCOMPARE(vm->property("health").toMap().value(QStringLiteral("processId")), processId);
+        QCOMPARE(manager.configStates().value(bridge.id).toMap()
+                     .value(QStringLiteral("state")).toString(), QStringLiteral("applied"));
+        manager.shutdownAll();
+    }
+
     void rejectedConfigRetriesWithoutRestartingPeer() {
         xuanhub::EventBus bus;
         PluginManager manager(&bus, QDir::tempPath());
@@ -422,8 +505,22 @@ private Q_SLOTS:
         QCOMPARE(migration->targetVersion, 2);
         QCOMPARE(migration->config.value(QStringLiteral("format")).toString(),
                  QStringLiteral("HH:mm:ss"));
-        QCOMPARE(manager.loadedPlugin(menu.id)->apiVersion, 1);
+        QVERIFY(manager.loadedPlugin(menu.id));
+        QVERIFY(manager.loadedPlugin(sysinfo.id));
+        QCOMPARE(manager.loadedPlugin(menu.id)->apiVersion, 2);
+        QCOMPARE(manager.loadedPlugin(sysinfo.id)->apiVersion, 2);
         QCOMPARE(manager.loadedPlugin(sysinfo.id)->actions.size(), 1);
+        QObject* sysinfoVm = manager.loadedPlugin(sysinfo.id)->viewModel;
+        auto updatedSysinfo = sysinfo;
+        updatedSysinfo.config = {{QStringLiteral("intervalMs"), 400},
+                                 {QStringLiteral("itemsPerColumn"), 2}};
+        QCOMPARE(manager.applyConfig(updatedSysinfo), PluginManager::ConfigApplyResult::Applied);
+        QCOMPARE(manager.loadedPlugin(sysinfo.id)->viewModel, sysinfoVm);
+        QCOMPARE(sysinfoVm->property("itemsPerColumn").toInt(), 2);
+        auto invalidSysinfo = updatedSysinfo;
+        invalidSysinfo.config.insert(QStringLiteral("intervalMs"), QStringLiteral("invalid"));
+        QCOMPARE(manager.applyConfig(invalidSysinfo), PluginManager::ConfigApplyResult::Rejected);
+        QCOMPARE(sysinfoVm->property("itemsPerColumn").toInt(), 2);
         const QVariantMap refreshed = manager.invokeAction(
             sysinfo.id, QStringLiteral("refresh"));
         QVERIFY(refreshed.value(QStringLiteral("accepted")).toBool());

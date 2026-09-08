@@ -1,11 +1,11 @@
 // PyBridgePlugin.h — Python 桥接宿主插件（进程隔离版）
-// IBarPlugin 外壳 + IBarPluginHost：扫描 plugins_py，并为每个子插件创建独立 worker 代理。
+// IBarPlugin2 外壳 + IBarPluginHost：扫描 plugins_py，并为每个子插件创建独立 worker 代理。
 #pragma once
 #include <QObject>
 #include <QHash>
 #include <QJsonObject>
 #include <QList>
-#include "barplugin/IBarPlugin.h"
+#include "barplugin/IBarPlugin2.h"
 #include "barplugin/IBarPluginHost.h"
 #include "barplugin/IBarPluginHostLifecycle.h"
 #include "barplugin/IBarPluginHostConfigurable.h"
@@ -18,7 +18,7 @@
 
 class QProcess;
 
-class PyBridgePlugin : public QObject, public xuanhub::IBarPlugin,
+class PyBridgePlugin : public QObject, public xuanhub::IBarPlugin2,
                        public xuanhub::IBarPluginHost,
                        public xuanhub::IBarPluginHostLifecycle,
                        public xuanhub::IBarPluginHostConfigurable,
@@ -29,8 +29,8 @@ class PyBridgePlugin : public QObject, public xuanhub::IBarPlugin,
                        public xuanhub::IBarPluginHostEventBus,
                        public xuanhub::IBarPluginHostServices {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID "xuanhub.BarPlugin/1.0" FILE "metadata.json")
-    Q_INTERFACES(xuanhub::IBarPlugin xuanhub::IBarPluginHost
+    Q_PLUGIN_METADATA(IID "xuanhub.BarPlugin/2.0" FILE "metadata.json")
+    Q_INTERFACES(xuanhub::IBarPlugin2 xuanhub::IBarPluginHost
                  xuanhub::IBarPluginHostLifecycle
                  xuanhub::IBarPluginHostConfigurable
                  xuanhub::IBarPluginHostConfigMigration
@@ -40,12 +40,14 @@ class PyBridgePlugin : public QObject, public xuanhub::IBarPlugin,
                  xuanhub::IBarPluginHostEventBus
                  xuanhub::IBarPluginHostServices)
 public:
-    // IBarPlugin
-    xuanhub::PluginMetadata metadata() const override;
-    bool init(xuanhub::BarPluginContext* ctx) override;
+    // IBarPlugin2
+    xuanhub::PluginDescriptor descriptor() const override;
+    xuanhub::PluginInitResult initialize(const xuanhub::PluginContext2& context) override;
+    xuanhub::PluginConfigValidationResult validateConfig(const QVariantMap& config) const override;
+    xuanhub::PluginConfigApplyResult applyConfig(const QVariantMap& config) override;
     QObject* viewModel() override;   // 宿主自身无可视界面，返回 nullptr
     QUrl qmlUrl() const override;    // 宿主自身无 QML
-    void shutdown() override;        // 异步终止全部子插件 worker；不等待，避免卡住 GUI
+    void shutdown() override;        // 关闭子插件并收口进程回收，保证 DLL 可安全卸载
 
     // IBarPluginHost（两阶段：先枚举 id，核心按 config 过滤后再实例化）
     QStringList subPluginIds() override;
@@ -70,7 +72,8 @@ Q_SIGNALS:
                                             const QString& error);
 
 private:
-    xuanhub::BarPluginContext m_ctx;   // 拷贝保存（init 传入的 ctx 是核心栈上对象）
+    xuanhub::PluginContext2 m_ctx;     // 服务借用到 shutdown；配置与目录按值保存
+    bool m_initialized = false;
     QHash<QString, QString> m_dirs;    // id → 子插件目录（subPluginIds 扫描结果）
     QHash<QString, QJsonObject> m_manifests; // id → 已通过预检的 plugin.json
     QHash<QString, int> m_configVersions; // id → config.json 当前版本

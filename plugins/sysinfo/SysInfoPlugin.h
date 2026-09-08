@@ -3,27 +3,25 @@
 #include <QObject>
 #include <QUrl>
 #include <QPointer>
-#include "barplugin/IBarPlugin.h"
-#include "barplugin/IBarPluginConfigurable.h"
+#include "barplugin/IBarPlugin2.h"
 
 class SysInfoWorker;
 class SysInfoViewModel;
 class QThread;
 
-class SysInfoPlugin : public QObject, public xuanhub::IBarPlugin,
-                      public xuanhub::IBarPluginConfigurable {
+class SysInfoPlugin : public QObject, public xuanhub::IBarPlugin2 {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID "xuanhub.BarPlugin/1.0" FILE "metadata.json")
-    Q_INTERFACES(xuanhub::IBarPlugin xuanhub::IBarPluginConfigurable)
+    Q_PLUGIN_METADATA(IID "xuanhub.BarPlugin/2.0" FILE "metadata.json")
+    Q_INTERFACES(xuanhub::IBarPlugin2)
 
 public:
-    xuanhub::PluginMetadata metadata() const override;
-    bool    init(xuanhub::BarPluginContext* ctx) override;
+    xuanhub::PluginDescriptor descriptor() const override;
+    xuanhub::PluginInitResult initialize(const xuanhub::PluginContext2& context) override;
     QObject* viewModel() override;
     QUrl    qmlUrl() const override;
     void    shutdown() override;
-    QString validateConfig(const QVariantMap& config) const override;
-    bool applyConfig(const QVariantMap& config) override;
+    xuanhub::PluginConfigValidationResult validateConfig(const QVariantMap& config) const override;
+    xuanhub::PluginConfigApplyResult applyConfig(const QVariantMap& config) override;
 
 private:
     QPointer<SysInfoViewModel> m_vm;

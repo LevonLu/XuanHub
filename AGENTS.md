@@ -19,7 +19,7 @@
 | UI | Qt 6.9.3 — Qt Quick / QML（另有 Widgets、Network） |
 | 编译器 | **MSVC 2022（VS 17，x64）**；不支持 MinGW 工具链 |
 | 构建 | CMake ≥ 3.21 + `CMakePresets.json`，VS 17 2022 生成器 |
-| 插件加载 | `QPluginLoader` + `Q_PLUGIN_METADATA`；新插件使用 `xuanhub.BarPlugin/2.0`，V1 与 host IID 保持兼容 |
+| 插件加载 | `QPluginLoader` + `Q_PLUGIN_METADATA`；全部内置原生插件使用 `xuanhub.BarPlugin/2.0`；外部 V1 由适配器兼容，host 扩展 IID 独立版本化 |
 | Python 桥接 | Qt `QTcpServer/QTcpSocket` + 每子插件独立 `python.exe` worker；4 字节长度前缀 JSON、一次性随机令牌认证，仅绑定 `127.0.0.1` |
 | 系统 API | Win32：`SHAppBarMessage`、`GetIfTable2`、注册表 Run 键、`RegisterWindowMessage("TaskbarCreated")` |
 | 配置 | JSON（`QJsonDocument`），热重载（`QFileSystemWatcher`） |
@@ -89,9 +89,9 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 扫描 `<exeDir>/plugins/*/metadata.json` 与 DLL → 在执行代码前校验 Manifest、路径、宿主范围、
 SDK、架构、依赖和权限 → 加载 DLL 并按 IID 选择 `IBarPlugin2` 或 V1 适配器 → 按依赖拓扑与配置
 初始化 → 注入作用域化事件、HostServices、语言、主题和插件配置 → 收入 `PluginListModel`。V2 的
-sidecar 与运行时 Descriptor 必须一致；V1 继续兼容，但新插件契约以 `docs/plugin-sdk-v2.md` 为准。
+sidecar 与运行时 Descriptor 必须一致；内置 `clock/sysinfo/xuanhub_menu/pybridge` 均实现 V2；外部 V1 继续兼容，公开契约以 `docs/plugin-sdk-v2.md` 为准。
 
-**host 插件分支**：`init` 后若命中 `IBarPluginHost`（如 pybridge），自身不进可见列表，走两阶段契约：`subPluginIds()` 枚举 → 核心按 config 过滤 → `createSubPlugin(id, cfg)` 实例化。子插件以 `iface=nullptr` 收入模型（生命周期归 host）；`shutdownAll()` 中 host **最后** shutdown（子插件 VM 依赖 host 持有的运行时），随后统一 `unload()`。
+**host 插件分支**：`initialize` 后若命中 `IBarPluginHost`（如 pybridge），自身不进可见列表，走两阶段契约：`subPluginIds()` 枚举 → 核心按 config 过滤 → `createSubPlugin(id, cfg)` 实例化。子插件以 `iface=nullptr` 收入模型（生命周期归 host）；`shutdownAll()` 中 host **最后** shutdown（子插件 VM 依赖 host 持有的运行时），随后统一 `unload()`。
 
 ### QML 契约（写插件时必须遵守）
 
@@ -118,7 +118,7 @@ sidecar 与运行时 Descriptor 必须一致；V1 继续兼容，但新插件契
 - 高频插件可声明 `PUSH_VALUES = True`，用 `xuanhub_host.emit_values/emit_event` 从后台线程写入 bridge 队列；后台线程绝不直接写 socket。Worker 和 Qt 代理双层合并 values patch，以 sequence 防乱序；事件队列两端各限 128，满时丢弃最新。push-only 插件初始 `update()` 后停用周期轮询，交互和配置变更后仍兼容刷新一次；范式见 `plugins_py/heartrate/`。
 - worker 只连随机端口的 `127.0.0.1`，先以一次性 256-bit token 认证，再收取 `init` 配置；API Key 等敏感 config 不放进 worker 命令行。`PyBridgeProtocol` 统一处理 4 字节长度前缀 JSON、4 MiB 单包和 32 层深度限制；V2 hello 绑定 protocol/pluginId/capabilities，缺少这些字段的旧 hello 按 V1 兼容。请求超时 15 秒。`config.intervalMs` 缺省 1000ms 并钳制到 100–60000ms，下一次刷新从上次完成后计时，不积压 `update`。崩溃/超时仅重启本插件 worker，UI 保留旧值；10 分钟内连续 5 次 Worker/IPC 故障后熔断，设置页可观察健康指标并手动清除熔断、只重启目标插件。
 - 卸载时代理先断开 IPC，worker 在 EOF 的 `finally` 中尽力调用 `stop()`；宽限后由常驻 `barplugin` 的 `ProcessReaper` 终止并兜底 kill。**不可**在 pybridge DLL 留下异步 lambda 回调给已卸载对象，必须交给 `ProcessReaper`。
-- 标准库定位顺序：exe 旁 Bundle（`python.exe` + `Lib/`）→ 用户 `PYTHONHOME` → cache 变量 `XUANHUB_PYTHON_HOME_FALLBACK` → 注册表 `PythonCore` → `py -3` → PATH。全部未命中时 `subPluginIds()` 返回空并经 EventBus `app.notify` 托盘提示。调试钩子 `XUANHUB_DISABLE_PYTHON=1` 强制停用；检测结果仍存 qApp 动态属性以跨 pybridge 热重载保持。
+- 标准库定位顺序：exe 旁 Bundle（`python.exe` + `Lib/`）→ 用户 `PYTHONHOME` → cache 变量 `XUANHUB_PYTHON_HOME_FALLBACK` → 注册表 `PythonCore` → `py -3` → PATH。全部未命中时 `subPluginIds()` 返回空，并通过已声明 `notifications` 权限的 HostServices 托盘提示。调试钩子 `XUANHUB_DISABLE_PYTHON=1` 强制停用；检测结果仍存 qApp 动态属性以跨 pybridge 热重载保持。
 
 #### 无 Qt/MSVC 的 Python 插件开发路径（Agent 决策规则）
 

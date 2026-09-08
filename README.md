@@ -151,306 +151,38 @@ Python/Protocol V2 隔离路径。`experiments/native_worker/` 已验证原生�
 
 ---
 
-# C++ 插件开发（SDK V2 优先）
+# C++ 插件开发（SDK V2）
 
-新插件必须优先采用 `IBarPlugin2` 与 IID `xuanhub.BarPlugin/2.0`。完整的 Manifest、配置迁移、
-HostServices、EventBus V2、声明式动作、响应式布局和 V1 迁移步骤，以
-[`docs/plugin-sdk-v2.md`](docs/plugin-sdk-v2.md) 为准；可独立构建的参考插件位于
-[`examples/plugins/v2_demo/`](examples/plugins/v2_demo/)。以下 V1 内容仅用于维护既有插件，
-不再作为新插件模板。
+内置 `clock`、`sysinfo`、`xuanhub_menu` 和 `pybridge` 均实现 `IBarPlugin2`，使用 IID
+`xuanhub.BarPlugin/2.0`。宿主只为外部旧插件保留 V1 适配；开发和迁移统一按
+[`docs/plugin-sdk-v2.md`](docs/plugin-sdk-v2.md) 的公开契约进行。
 
-## V1 兼容模型速览
+使用开发者 CLI 创建 V2 骨架，再实现功能：
 
-- 旧插件是 Qt 插件机制的 **MODULE DLL**，经 `Q_PLUGIN_METADATA(IID "xuanhub.BarPlugin/1.0")` 声明身份；
-- 宿主仍会兼容加载 `IBarPlugin/1.0`，但 V1 不提供 SDK V2 的发现期兼容协商、权限服务和结构化结果；
-- 插件**只链接 `barplugin`** 接口库，对宿主核心零依赖；核心只通过接口拿到 `QObject* viewModel()` 与 `QUrl qmlUrl()`，QML 实例化由核心统一完成。
-
-## 安装结构（= 源码目录结构）
-
-```
-plugins/
-└── myplugin/
-    ├── MyPlugin.h / MyPlugin.cpp      # 插件入口类（实现 IBarPlugin）
-    ├── MyViewModel.h / .cpp           # 暴露给 QML 的数据/行为模型
-    ├── MyPlugin.qml                   # 界面（裸文件，免重编 DLL 即可改样式）
-    ├── metadata.json                  # 元数据（烧进 DLL，也是发现阶段的权威来源）
-    └── CMakeLists.txt
+```powershell
+python scripts/xuanhub_plugin.py create plugins/myplugin --runtime native --id myplugin --name "My Plugin"
+python scripts/xuanhub_plugin.py validate plugins/myplugin
+pixi run build
+python scripts/xuanhub_plugin.py validate build/default/dist/Release/plugins/myplugin
+python scripts/xuanhub_plugin.py run build/default/dist/Release/plugins/myplugin
+python scripts/xuanhub_plugin.py doctor build/default/dist/Release/plugins/myplugin
 ```
 
-构建产出的运行时布局：`<exeDir>/plugins/myplugin/myplugin.dll + MyPlugin.qml + metadata.json`。**三个文件缺一不可**。
-
-## V1 接口契约
-
-`lib/barplugin/include/barplugin/IBarPlugin.h`：
-
-```cpp
-namespace xuanhub {
-
-struct PluginMetadata {                 // PluginMetadata.h
-    QString id;          // 全局唯一，配置/EventBus 寻址用
-    QString displayName; // 显示名
-    QString version;
-    QString author;
-};
-
-struct BarPluginContext {               // BarPluginContext.h，init 时注入
-    EventBus*   eventBus = nullptr;     // 事件总线（进程内单例）
-    QString     configDir;              // %APPDATA%/XuanHub
-    QVariantMap pluginConfig;           // config.json 里本插件的 config 段
-};
-
-class IBarPlugin {
-public:
-    virtual ~IBarPlugin() = default;
-    virtual PluginMetadata metadata() const = 0;        // 元数据
-    virtual bool init(BarPluginContext* ctx) = 0;       // 初始化，返回 false 视为加载失败
-    virtual QObject* viewModel() = 0;                   // 暴露给 QML 的模型，可为 nullptr
-    virtual QUrl qmlUrl() const = 0;                    // 相对 DLL 目录的 QML 文件名
-    virtual void shutdown() = 0;                        // 卸载前清理（先停线程，再删对象）
-};
-
-}
-Q_DECLARE_INTERFACE(xuanhub::IBarPlugin, "xuanhub.BarPlugin/1.0")
-```
-
-铁律：
-
-- 接口**绝不返回** `QWidget*` / `QQuickItem*` —— 界面一律走 QML；
-- `viewModel()` 返回的对象生命周期归插件自己管，`shutdown()` 里必须删干净（宿主随后会 `unload()` DLL，泄漏的 QObject 会执行已释放的代码）。
-
-## V1 最小示例
-
-以精简版时钟为例（实际可照抄 `plugins/clock/`）。
-
-`MyPlugin.h`：
-
-```cpp
-// MyPlugin.h — 最小示例插件入口
-#pragma once
-#include <QObject>
-#include <QUrl>
-#include "barplugin/IBarPlugin.h"
-
-class MyViewModel;
-
-class MyPlugin : public QObject, public xuanhub::IBarPlugin {
-    Q_OBJECT
-    Q_PLUGIN_METADATA(IID "xuanhub.BarPlugin/1.0" FILE "metadata.json")
-    Q_INTERFACES(xuanhub::IBarPlugin)
-
-public:
-    xuanhub::PluginMetadata metadata() const override;
-    bool    init(xuanhub::BarPluginContext* ctx) override;
-    QObject* viewModel() override;
-    QUrl    qmlUrl() const override;
-    void    shutdown() override;
-
-private:
-    MyViewModel* m_vm = nullptr;
-};
-```
-
-`MyPlugin.cpp`：
-
-```cpp
-// MyPlugin.cpp
-#include "MyPlugin.h"
-#include "MyViewModel.h"
-
-using namespace xuanhub;
-
-static const PluginMetadata kMeta = {
-    QStringLiteral("myplugin"),
-    QStringLiteral("MyPlugin"),
-    QStringLiteral("0.1.0"),
-    QStringLiteral("you"),
-};
-
-PluginMetadata MyPlugin::metadata() const { return kMeta; }
-
-bool MyPlugin::init(BarPluginContext* ctx) {
-    const QVariantMap cfg = ctx ? ctx->pluginConfig : QVariantMap();
-    m_vm = new MyViewModel();
-    // 从 config.json 的本插件 config 段读配置
-    const QString fmt = cfg.value(QStringLiteral("format")).toString();
-    if (!fmt.isEmpty()) m_vm->setFormat(fmt);
-    m_vm->start();
-    return true;
-}
-
-QObject* MyPlugin::viewModel() { return m_vm; }
-
-QUrl MyPlugin::qmlUrl() const { return QUrl(QStringLiteral("MyPlugin.qml")); }
-
-void MyPlugin::shutdown() {
-    if (m_vm) {
-        m_vm->stop();      // 先停 QTimer / 线程
-        delete m_vm;       // 再删对象
-        m_vm = nullptr;
-    }
-}
-```
-
-`MyViewModel.h`（数据模型：`Q_PROPERTY` + `QTimer`）：
-
-```cpp
-// MyViewModel.h — 暴露给 QML 的数据模型
-#pragma once
-#include <QObject>
-#include <QString>
-
-class QTimer;
-
-class MyViewModel : public QObject {
-    Q_OBJECT
-    // QML 里用 plugin.timeText 绑定；值变化必须 emit timeTextChanged()
-    Q_PROPERTY(QString timeText READ timeText NOTIFY timeTextChanged)
-
-public:
-    explicit MyViewModel(QObject* parent = nullptr);
-    ~MyViewModel() override;
-
-    QString timeText() const { return m_timeText; }
-    void setFormat(const QString& f);
-    void start();
-    void stop();
-
-signals:
-    void timeTextChanged();
-
-private:
-    QTimer* m_timer;
-    QString m_timeText;
-    QString m_format = QStringLiteral("HH:mm:ss");
-};
-```
-
-`MyPlugin.qml`（界面契约）：
-
-```qml
-// MyPlugin.qml — 根 Item 必须声明 property var plugin，框架加载后注入 viewModel
-import QtQuick
-
-Item {
-    id: root
-    property var plugin
-
-    width: 110          // 宽度自定；高度由宿主槽位接管（跟随栏高），这里写的仅作回退
-    height: 40
-
-    // 主题色统一从宿主 context property 取（见「QML 运行环境」）
-    Text {
-        anchors.centerIn: parent
-        color: themeManager ? themeManager.colors.fg : "#cdd6f4"
-        font.pixelSize: 16
-        text: plugin ? plugin.timeText : "--:--:--"   // 必须防御 plugin 为空
-    }
-
-    MouseArea {
-        anchors.fill: parent
-        onClicked: console.log("[MyPlugin] clicked")
-    }
-}
-```
-
-`metadata.json`：
-
-```json
-{
-    "id": "myplugin",
-    "name": "MyPlugin",
-    "version": "0.1.0",
-    "author": "you"
-}
-```
-
-`id` 必须与 `Q_PLUGIN_METADATA` 所在类返回的 `metadata().id` 一致、全局唯一；启用方式是在 `config.json` 的 `plugins` 数组加 `{ "id": "myplugin", "position": "right", "order": 0, "config": {} }`。
-
-## CMake 模板
-
-照抄 `plugins/clock/CMakeLists.txt`，关键点一个都不能少：
-
-```cmake
-add_library(myplugin MODULE
-    MyPlugin.h MyPlugin.cpp
-    MyViewModel.h MyViewModel.cpp
-)
-set_target_properties(myplugin PROPERTIES AUTOMOC ON)
-
-target_link_libraries(myplugin PRIVATE barplugin Qt6::Core)
-target_include_directories(myplugin PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-
-# 产出 myplugin.dll（无 lib 前缀），与 QML/元数据同目录
-set_target_properties(myplugin PROPERTIES
-    PREFIX ""
-    OUTPUT_NAME myplugin
-    RUNTIME_OUTPUT_DIRECTORY "${XUANHUB_BIN_DIR}/plugins/myplugin"
-)
-
-# VS 生成器下 MODULE 的 .dll 不走 RUNTIME_OUTPUT_DIRECTORY，POST_BUILD 是兜底，必须保留
-add_custom_command(TARGET myplugin POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<TARGET_FILE:myplugin>" "${XUANHUB_BIN_DIR}/plugins/myplugin/myplugin.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/MyPlugin.qml" "${XUANHUB_BIN_DIR}/plugins/myplugin/MyPlugin.qml"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/metadata.json" "${XUANHUB_BIN_DIR}/plugins/myplugin/metadata.json"
-)
-```
-
-然后在顶层 `CMakeLists.txt` 加 `add_subdirectory(plugins/myplugin)`。需要系统库就在 `target_link_libraries` 里加（如网络类插件链接 `iphlpapi ws2_32`，参考 `plugins/sysinfo/`）。
-
-## QML 运行环境
-
-插件 QML 与宿主**同一 QML 引擎**，可直接访问宿主根上下文的 context property：
-
-- `themeManager`：`themeManager.colors` 是 11 字段色板 QVariantMap——`bg / panel / fg / muted / accent / danger / success / warning / hover / border / onAccent`，另有 `themeId`、`mode`。配色一律从这里取，不要在插件里硬编码色板；
-- `barConfig`：栏配置（高度等）；
-- `pluginModel`：插件列表模型（一般插件用不到）。
-
-注意：
-
-- **不用 `QML_ELEMENT` 静态注册**——外部 DLL 无法在宿主编译期注册类型，`Loader + source URL` 是既定方案；
-- 插件 QML 以**裸文件**放 DLL 同目录（不进 qrc），改样式不用重编 DLL，重新构建（POST_BUILD 拷贝）后重启即生效；
-- QML 加载失败时槽位会绘制红色占位符，真实错误在 `xuanhub.log` 的 QML 引擎 qWarning 里；
-- 插件根 Item 的宽度自定（决定它在栏上占多宽），**高度被槽位强制为栏高**。
-
-## 线程模型（铁律）
-
-后台采集（网络、系统指标等耗时操作）必须用 Qt 惯用法，参照 `plugins/sysinfo/SysInfoWorker.{h,cpp}`：
-
-- `QObject` 派生 worker + `moveToThread` + `QTimer` 驱动；**禁用** `std::thread` / `QThreadPool`；
-- worker 只算数和 `emit` 信号，**绝不触碰**任何 ViewModel / QML 对象；跨线程靠 `Qt::AutoConnection` 自动排队到 GUI 线程，由 ViewModel 的 slot 更新 `Q_PROPERTY`；
-- `shutdown()` 必须先 `workerThread->quit(); workerThread->wait();` 再销毁对象。
-
-## 插件设置声明（settings / settingsQml）
-
-`metadata.json` 里可声明该插件在设置窗口中的设置区（可选）：
-
-- `settings`：分组 → 字段两级的 schema，框架自动生成表单。字段类型：`bool` / `int`（min/max/step）/ `double` / `string` / `color` / `enum`（options）/ `json`；完整契约见 `plugins_py/README.md` 的「设置项声明」一节（两种插件共用同一 schema）；
-- `settingsQml`：声明插件自绘设置页（相对 DLL 目录的 QML 文件），适合列表/表格等复杂设置；与 `settings` 并存时**自绘优先**。示例见 `plugins/sysinfo/SysInfoSettings.qml`：根 Item 声明 `property var plugin`，注入的是 config 草稿桥，经 `plugin.value(key)` / `plugin.setValue(key, v)` 读写草稿，保存/取消由设置窗口统一。
-
-编辑结果写入 `config.json` 的本插件 config 段，保存后热重载生效——即插件会在 `init()` 里拿到新值。
-
-## EventBus（插件间通信）
-
-插件间不直接互调，走 `ctx->eventBus`（`xuanhub::EventBus`，QObject）：
-
-```cpp
-// 订阅：slot 形如 onPayload(QVariantMap)，接收者以 QPointer 持有防悬空。
-// 注意传裸签名串而非 SLOT() 宏（投递走 QMetaObject::invokeMethod，不接受 "1" 前缀）
-ctx->eventBus->subscribe(QStringLiteral("theme.changed"), this, "onPayload(QVariantMap)");
-// 退订（shutdown 时）
-ctx->eventBus->unsubscribe(QStringLiteral("theme.changed"), this);
-// 发布
-ctx->eventBus->publish(QStringLiteral("my.topic"), QVariantMap{{"key", 1}});
-```
-
-现有 topic：`theme.changed`（主题切换时发布，payload 含 `themeId` 与 `mode`）。
-
-## ABI 警告（重要）
-
-插件 DLL 与宿主存在严格的 ABI 锁定：**同 Qt 版本（6.9.3）、同编译器（MSVC 2022 x64）、同 CRT（Release `/MD` / Debug `/MDd`）**，否则会在发现期被拒绝，绕过检查还可能崩溃。SDK V2 可先用 `cmake --install` 生成独立 CMake 包，再按 `examples/plugins/v2_demo/` 构建；维护仓库内 V1 插件时仍应使用同一构建树。准确步骤见 [`docs/plugin-sdk-v2.md`](docs/plugin-sdk-v2.md#构建约束)。
+仓库内插件需要将自己的目录接入顶层 CMake；独立 SDK 构建参考
+[`examples/plugins/v2_demo/`](examples/plugins/v2_demo/)。插件只链接共享 `barplugin` 与必要的
+Qt/系统库，不能依赖宿主 `app/` 源码；Qt、MSVC、x64 和 CRT 必须与宿主一致。
+
+- `descriptor()` 与 `metadata.json` 的 V2 字段保持一致，供宿主在加载前预检。
+- `initialize/validateConfig/applyConfig/shutdown` 提供结构化结果；配置变更优先原地应用。
+- QML 声明 `plugin` 和 `pluginContext`，通过后者获取主题、语言、屏幕和弹窗/动作服务。
+- 后台工作使用 `QObject + QThread + QTimer`；卸载前停止线程并销毁 DLL 创建的对象。
+- 自绘设置页声明在 `entry.settingsQml`，事件通过 `PluginContext2::eventScope` 使用 V2 信封。
+
+按功能参考 [`plugins/clock/`](plugins/clock/)（基本生命周期与配置迁移）、
+[`plugins/sysinfo/`](plugins/sysinfo/)（后台采集、自绘设置与动作）、
+[`plugins/xuanhub_menu/`](plugins/xuanhub_menu/)（作用域事件与宿主菜单）和
+[`plugins/pybridge/`](plugins/pybridge/)（组合 host 扩展接口）。完整 Manifest、权限、
+国际化、布局、设置及分发规则集中在 [SDK 文档](docs/plugin-sdk-v2.md) 中维护。
 
 ---
 
