@@ -118,6 +118,14 @@ void PluginHostServicesTest::exposesQmlContextWithoutIdentityOverride() {
     auto services = makeServices(directory.path(), QStringLiteral("plugin.qml"),
                                  {QStringLiteral("storage.private")});
     PluginContextObject context(&services, nullptr, nullptr);
+    QCOMPARE(context.contextVersion(), 1);
+    auto service = std::make_unique<QObject>();
+    context.setPopupService(service.get());
+    context.setActions(service.get());
+    QCOMPARE(context.popupService(), service.get());
+    service.reset();
+    QVERIFY(!context.popupService());
+    QVERIFY(!context.actions());
     QCOMPARE(context.pluginId(), QStringLiteral("plugin.qml"));
     QCOMPARE(context.trustLevel(), QStringLiteral("trusted-in-process"));
     QCOMPARE(context.activeLocale(), QStringLiteral("zh-CN"));

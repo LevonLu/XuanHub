@@ -7,6 +7,7 @@ Window {
 
     property Item anchorItem
     property var pluginContext
+    readonly property var hostPopups: pluginContext ? pluginContext.popupService : null
     property real gap: 6
     property int revealDelay: 50
     property bool closeOnDeactivate: true
@@ -25,17 +26,17 @@ Window {
     function screenGeometry() {
         if (pluginContext && pluginContext.screenGeometry)
             return pluginContext.screenGeometry
-        return (typeof barScreenGeometry !== "undefined") ? barScreenGeometry : null
+        return null
     }
 
     function barEdge() {
         if (pluginContext && pluginContext.barEdge)
             return pluginContext.barEdge
-        return (typeof barConfig !== "undefined" && barConfig) ? barConfig.barEdge : "top"
+        return "top"
     }
 
     function reposition() {
-        if (!anchorItem || typeof popupService === "undefined") {
+        if (!anchorItem || !hostPopups) {
             opacity = 1
             return
         }
@@ -45,7 +46,7 @@ Window {
             opacity = 1
             return
         }
-        const result = popupService.calculate({
+        const result = hostPopups.calculate({
             x: topLeft.x,
             y: topLeft.y,
             width: anchorItem.width,
@@ -61,8 +62,8 @@ Window {
             console.warn("[PluginPopup] anchorItem is required")
             return
         }
-        if (typeof popupService !== "undefined")
-            popupService.activate(popup)
+        if (hostPopups)
+            hostPopups.activate(popup)
         opacity = 0
         visible = true
         placementTimer.restart()
@@ -94,8 +95,8 @@ Window {
             opened()
         } else {
             opacity = 0
-            if (typeof popupService !== "undefined")
-                popupService.release(popup)
+            if (hostPopups)
+                hostPopups.release(popup)
             closed()
         }
     }
@@ -103,9 +104,7 @@ Window {
     onHeightChanged: if (visible) placementTimer.restart()
 
     Connections {
-        target: popup.pluginContext
-                ? popup.pluginContext
-                : ((typeof barWindow !== "undefined") ? barWindow : null)
+        target: popup.pluginContext || null
         function onBarPressed() {
             popup.wasOpenOnBarPress = popup.visible
             if (popup.closeOnBarPress && popup.visible)

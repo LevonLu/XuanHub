@@ -4,6 +4,7 @@
 #include "barplugin/HostServices.h"
 
 #include <QObject>
+#include <QPointer>
 #include <QStringList>
 #include <QVariantMap>
 
@@ -12,6 +13,9 @@ class PluginHostServices;
 class PluginContextObject final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString pluginId READ pluginId CONSTANT)
+    Q_PROPERTY(int contextVersion READ contextVersion CONSTANT)
+    Q_PROPERTY(QObject* popupService READ popupService WRITE setPopupService NOTIFY servicesChanged)
+    Q_PROPERTY(QObject* actions READ actions WRITE setActions NOTIFY servicesChanged)
     Q_PROPERTY(int apiVersion READ apiVersion CONSTANT)
     Q_PROPERTY(QString trustLevel READ trustLevel CONSTANT)
     Q_PROPERTY(QStringList declaredPermissions READ declaredPermissions CONSTANT)
@@ -28,6 +32,11 @@ public:
     PluginContextObject(PluginHostServices* services, QObject* localeNotifier,
                         QObject* themeNotifier, QObject* parent = nullptr);
 
+    int contextVersion() const { return 1; }
+    QObject* popupService() const { return m_popupService; }
+    QObject* actions() const { return m_actions; }
+    void setPopupService(QObject* service);
+    void setActions(QObject* service);
     QString pluginId() const;
     int apiVersion() const;
     QString trustLevel() const;
@@ -61,6 +70,7 @@ public:
     Q_INVOKABLE void notifyBarPressed();
 
 Q_SIGNALS:
+    void servicesChanged();
     void localeChanged();
     void themeChanged();
     void screenGeometryChanged();
@@ -71,7 +81,9 @@ private:
     static QVariantMap resultMap(const xuanhub::HostServiceResult& result);
 
     PluginHostServices* m_services = nullptr;
-    QObject* m_themeNotifier = nullptr;
+    QPointer<QObject> m_themeNotifier;
+    QPointer<QObject> m_popupService;
+    QPointer<QObject> m_actions;
     QVariantMap m_screenGeometry;
     QString m_barEdge = QStringLiteral("top");
 };

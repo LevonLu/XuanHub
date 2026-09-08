@@ -123,7 +123,11 @@ set_tests_properties(xuanhub_qml_smoke_hello PROPERTIES
 
 add_executable(xuanhub_plugin_slot_health_tests
     PluginSlotHealthTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/PopupService.h
+    ${CMAKE_SOURCE_DIR}/app/src/PopupService.cpp
 )
+target_include_directories(xuanhub_plugin_slot_health_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/app/src)
 set_target_properties(xuanhub_plugin_slot_health_tests PROPERTIES AUTOMOC ON)
 set_target_properties(xuanhub_plugin_slot_health_tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${XUANHUB_BIN_DIR}")
@@ -656,6 +660,9 @@ if(Python_Interpreter_FOUND)
         PluginManagerTest.cpp
         ${CMAKE_SOURCE_DIR}/app/src/PluginManager.h
         ${CMAKE_SOURCE_DIR}/app/src/PluginManager.cpp
+        ${CMAKE_SOURCE_DIR}/app/src/PluginReconciler.cpp
+        ${CMAKE_SOURCE_DIR}/app/src/PluginCatalog.cpp
+        ${CMAKE_SOURCE_DIR}/app/src/PluginChangeSet.cpp
         ${CMAKE_SOURCE_DIR}/app/src/PluginManifest.h
         ${CMAKE_SOURCE_DIR}/app/src/PluginManifest.cpp
         ${CMAKE_SOURCE_DIR}/app/src/SemanticVersion.h

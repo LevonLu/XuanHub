@@ -2508,8 +2508,10 @@ Pane {
                 // 占用弹性宽度，从而始终让三个操作按钮紧凑地靠右对齐。
                 text: settingsVM.errorMessage.length > 0 ? settingsVM.errorMessage
                     : (root.invalidFields > 0
-                       ? root.trText("存在未修正的非法输入（红框项），修正后才能保存") : "")
-                color: root.c.danger
+                       ? root.trText("存在未修正的非法输入（红框项），修正后才能保存")
+                       : settingsVM.configStatusMessage)
+                color: settingsVM.errorMessage.length > 0 || root.invalidFields > 0
+                       || settingsVM.configApplyFailed ? root.c.danger : root.c.muted
                 font.pixelSize: UiMetrics.fontS
                 wrapMode: Text.Wrap
                 maximumLineCount: 2

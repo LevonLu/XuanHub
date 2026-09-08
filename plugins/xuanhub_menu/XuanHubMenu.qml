@@ -11,19 +11,20 @@ Item {
     height: 40
 
     readonly property var colors: pluginContext ? pluginContext.colors
-                                                : (themeManager ? themeManager.colors : ({
+                                                : ({
         "bg": "#1e1e2e", "panel": "#313244", "fg": "#cdd6f4", "muted": "#7f849c",
         "accent": "#89b4fa", "danger": "#f38ba8", "hover": "#45475a",
         "border": "#45475a", "onAccent": "#1e1e2e"
-    }))
+    })
+    readonly property var actionService: pluginContext ? pluginContext.actions : null
     property bool menuOpenOnBarPress: false
     readonly property var declaredActions: {
-        if (typeof pluginActions === "undefined" || !pluginActions) return []
+        if (!root.actionService) return []
         // revision 建立动态状态依赖；actions() 返回当前本地化后的快照。
-        const currentRevision = pluginActions.revision
+        const currentRevision = root.actionService.revision
         const filterRevision = root.plugin ? root.plugin.actionFilterRevision : 0
         if (root.plugin && !root.plugin.pluginActionsEnabled) return []
-        const actions = pluginActions.actions("quickMenu")
+        const actions = root.actionService.actions("quickMenu")
         return actions.filter(function(action) {
             return action.pluginId !== "xuanhub_menu"
                 && (!root.plugin
@@ -46,8 +47,7 @@ Item {
     }
 
     Connections {
-        target: pluginContext ? pluginContext
-                              : (typeof barWindow !== "undefined" ? barWindow : null)
+        target: root.pluginContext || null
         function onBarPressed() {
             root.menuOpenOnBarPress = menuWin.visible
             menuWin.hide()
@@ -76,8 +76,7 @@ Item {
         let x = Math.round(anchorBelow.x - menuWin.width / 2)
         let y = Math.round(anchorBelow.y)
         const sg = pluginContext ? pluginContext.screenGeometry
-                                 : (typeof barScreenGeometry !== "undefined"
-                                    ? barScreenGeometry : null)
+                                 : null
         if (sg && sg.width > 0) {
             const right = sg.x + sg.width
             const bottom = sg.y + sg.height
@@ -251,8 +250,8 @@ Item {
                     enabled: modelData.enabled
                     onTriggered: {
                         menuWin.hide()
-                        if (typeof pluginActions !== "undefined" && pluginActions)
-                            pluginActions.invoke(modelData.pluginId, modelData.actionId)
+                        if (root.actionService)
+                            root.actionService.invoke(modelData.pluginId, modelData.actionId)
                     }
                 }
             }

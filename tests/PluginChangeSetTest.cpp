@@ -1,5 +1,6 @@
 // PluginChangeSetTest.cpp — 插件配置指纹与差异分类回归测试
 #include "PluginChangeSet.h"
+#include "PluginConfigTracker.h"
 
 #include <QtTest>
 
@@ -20,6 +21,33 @@ class PluginChangeSetTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void failedConfigKeepsConfirmedSnapshotAndCanRetry() {
+        PluginConfigTracker tracker;
+        auto old = entry(QStringLiteral("clock"));
+        tracker.applied(old);
+        auto next = old;
+        next.config.insert(QStringLiteral("format"), QStringLiteral("HH:mm"));
+        tracker.begin(next);
+        QVERIFY(PluginConfigDiff::calculate(tracker.entries(), {next}).isEmpty());
+        tracker.failed(next.id, QStringLiteral("rejected"));
+        QCOMPARE(PluginConfigDiff::calculate(tracker.entries(), {next}).configChanged,
+                 QStringList{next.id});
+        tracker.begin(next);
+        tracker.applied(next);
+        QVERIFY(PluginConfigDiff::calculate(tracker.entries(), {next}).isEmpty());
+        tracker.removed(next.id);
+        QVERIFY(tracker.entries().isEmpty());
+        QVERIFY(tracker.states().isEmpty());
+    }
+
+    void failedInitialConfigDoesNotBecomeApplied() {
+        PluginConfigTracker tracker;
+        const auto next = entry(QStringLiteral("py_test"));
+        tracker.begin(next);
+        tracker.failed(next.id, QStringLiteral("worker timed out"));
+        QCOMPARE(PluginConfigDiff::calculate(tracker.entries(), {next}).added,
+                 QStringList{next.id});
+    }
     void fingerprintIsStableAcrossInputOrder() {
         QVariantMap firstConfig;
         firstConfig.insert(QStringLiteral("z"), 2);

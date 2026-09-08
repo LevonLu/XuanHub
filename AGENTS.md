@@ -162,7 +162,7 @@ V2 的命名空间、异步投递、保留状态、请求响应、权限和背�
 
 **工作模式**：`bar.mode` = `appbar`（默认）/ `taskbar`。taskbar 选型：`SetParent` 嵌入 `Shell_TrayWnd` 是业界验证方案（TrafficMonitor 等；Deskband 已被 Win11 移除、顶层透明叠加有 z-order 缺陷，均未采用）。`TaskbarEmbed` 把 BarWindow `SetParent` 到 `Shell_TrayWnd`（强制 `WS_CHILD`、保留 `WS_EX_NOACTIVATE`），贴合任务栏左侧（`bar.taskbarOffsetX` 微调），高度跟随任务栏、背景全透明、宽度收缩为内容宽；500ms 轮询矫正位置与 z-order。explorer 重启时经 `TaskbarCreated` 与 `taskbarVanished` 双路触发 `recreateForTaskbar()` 重新嵌入（`TaskbarCreated` 是广播、进程内每个顶层窗口都收到，`TaskbarMonitor` 去重后顺延到事件循环只重建一次，不在消息分发栈内同步 destroy/create）。切换方式：改 config 热重载 / 托盘勾选项 / 设置窗口。
 
-**热重载**：保存 config.json 自动生效（`QFileSystemWatcher` + 300ms 防抖，重命名式保存后自动重挂；文件缺失期退而监视父目录，永不失挂）。`reload()` 顺序：`load()`（解析失败保留旧配置；**运行中文件丢失同样保留当前设置**——qrc 播种仅限首运行从未成功加载过时）→ theme 按文件覆盖 → 按插件 ID 计算差异。`position/order/width` 只增量更新模型，C++ `IBarPluginConfigurable` 与 Python `set_config` 支持原地应用配置，V1 插件只停止并重建目标实例；新增/删除也只处理目标 ID，失败不回滚或重启其他插件。旧第三方 host 无法独立销毁子插件时回退全量重载。操作 QML/DLL 的顺序始终是先从模型解除目标引用并处理 DeferredDelete，再 shutdown/unload。托盘 "重新加载配置" 走 `forceReload()` 无条件全量，作为 DLL 更新和灾难恢复入口。
+**热重载**：保存 config.json 自动生效（`QFileSystemWatcher` + 300ms 防抖，重命名式保存后自动重挂；文件缺失期退而监视父目录，永不失挂）。`reload()` 顺序：`load()`（解析失败保留旧配置；**运行中文件丢失同样保留当前设置**——qrc 播种仅限首运行从未成功加载过时）→ theme 按文件覆盖 → 按插件 ID 计算差异。`position/order/width` 只增量更新模型，C++ `IBarPluginConfigurable` 与 Python `set_config` 支持原地应用配置，V1 插件只停止并重建目标实例；新增/删除也只处理目标 ID，失败不回滚或重启其他插件。旧第三方 host 缺少独立销毁能力时在 init 前拒绝；host 子实例必须提供配置初始化与应用回执（见 SDK 文档），不再全量回退。配置以逐插件已确认快照计算差异，Python 入队仅表示 pending，失败后相同文件可再次重试。操作 QML/DLL 的顺序始终是先从模型解除目标引用并处理 DeferredDelete，再 shutdown/unload。托盘 "重新加载配置" 走 `forceReload()` 无条件全量，作为 DLL 更新和灾难恢复入口。
 
 **写回与设置窗口**：`ConfigService::save()` 用 QSaveFile 原子写，只改已知键、未知键不丢。设置窗口（托盘 "设置..." → `SettingsController` 懒建 + `SettingsWindow.qml`）只做一件事：校验后写 config.json，**生效全靠 watcher，不直接调 reload**。插件列表来自 config ∪ sidecar 元数据并集；`pybridge` 总开关保存时自动托管。**草稿过期保护**：打开窗口时快照配置指纹（bar 已知键 + plugins 数组原文，紧凑 JSON），apply 前重算比对，不一致（窗口打开期间被热重载/手动编辑改动）拒绝保存并提示重开窗口，防旧草稿静默覆盖外部改动；保存成功后更新指纹。插件条目草稿行内存原始 QJsonObject，导出以其为底只覆盖已知键（条目级手写未知键不丢）。开机自启逻辑在 `AutoStart.h`。设置窗口把 `themeManager.colors` 灌进根 `palette.*` 驱动全部自绘控件（`Ui*.qml` 只引用 palette）；**Popup/ComboBox 下拉是独立顶层窗口，palette 继承在窗口边界断裂**——弹出层内必须用主窗口控件的 `control.palette`（用 delegate 自身 `item.palette` 会回落系统 palette，深色模式下深文字配深背景，实测踩过）。
 
@@ -239,7 +239,7 @@ python scripts/xuanhub_plugin.py doctor <插件目录或运行时目录>
 - 文档总入口：`docs/README.md`；框架路线图：`docs/plugin-framework-roadmap.md`
 - 插件接口：`lib/barplugin/include/barplugin/IBarPlugin2.h`（V2）与 `IBarPlugin.h`（V1 兼容）；host 契约 `IBarPluginHost.h`
 - V2 上下文与服务：`IBarPlugin2.h` 中的 `PluginContext2`、`HostServices.h`、`PluginEventScope.h`；公开契约 `docs/plugin-sdk-v2.md`
-- 插件扫描/生命周期：`app/src/PluginManager.cpp`；QML 注入契约：`app/qml/PluginSlot.qml`
+- 插件发现：`app/src/PluginCatalog.cpp`；实例生命周期：`app/src/PluginManager.cpp`；增量配置：`app/src/PluginReconciler.cpp` + `PluginConfigTracker.h`；QML 注入契约：`app/qml/PluginSlot.qml`
 - 三栏布局：`app/qml/Bar.qml`；模型：`app/src/PluginListModel.h` + `PluginFilterModel`
 - 配置解析：`app/src/ConfigService.cpp`；热重载：`app/src/ConfigHotReloader.{h,cpp}`
 - 设置窗口：`app/src/SettingsController/SettingsViewModel/SettingsPluginModel/SettingsPluginSortModel/SettingsPluginProxy.{h,cpp}` + `app/qml/SettingsWindow.qml`；自绘设置页示例 `plugins/sysinfo/SysInfoSettings.qml`

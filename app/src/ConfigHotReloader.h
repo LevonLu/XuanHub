@@ -43,9 +43,7 @@ private:
     QString m_configDir;
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
-    // 上次生效的 plugins 段指纹：watcher 触发的 reload 若指纹未变（改的是主题/
-    // 高度等无关项）则跳过插件全量重载，不再无谓摧毁插件状态（弹窗、计时、
-    // Python 子插件运行时）；托盘手动重载走 forceReload 无条件全量
-    QString m_pluginsFingerprint;
-    QList<PluginConfigEntry> m_pluginEntries;
+    bool m_reloading = false;
+    bool m_forcePending = false;
+    bool m_deferredConfig = false;
 };

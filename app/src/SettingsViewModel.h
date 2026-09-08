@@ -40,6 +40,8 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(QAbstractItemModel* pluginModel READ pluginModel CONSTANT)
     Q_PROPERTY(QObject* pluginProxy READ pluginProxy CONSTANT)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
+    Q_PROPERTY(QString configStatusMessage READ configStatusMessage NOTIFY configStatusChanged)
+    Q_PROPERTY(bool configApplyFailed READ configApplyFailed NOTIFY configStatusChanged)
     Q_PROPERTY(QString updateSources READ updateSources WRITE setUpdateSources
                NOTIFY updateSourcesChanged)
     Q_PROPERTY(bool pluginUpdateChecking READ pluginUpdateChecking
@@ -71,6 +73,8 @@ public:
     QAbstractItemModel* pluginModel() const;   // 实现在 .cpp（头里模型是不完整类型）
     QObject* pluginProxy() const;              // 同上，实现在 .cpp
     QString errorMessage() const { return m_errorMessage; }
+    QString configStatusMessage() const;
+    bool configApplyFailed() const;
     QString updateSources() const { return m_updateSources; }
     bool pluginUpdateChecking() const;
     bool pluginUpdateDownloading() const;
@@ -127,6 +131,7 @@ signals:
     void autoStartChanged();
     void languageChanged();
     void errorMessageChanged();
+    void configStatusChanged();
     void pluginHealthChanged(const QString& id);
     void pluginDependencyInstallFinished(const QString& id, bool success,
                                          const QString& error);

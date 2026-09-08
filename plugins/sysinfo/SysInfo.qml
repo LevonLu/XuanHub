@@ -23,7 +23,6 @@ Item {
 
     function colors() {
         if (pluginContext && pluginContext.colors) return pluginContext.colors
-        if (typeof themeManager !== "undefined" && themeManager) return themeManager.colors
         return {
             bg: "#1e1e2e", panel: "#313244", fg: "#cdd6f4", muted: "#7f849c",
             accent: "#89b4fa", success: "#a6e3a1", warning: "#f9e2af",

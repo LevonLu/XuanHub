@@ -18,7 +18,8 @@ public:
     bool init(xuanhub::BarPluginContext*) override { initialized = true; return true; }
     QObject* viewModel() override { return this; }
     QUrl qmlUrl() const override { return QUrl(QStringLiteral("V1.qml")); }
-    void shutdown() override { stopped = true; }
+    void shutdown() override { stopped = true; ++shutdownCalls; }
+    int shutdownCalls = 0;
     bool initialized = false;
     bool stopped = false;
 };
@@ -85,6 +86,10 @@ private Q_SLOTS:
         runtime->shutdown();
         QVERIFY(plugin.initialized);
         QVERIFY(plugin.stopped);
+        runtime->shutdown();
+        QCOMPARE(plugin.shutdownCalls, 1);
+        QVERIFY(!runtime->initialize(nullptr, &error));
+        QCOMPARE(runtime->applyConfig({}).status, PluginRuntime::ApplyStatus::Rejected);
     }
 
     void drivesV2StructuredLifecycle() {

@@ -168,7 +168,12 @@ API；隔离 Python 插件的 HostServices 请求会强制检查实际授予权�
 它提供 `pluginId/apiVersion/trustLevel/declaredPermissions/grantedPermissions`、主题色、
 Theme Schema v2 的 `appearance`、语言、
 屏幕与 bar 边缘，以及 `log/notify/readText/writeText/openSettings/openUrl` 等受控调用。
-旧的 `themeManager/barWindow/barScreenGeometry/i18n` 全局仍保留一个兼容周期，新插件不要依赖。
+QML 契约版本由 `pluginContext.contextVersion` 表示，当前为 1；它独立于 C++ SDK
+与 `apiVersion`（HostServices 版本）。`popupService` 提供弹窗定位/互斥，`actions`
+提供宿主动作注册表。内置原生插件与 `PluginPopup` 只使用此作用域上下文，不再回退到
+`themeManager/barWindow/barScreenGeometry/i18n` 全局。旧 QML 全局仍供未迁移插件使用，
+但不属于新插件契约。宿主先注入 `pluginContext`，再注入 `plugin`，初始化逻辑可放在
+`onPluginChanged`，不要依赖 `Component.onCompleted` 时已获得服务。
 
 ### 标准弹窗
 
@@ -318,3 +323,36 @@ Payload 只允许 JSON/QVariant 安全集合。每订阅者最多排队 256 条�
 
 完整参考见 `plugins/clock/`；不依赖仓库内部目标的第三方参考见
 `examples/plugins/v2_demo/`。
+
+## 运行时应用结果与生命周期
+
+`ConfigService::save()` 只确认文件写入。运行时经过文件监听应用后分别显示
+`saved/applying/pending/applied/failed`，每个插件另有 `state/error`。应用失败保留上次
+确认的配置快照，再次保存相同内容会重试失败目标；成功的同级插件不重复初始化。
+修改 `configVersion` 会重新执行迁移与初始化。配置连续保存时，同一 Python 插件最多
+等待一份配置回执，回执到达后才应用最新文件；失败不会触发自动无限重试。
+
+第三方 host 必须实现 `IBarPluginHostLifecycle`。未实现者在 `init()` 前被拒绝，不再
+以全量重载补偿缺失的独立停止能力。host 子实例的 ViewModel 还必须提供：
+
+```cpp
+void configInitialized(const QString& id, bool success, const QString& error);
+void configApplied(const QString& id, const QVariantMap& config,
+                   bool success, const QString& error);
+```
+
+初始化回执在异步 `init` 完成时发射；配置回执携带本次请求的完整配置，仅在实际执行
+完成后发射。超时、进程退出与停止取消必须回报失败。这里的配置只用于进程内匹配，
+不得写入日志或导出诊断。内置 pybridge 已实现此契约。原生 V1 接口继续由
+`PluginRuntime` 单点适配，内置 sysinfo 和菜单仍使用它；新原生插件使用 V2。
+
+停止流程统一由 `PluginDependencyGraph::stopOrder()` 生成依赖闭包，先停止依赖方和
+host 子实例，再停止提供方。`PluginManager::pluginsAboutToStop(ids)` 是同步解除
+QML 引用的边界，渲染层移除模型项并处理 `DeferredDelete` 后，管理器才执行
+`shutdown/unload`。`PluginRuntime::shutdown()` 幂等，停止后不能重新初始化同一适配器。
+DLL 拒绝卸载时保留 loader 到进程退出，并禁止本进程再次初始化该插件，设置页提示重启。
+
+宿主内部职责分配：`PluginCatalog` 处理目录发现、受管版本覆盖及清单/IID 校验；
+`PluginDependencyGraph` 计算加载/停止顺序；`PluginRuntime` 适配接口；`PluginManager`
+管理实例及作用域；`PluginConfigTracker` 保存确认/待确认配置；`PluginReconciler`
+执行增量协调；`ConfigHotReloader` 负责文件、主题与窗口同步。

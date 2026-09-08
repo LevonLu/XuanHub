@@ -27,16 +27,16 @@ Item {
 
     // 注意：不用 Screen attached 取屏幕几何。弹窗先开在屏幕外时其窗口未挂到任何
     // screen，内部 Item 的 Screen 无效；taskbar 模式下 bar 是任务栏子窗口，
-    // root.Screen 也会失效（实测 undefined）。统一用宿主注入的根上下文
-    // barScreenGeometry（BarWindow::setupBar 写入）+ mapToGlobal 真实屏幕坐标。
+    // root.Screen 也会失效（实测 undefined）。统一用 pluginContext.screenGeometry
+    // （BarWindow::setupBar 更新）+ mapToGlobal 真实屏幕坐标。
 
-    // 旧全局保留一个兼容周期；新插件只依赖作用域上下文。
+    // 所有宿主服务只依赖带版本的作用域上下文。
     readonly property var colors: pluginContext ? pluginContext.colors
-                                                : (themeManager ? themeManager.colors : ({
+                                                : ({
         "bg": "#1e1e2e", "panel": "#313244", "fg": "#cdd6f4", "muted": "#7f849c",
         "accent": "#89b4fa", "danger": "#f38ba8", "success": "#a6e3a1", "warning": "#f9e2af",
         "hover": "#45475a", "border": "#45475a", "onAccent": "#1e1e2e"
-    }))
+    })
 
     // bar hover 反馈（提示可点击弹日历）；barMa 在下方声明，运行时解析无碍
     property color hoverColor: root.colors.hover
@@ -104,7 +104,7 @@ Item {
 
         // 统一使用宿主解析后的活动语言；system 已由 LocaleManager 归一为中/英文。
         readonly property var loc: Qt.locale(pluginContext ? pluginContext.activeLocale
-                                                           : (i18n ? i18n.activeLocale : "zh-CN"))
+                                                           : "zh-CN")
 
         ColumnLayout {
             anchors.fill: parent

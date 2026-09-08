@@ -30,6 +30,12 @@ class ConfigService : public QObject {
 
 public:
     explicit ConfigService(QObject* parent = nullptr);
+    QString applyState() const { return m_applyState; }
+    QString applyError() const { return m_applyError; }
+    QVariantMap pluginApplyStates() const { return m_pluginApplyStates; }
+    void beginRuntimeApply();
+    void finishRuntimeApply(const QString& error = {});
+    void updatePluginApplyStates(const QVariantMap& states);
 
     // 解析顺序：exeDir/config.json（便携/开发优先）→ configDir/config.json；
     // 都不存在时：首运行（尚未成功加载过）把内置默认配置播种落地后读取；
@@ -56,6 +62,7 @@ public:
     bool save(const QJsonObject& root);
 
 signals:
+    void applyStateChanged();
     void barHeightChanged();
     void barEdgeChanged();
     void barOpacityChanged();
@@ -65,6 +72,12 @@ signals:
     void languageChanged();
 
 private:
+    void refreshApplyState();
+    QString m_applyState;
+    QString m_applyError;
+    QVariantMap m_pluginApplyStates;
+    bool m_waitingForReload = false;
+    bool m_runtimeApplying = false;
     int m_barHeight = 40;
     QString m_barEdge = QStringLiteral("top");
     qreal m_barOpacity = 1.0;                              // 0.0-1.0，1.0=不透明

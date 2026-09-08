@@ -20,6 +20,9 @@ class SmokeObject final : public QObject {
     Q_PROPERTY(QVariantMap colors READ colors CONSTANT)
     Q_PROPERTY(QVariantMap screenGeometry READ screenGeometry CONSTANT)
     Q_PROPERTY(QVariantMap values READ values CONSTANT)
+    Q_PROPERTY(int contextVersion READ contextVersion CONSTANT)
+    Q_PROPERTY(QObject* popupService READ emptyService CONSTANT)
+    Q_PROPERTY(QObject* actions READ emptyService CONSTANT)
     Q_PROPERTY(QString activeLocale READ activeLocale CONSTANT)
     Q_PROPERTY(QString barEdge READ barEdge CONSTANT)
 public:
@@ -60,6 +63,8 @@ public:
     QVariantMap values() const {
         return {{QStringLiteral("text"), QStringLiteral("Smoke")}};
     }
+    int contextVersion() const { return 1; }
+    QObject* emptyService() const { return nullptr; }
     QString activeLocale() const { return QStringLiteral("en-US"); }
     QString barEdge() const { return QStringLiteral("top"); }
 

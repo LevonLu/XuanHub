@@ -252,6 +252,42 @@ bool ConfigService::save(const QJsonObject& root) {
         return false;
     }
     m_raw = root;
+    m_waitingForReload = true;
+    m_applyError.clear();
+    m_applyState = QStringLiteral("saved");
+    Q_EMIT applyStateChanged();
     qDebug() << "[Config] saved" << m_activePath;
     return true;
+}
+
+void ConfigService::beginRuntimeApply() {
+    m_waitingForReload = false;
+    m_runtimeApplying = true;
+    m_applyError.clear();
+    m_applyState = QStringLiteral("applying");
+    Q_EMIT applyStateChanged();
+}
+
+void ConfigService::finishRuntimeApply(const QString& error) {
+    m_runtimeApplying = false;
+    m_applyError = error;
+    refreshApplyState();
+}
+
+void ConfigService::updatePluginApplyStates(const QVariantMap& states) {
+    m_pluginApplyStates = states;
+    refreshApplyState();
+}
+
+void ConfigService::refreshApplyState() {
+    if (m_waitingForReload || m_runtimeApplying) return;
+    QString state = m_applyError.isEmpty() ? QStringLiteral("applied") : QStringLiteral("failed");
+    for (auto it = m_pluginApplyStates.cbegin(); it != m_pluginApplyStates.cend(); ++it) {
+        const auto value = it.value().toMap().value(QStringLiteral("state")).toString();
+        if (value == QLatin1String("failed")) state = QStringLiteral("failed");
+        else if (value == QLatin1String("pending") && state != QLatin1String("failed"))
+            state = QStringLiteral("pending");
+    }
+    m_applyState = state;
+    Q_EMIT applyStateChanged();
 }

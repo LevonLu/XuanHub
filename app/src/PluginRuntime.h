@@ -57,6 +57,7 @@ private:
     PluginRuntime(QObject* instance, xuanhub::IBarPlugin* v1,
                   xuanhub::IBarPlugin2* v2);
 
+    bool m_stopped = false; // 停止是终态，退出路径可以安全重复调用。
     QObject* m_instance = nullptr;
     xuanhub::IBarPlugin* m_v1 = nullptr;
     xuanhub::IBarPlugin2* m_v2 = nullptr;

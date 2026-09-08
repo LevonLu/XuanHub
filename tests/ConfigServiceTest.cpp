@@ -49,6 +49,28 @@ class ConfigServiceTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void distinguishesSavedPendingAndFailedRuntimeConfig() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        QVERIFY(writeJson(directory.path(), QJsonDocument(QJsonObject{})));
+        ConfigService service;
+        QVERIFY(service.load(directory.path(), directory.path()));
+        QVERIFY(service.save(service.rawConfig()));
+        QCOMPARE(service.applyState(), QStringLiteral("saved"));
+        service.updatePluginApplyStates({});
+        QCOMPARE(service.applyState(), QStringLiteral("saved"));
+        service.beginRuntimeApply();
+        service.updatePluginApplyStates({{QStringLiteral("py_test"),
+            QVariantMap{{QStringLiteral("state"), QStringLiteral("pending")}}}});
+        service.finishRuntimeApply();
+        QCOMPARE(service.applyState(), QStringLiteral("pending"));
+        service.updatePluginApplyStates({{QStringLiteral("py_test"),
+            QVariantMap{{QStringLiteral("state"), QStringLiteral("failed")},
+                        {QStringLiteral("error"), QStringLiteral("timeout")}}}});
+        QCOMPARE(service.applyState(), QStringLiteral("failed"));
+        service.updatePluginApplyStates({});
+        QCOMPARE(service.applyState(), QStringLiteral("applied"));
+    }
     void managedPluginCatalogOverridesBuiltInMetadata() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());

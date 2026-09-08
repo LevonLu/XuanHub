@@ -93,6 +93,18 @@ Item {
         value: typeof barConfig !== "undefined" && barConfig ? barConfig.barEdge : "top"
         when: model.pluginContext !== null && model.pluginContext !== undefined
     }
+    Binding {
+        target: model.pluginContext
+        property: "popupService"
+        value: typeof popupService !== "undefined" ? popupService : null
+        when: model.pluginContext !== null && model.pluginContext !== undefined
+    }
+    Binding {
+        target: model.pluginContext
+        property: "actions"
+        value: typeof pluginActions !== "undefined" ? pluginActions : null
+        when: model.pluginContext !== null && model.pluginContext !== undefined
+    }
     // 高度跟随所属 ListView（即 bar 实际高度），与 config.barHeight 联动；
     // 脱离 ListView 使用时的回退值 40
     height: overflowHost ? 40 : (ListView.view ? ListView.view.height : 40)
@@ -163,9 +175,10 @@ Item {
 
         onLoaded: {
             if (slot.item) {
-                slot.item.plugin = model.viewModel
-                if (slot.item.pluginContext !== undefined)
+                // 未初始化的 var 值也是 undefined；检查属性是否声明，不能检查其当前值。
+                if ("pluginContext" in slot.item)
                     slot.item.pluginContext = model.pluginContext
+                slot.item.plugin = model.viewModel
                 // 可选布局契约：需要按胶囊实际内容区自适应的插件声明
                 // hostContentHeight，框架将 Loader 已扣除内边距后的高度以绑定传入。
                 // 不碰未声明该属性的既有插件，保持旧插件尺寸语义。

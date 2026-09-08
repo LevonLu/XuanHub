@@ -87,6 +87,9 @@ Q_SIGNALS:
     void configMigrationFailed(const QString& id, int currentVersion,
                                int targetVersion, const QString& error);
     void configValidationFinished(bool valid, const QString& error);
+    void configInitialized(const QString& id, bool success, const QString& error);
+    void configApplied(const QString& id, const QVariantMap& config,
+                       bool success, const QString& error);
     void callFinished(const QString& callId, bool ok, const QVariant& result,
                       const QVariantMap& error);
     void callProgress(const QString& callId, double progress,
@@ -95,6 +98,8 @@ Q_SIGNALS:
 
 private:
     friend class PyWorkerViewModelTest;
+    bool m_configInitialized = false;
+    void failConfigRequests(const QString& reason);
 
     struct Request {
         QString op;

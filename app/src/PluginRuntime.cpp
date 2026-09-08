@@ -130,6 +130,10 @@ bool PluginRuntime::descriptorMatches(const xuanhub::PluginDescriptor& manifest,
 }
 
 bool PluginRuntime::initialize(xuanhub::BarPluginContext* context, QString* error) {
+    if (m_stopped) {
+        setError(error, QStringLiteral("stopped plugin runtime cannot be initialized"));
+        return false;
+    }
     if (m_v1) {
         const bool initialized = m_v1->init(context);
         if (!initialized) setError(error, QStringLiteral("V1 init returned false"));
@@ -174,6 +178,8 @@ PluginRuntime::ValidationResult PluginRuntime::validateConfig(
 }
 
 PluginRuntime::ApplyResult PluginRuntime::applyConfig(const QVariantMap& config) {
+    if (m_stopped)
+        return {ApplyStatus::Rejected, QStringLiteral("plugin runtime is stopped")};
     const ValidationResult validation = validateConfig(config);
     if (validation.status == ValidationStatus::Rejected)
         return {ApplyStatus::Rejected, validation.error};
@@ -230,6 +236,8 @@ PluginRuntime::MigrationResult PluginRuntime::migrateConfig(
 }
 
 void PluginRuntime::shutdown() {
+    if (m_stopped) return;
+    m_stopped = true;
     if (m_v2) m_v2->shutdown();
     else m_v1->shutdown();
 }

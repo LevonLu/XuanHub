@@ -32,6 +32,30 @@ class PyWorkerViewModelTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void reportsRejectedConfigReceiptAndPendingTimeout() {
+        PyWorkerViewModel vm(QStringLiteral("receipts"), {}, {}, {}, {}, nullptr);
+        vm.m_authenticated = true;
+        vm.m_configInitialized = true;
+        vm.m_inFlightId = 1;
+        const QJsonObject config{{QStringLiteral("prefix"), QStringLiteral("next")}};
+        vm.m_inFlight = {QStringLiteral("set_config"),
+                        {{QStringLiteral("config"), config}}, {}};
+        QSignalSpy receipt(&vm, &PyWorkerViewModel::configApplied);
+        vm.handleMessage({{QStringLiteral("type"), QStringLiteral("response")},
+                          {QStringLiteral("id"), QStringLiteral("1")},
+                          {QStringLiteral("ok"), false},
+                          {QStringLiteral("error"), QStringLiteral("rejected")}});
+        QCOMPARE(receipt.size(), 1);
+        QCOMPARE(receipt.at(0).at(1).toMap(), config.toVariantMap());
+        QVERIFY(!receipt.at(0).at(2).toBool());
+        QCOMPARE(receipt.at(0).at(3).toString(), QStringLiteral("rejected"));
+        vm.m_inFlightId = 2;
+        vm.m_inFlight = {QStringLiteral("set_config"),
+                        {{QStringLiteral("config"), config}}, {}};
+        vm.failWorker(QStringLiteral("request timed out"), false);
+        QCOMPARE(receipt.size(), 2);
+        QVERIFY(!receipt.at(1).at(2).toBool());
+    }
     void normalizesUpdateInterval() {
         PyWorkerViewModel defaults(QStringLiteral("defaults"), {}, {}, {}, {}, nullptr);
         QCOMPARE(defaults.updateIntervalMs(), 1000);
@@ -237,6 +261,7 @@ def stop():
             QCOMPARE(rejected.error, QStringLiteral("prefix blocked"));
             QCOMPARE(viewModel.values().value(QStringLiteral("prefix")).toString(),
                      QStringLiteral("isolated"));
+            QSignalSpy configReceipt(&viewModel, &PyWorkerViewModel::configApplied);
             QVERIFY(viewModel.applyConfig({
                 {QStringLiteral("prefix"), QStringLiteral("hot")},
                 {QStringLiteral("stopFile"), stopFile},
@@ -245,6 +270,8 @@ def stop():
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("prefix")).toString(),
                                       QStringLiteral("hot"), 5000);
             QCOMPARE(viewModel.updateIntervalMs(), 250);
+            QCOMPARE(configReceipt.size(), 1);
+            QVERIFY(configReceipt.at(0).at(2).toBool());
             bus.setState(QStringLiteral("app.locale"),
                          {{QStringLiteral("locale"), QStringLiteral("en-US")}});
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.values().value(QStringLiteral("locale")).toString(),

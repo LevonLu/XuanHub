@@ -176,6 +176,7 @@ bool PyWorkerViewModel::start() {
     m_protocolVersion = 0;
     m_protocolCapabilities.clear();
     m_usesPushValues = false;
+    m_configInitialized = false;
     m_queue.clear();
     m_eventQueue.clear();
     m_pluginEventQueue.clear();
@@ -496,10 +497,16 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
     if (!ok) {
         qWarning().noquote() << "[PyBridge]" << m_id << op << "failed:"
                              << message.value(QStringLiteral("error")).toString();
-        if (op == QLatin1String("validate_config")) {
+        if (op == QLatin1String("set_config")) {
+            Q_EMIT configApplied(m_id,
+                requestData.value(QStringLiteral("config")).toObject().toVariantMap(),
+                false, message.value(QStringLiteral("error")).toString());
+        } else if (op == QLatin1String("validate_config")) {
             Q_EMIT configValidationFinished(
                 false, message.value(QStringLiteral("error")).toString());
         } else if (op == QLatin1String("init")) {
+            m_configInitialized = true;
+            Q_EMIT configInitialized(m_id, false, message.value(QStringLiteral("error")).toString());
             if (m_configVersion != m_targetConfigVersion) {
                 Q_EMIT configMigrationFailed(
                     m_id, m_configVersion, m_targetConfigVersion,
@@ -536,6 +543,8 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
             Q_EMIT configMigrationReady(
                 m_id, m_configVersion, m_targetConfigVersion, migratedConfig);
         }
+        m_configInitialized = true;
+        Q_EMIT configInitialized(m_id, true, {});
     } else if (op == QLatin1String("validate_config")) {
         const QJsonObject validation = message.value(QStringLiteral("result")).toObject();
         Q_EMIT configValidationFinished(
@@ -549,6 +558,7 @@ void PyWorkerViewModel::handleMessage(const QJsonObject& message) {
         m_updateIntervalMs = qBound(kMinUpdateIntervalMs,
                                     intervalOk ? configuredInterval : kDefaultUpdateIntervalMs,
                                     kMaxUpdateIntervalMs);
+        Q_EMIT configApplied(m_id, m_cfg, true, {});
     } else if (op == QLatin1String("update")) {
         const QJsonValue result = message.value(QStringLiteral("result"));
         if (!result.isObject()) {
@@ -958,6 +968,7 @@ void PyWorkerViewModel::handleProcessFinished(int exitCode, QProcess::ExitStatus
 void PyWorkerViewModel::failWorker(const QString& reason, bool retry,
                                    const QString& callErrorCode) {
     if (m_stopping) return;
+    failConfigRequests(reason);
     m_health.lastErrorCode = workerFailureCode(reason, callErrorCode);
     xuanhub::PluginLog::warning(m_id, m_health.lastErrorCode, reason);
     m_health.lastError = reason;
@@ -1074,9 +1085,25 @@ void PyWorkerViewModel::scheduleRestart() {
     });
 }
 
+void PyWorkerViewModel::failConfigRequests(const QString& reason) {
+    if (!m_configInitialized) {
+        m_configInitialized = true;
+        Q_EMIT configInitialized(m_id, false, reason);
+    }
+    const auto fail = [this, &reason](const Request& request) {
+        if (request.op == QLatin1String("set_config"))
+            Q_EMIT configApplied(m_id,
+                request.data.value(QStringLiteral("config")).toObject().toVariantMap(),
+                false, reason);
+    };
+    fail(m_inFlight);
+    for (const auto& request : std::as_const(m_queue)) fail(request);
+}
+
 void PyWorkerViewModel::stopWorker() {
     if (m_stopping) return;
     m_stopping = true;
+    failConfigRequests(QStringLiteral("plugin stopped before config acknowledgement"));
     m_startupClock.invalidate();
     m_startTimer.stop();
     m_requestTimer.stop();

@@ -2,6 +2,8 @@
 #include "ConfigService.h"
 #include "PluginActionRegistry.h"
 #include "PluginManager.h"
+#include "PluginReconciler.h"
+#include "PluginChangeSet.h"
 #include "barplugin/EventBus.h"
 
 #include <QDir>
@@ -58,6 +60,80 @@ class PluginManagerTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void rejectedConfigRetriesWithoutRestartingPeer() {
+        xuanhub::EventBus bus;
+        PluginManager manager(&bus, QDir::tempPath());
+        const auto plugins = qEnvironmentVariable("XUANHUB_TEST_PLUGINS");
+        auto clock = entry(QStringLiteral("clock"));
+        clock.configVersion = 2;
+        const auto peer = entry(QStringLiteral("xuanhub_menu"));
+        manager.loadFrom(plugins, {clock, peer});
+        QVERIFY(manager.loadedPlugin(clock.id));
+        QVERIFY(manager.loadedPlugin(peer.id));
+        const auto* peerVm = manager.loadedPlugin(peer.id)->viewModel;
+        auto invalid = clock;
+        invalid.config.insert(QStringLiteral("format"), 42);
+        PluginReconciler::apply(manager, plugins, {invalid, peer});
+        QCOMPARE(manager.configStates().value(clock.id).toMap()
+                     .value(QStringLiteral("state")).toString(), QStringLiteral("failed"));
+        QCOMPARE(PluginConfigDiff::calculate(manager.configEntries(), {invalid, peer}).configChanged,
+                 QStringList{clock.id});
+        QSignalSpy stateSpy(&manager, &PluginManager::configStatesChanged);
+        PluginReconciler::apply(manager, plugins, {invalid, peer});
+        QVERIFY(!stateSpy.isEmpty());
+        QCOMPARE(manager.loadedPlugin(peer.id)->viewModel, peerVm);
+        auto valid = clock;
+        valid.config.insert(QStringLiteral("format"), QStringLiteral("HH:mm"));
+        PluginReconciler::apply(manager, plugins, {valid, peer});
+        QCOMPARE(manager.configStates().value(clock.id).toMap()
+                     .value(QStringLiteral("state")).toString(), QStringLiteral("applied"));
+        const auto missing = entry(QStringLiteral("does_not_exist"));
+        PluginReconciler::apply(manager, plugins, {valid, peer, missing});
+        QVERIFY(!manager.loadError(missing.id).isEmpty());
+        PluginReconciler::apply(manager, plugins, {valid, peer});
+        QCOMPARE(manager.loadedPlugin(peer.id)->viewModel, peerVm);
+        QVERIFY(!manager.configStates().contains(missing.id));
+        manager.shutdownAll();
+    }
+
+    void fullShutdownStopsHostAfterIndependentNativePlugins() {
+        xuanhub::EventBus bus;
+        PluginManager manager(&bus, QDir::tempPath());
+        manager.loadFrom(qEnvironmentVariable("XUANHUB_TEST_PLUGINS"),
+            {entry(QStringLiteral("pybridge")), entry(QStringLiteral("py_hello")),
+             entry(QStringLiteral("xuanhub_menu"))});
+        QVERIFY(manager.isLoaded(QStringLiteral("pybridge")));
+        QVERIFY(manager.isLoaded(QStringLiteral("py_hello")));
+        QStringList stopped;
+        connect(&manager, &PluginManager::pluginsAboutToStop, &manager,
+                [&](const QStringList& ids) { stopped.append(ids); });
+        manager.shutdownAll();
+        QVERIFY(stopped.indexOf(QStringLiteral("py_hello"))
+                < stopped.indexOf(QStringLiteral("pybridge")));
+        QVERIFY(stopped.indexOf(QStringLiteral("xuanhub_menu"))
+                < stopped.indexOf(QStringLiteral("pybridge")));
+        QVERIFY(!manager.isLoaded(QStringLiteral("pybridge")));
+    }
+
+    void teardownNotificationPrecedesViewModelDestruction() {
+        xuanhub::EventBus bus;
+        PluginManager manager(&bus, QDir::tempPath());
+        const auto clock = entry(QStringLiteral("clock"));
+        manager.loadFrom(qEnvironmentVariable("XUANHUB_TEST_PLUGINS"), {clock});
+        QVERIFY(manager.loadedPlugin(clock.id));
+        QPointer<QObject> vm = manager.loadedPlugin(clock.id)->viewModel;
+        bool notified = false;
+        connect(&manager, &PluginManager::pluginsAboutToStop, &manager,
+                [&](const QStringList& ids) {
+            if (!ids.contains(clock.id)) return;
+            QVERIFY(vm);
+            notified = true;
+        });
+        QVERIFY(manager.stopOne(clock.id));
+        QVERIFY(notified);
+        QVERIFY(vm.isNull());
+        QVERIFY(manager.stopOne(clock.id));
+    }
     void initTestCase() {
         // 测试宿主版本必须跟随根 CMake 唯一版本源，避免发布升级后把内置 V2 插件误判为不兼容。
         QCoreApplication::setApplicationVersion(QStringLiteral(XUANHUB_VERSION));
@@ -460,13 +536,17 @@ private Q_SLOTS:
         const QObject* childViewModel = manager.loadedPlugin(child.id)->viewModel;
         PluginConfigEntry updatedChild = child;
         updatedChild.config.insert(QStringLiteral("prefix"), QStringLiteral("hot"));
+        QTRY_COMPARE_WITH_TIMEOUT(manager.configStates().value(child.id).toMap()
+            .value(QStringLiteral("state")).toString(), QStringLiteral("applied"), 5000);
         QTRY_VERIFY_WITH_TIMEOUT(
-            manager.applyConfig(updatedChild) == PluginManager::ConfigApplyResult::Applied,
+            manager.applyConfig(updatedChild) == PluginManager::ConfigApplyResult::Pending,
             5000);
         QTRY_VERIFY_WITH_TIMEOUT(
             childViewModel->property("values").toMap().value(QStringLiteral("text"))
                 .toString().startsWith(QStringLiteral("hot")),
             5000);
+        QTRY_COMPARE_WITH_TIMEOUT(manager.configStates().value(child.id).toMap()
+            .value(QStringLiteral("state")).toString(), QStringLiteral("applied"), 5000);
         QCOMPARE(manager.loadedPlugin(child.id)->viewModel, childViewModel);
         QVERIFY(manager.stopOne(child.id));
         QVERIFY(!manager.loadedPlugin(child.id));

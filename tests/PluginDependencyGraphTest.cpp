@@ -22,6 +22,28 @@ xuanhub::PluginDependency dependency(const QString& id,
 class PluginDependencyGraphTest final : public QObject {
     Q_OBJECT
 private Q_SLOTS:
+    void stopsTransitiveConsumersAndHostedInstancesBeforeProviders() {
+        auto middle = plugin(QStringLiteral("middle"));
+        middle.dependencies.append(dependency(QStringLiteral("base")));
+        auto leaf = plugin(QStringLiteral("leaf"));
+        leaf.dependencies.append(dependency(middle.id));
+        const auto order = PluginDependencyGraph::stopOrder(
+            {plugin(QStringLiteral("base")), middle, leaf, plugin(QStringLiteral("peer"))},
+            {{middle.id, QStringLiteral("host")}}, {QStringLiteral("base")});
+        QCOMPARE(order, QStringList({leaf.id, middle.id, QStringLiteral("base")}));
+        const auto hostOrder = PluginDependencyGraph::stopOrder(
+            {middle, leaf}, {{middle.id, QStringLiteral("host")}}, {QStringLiteral("host")});
+        QCOMPARE(hostOrder, QStringList({leaf.id, middle.id, QStringLiteral("host")}));
+    }
+
+    void optionalDependencyCyclesStopEachInstanceOnce() {
+        auto a = plugin(QStringLiteral("a"));
+        auto b = plugin(QStringLiteral("b"));
+        a.dependencies.append(dependency(b.id, QStringLiteral("*"), true));
+        b.dependencies.append(dependency(a.id, QStringLiteral("*"), true));
+        QCOMPARE(PluginDependencyGraph::stopOrder({a, b}, {}, {a.id}),
+                 QStringList({b.id, a.id}));
+    }
     void ordersRequiredDependenciesBeforeConsumers() {
         auto consumer = plugin(QStringLiteral("consumer"));
         consumer.dependencies.append(dependency(QStringLiteral("base"),

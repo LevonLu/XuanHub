@@ -14,6 +14,11 @@ struct PluginDependencyPlan {
 
 class PluginDependencyGraph final {
 public:
+    // 反向依赖闭包，使用者先于提供者；host 子实例也按同一规则停止。
+    static QStringList stopOrder(
+        const QVector<xuanhub::PluginDescriptor>& descriptors,
+        const QHash<QString, QString>& hostedBy,
+        const QStringList& roots);
     static PluginDependencyPlan build(
         const QVector<xuanhub::PluginDescriptor>& descriptors);
 };

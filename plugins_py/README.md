@@ -551,3 +551,11 @@ Item {
 
 - 依赖用户自装 CPython ≥3.12（未安装则整体停用 + 托盘提示）；
   `-PythonStrategy Bundle` 打包可内置标准库免除该依赖。
+
+### 配置生效确认
+
+保存设置只代表 `config.json` 已写入。pybridge 在 worker 的 `init` 或 `set_config`
+成功响应后才把配置标记为已生效；异常、超时与进程退出会显示目标插件的失败原因。
+`set_config` 入队不等于成功。失败后的下一次保存会重新尝试，其他已生效插件不重启。
+Python 插件无需自行发送确认信号，由 `PyWorkerViewModel` 根据 IPC 响应负责。
+共享 `PluginPopup` 要求传入 `pluginContext`，弹窗服务通过该上下文获取。

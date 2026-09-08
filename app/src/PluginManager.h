@@ -1,9 +1,6 @@
-// PluginManager.h — 插件扫描/加载/生命周期
-// 扫描 plugins/<id>/ 下的 *.dll，校验 IID 后 qobject_cast<IBarPlugin*>，
-// 按 config 启用列表 init，收集 viewModel + qmlUrl 供渲染层使用。
-// 生命周期约定：shutdownAll() 先调各插件 shutdown()（删光 DLL 出身的对象），
-// 再 unload()；load hints 已清 PreventUnload，unload 会删除根实例并真正卸载 DLL。
-// 支持 shutdownAll() → loadFrom() 的热重载周期（调用方需先重置 QML 模型）。
+// PluginManager.h — 插件实例、作用域与运行时调用的统一管理
+// 发现交由 PluginCatalog，配置协调交由 PluginReconciler；停止前同步发射
+// pluginsAboutToStop 解除 QML 引用，再按依赖闭包执行 shutdown/unload。
 #pragma once
 #include <QObject>
 #include <QVector>
@@ -16,6 +13,7 @@
 #include <functional>
 #include <vector>
 
+#include "PluginConfigTracker.h"
 #include "barplugin/IBarPlugin.h"
 #include "barplugin/PluginHealth.h"
 #include "barplugin/PluginDescriptor.h"
@@ -39,7 +37,7 @@ public:
         QObject* themeNotifier = nullptr;
     };
 
-    enum class ConfigApplyResult { Applied, Unsupported, Rejected };
+    enum class ConfigApplyResult { Applied, Pending, Unsupported, Rejected };
     struct ConfigValidationResult {
         bool supported = false;
         bool valid = true;
@@ -95,14 +93,22 @@ public:
     bool installPluginDependencies(const QString& pluginId);
 
     const QVector<LoadedPlugin>& loaded() const { return m_loaded; }
+    QList<PluginConfigEntry> configEntries() const { return m_configTracker.entries(); }
+    QVariantMap configStates() const { return m_configTracker.states(); }
     void shutdownAll();   // 重载周期约定：必须先 shutdownAll() 再 loadFrom()（入口有重入保护）
 
 Q_SIGNALS:
     void pluginsChanged();
+    void configStatesChanged();
+    void pluginsAboutToStop(const QStringList& ids);
     void dependencyInstallFinished(const QString& pluginId, bool success,
                                    const QString& error);
 
 private:
+    Q_SLOT void onHostedConfigInitialized(const QString& id, bool success,
+                                          const QString& error);
+    Q_SLOT void onHostedConfigApplied(const QString& id, const QVariantMap& config,
+                                      bool success, const QString& error);
     Q_SLOT void onHostedMigrationReady(const QString& id, int currentVersion,
                                        int targetVersion, const QVariantMap& config);
     Q_SLOT void onHostedMigrationFailed(const QString& id, int currentVersion,
@@ -113,6 +119,11 @@ private:
                       bool allowExisting);
     bool createHostedPlugin(const QString& hostId, xuanhub::IBarPluginHost* host,
                             const PluginConfigEntry& entry);
+    bool stopInstance(const QString& id);
+    bool unloadLibrary(const QString& id, QPluginLoader* loader);
+    bool m_deferUnloading = false;
+    QVector<QPair<QString, QPluginLoader*>> m_deferredLoaders;
+    bool m_stopping = false;
     void removeRuntime(PluginRuntime* runtime);
     std::unique_ptr<PluginHostServices> createHostServices(
         const QString& id, xuanhub::HostPluginTrustLevel trustLevel,
@@ -129,10 +140,6 @@ private:
     HostEnvironment m_hostEnvironment;
     QVector<LoadedPlugin> m_loaded;
     QVector<QPluginLoader*> m_loaders;
-    // host 插件（IBarPluginHost，如 pybridge）：shutdownAll 时最后 shutdown，
-    // 其子插件 VM 依赖 host 持有的运行时（如 CPython 解释器）
-    QVector<PluginRuntime*> m_hosts;
-    QVector<PluginRuntime*> m_services; // 无 barItem 能力的 V2 后台插件
     std::vector<std::unique_ptr<PluginRuntime>> m_runtimes;
     std::vector<std::unique_ptr<xuanhub::PluginEventScope>> m_eventScopes;
     struct HostServiceScope {
@@ -149,7 +156,9 @@ private:
     QHash<QString, QString> m_subPluginHostId;               // 子插件 id → host id
     QHash<QString, xuanhub::PluginEventScope*> m_scopeById;  // 原生插件/host id → 作用域
     QSet<QString> m_loadedIds;   // 按 metadata.id 去重
+    QHash<QString, QString> m_unloadErrors; // 卸载失败后禁止在本进程重新初始化
     QHash<QString, QString> m_loadErrors; // 未实例化/初始化失败也向设置页暴露原因
     QHash<QString, ConfigMigrationSuggestion> m_migrationSuggestions;
+    PluginConfigTracker m_configTracker;
     bool m_shut = false;
 };

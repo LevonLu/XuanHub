@@ -176,3 +176,17 @@ QVariantMap PluginContextObject::openFile(const QString& relativePath) {
 void PluginContextObject::notifyBarPressed() {
     Q_EMIT barPressed();
 }
+
+void PluginContextObject::setPopupService(QObject* service) {
+    if (m_popupService == service) return;
+    m_popupService = service;
+    if (service) connect(service, &QObject::destroyed, this, &PluginContextObject::servicesChanged);
+    Q_EMIT servicesChanged();
+}
+
+void PluginContextObject::setActions(QObject* service) {
+    if (m_actions == service) return;
+    m_actions = service;
+    if (service) connect(service, &QObject::destroyed, this, &PluginContextObject::servicesChanged);
+    Q_EMIT servicesChanged();
+}

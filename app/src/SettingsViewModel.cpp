@@ -29,6 +29,7 @@
 #include <QSet>
 
 #include <utility>
+#include <algorithm>
 
 namespace {
 QVariantMap packageStoreResult(const PluginPackageStoreResult& result) {
@@ -58,6 +59,8 @@ SettingsViewModel::SettingsViewModel(ConfigService* config, ThemeRegistry* regis
       m_pluginModel(new SettingsPluginModel(this)),
       m_sortModel(new SettingsPluginSortModel(this)),
       m_pluginProxy(new SettingsPluginProxy(m_pluginModel, this)) {
+    connect(m_config, &ConfigService::applyStateChanged,
+            this, &SettingsViewModel::configStatusChanged);
     m_sortModel->setSourceModel(m_pluginModel);
     m_sortModel->sort(0);   // sortColumn 置 0 启用排序；dynamicSortFilter 后续自动维持
     if (m_locale) {
@@ -334,7 +337,9 @@ bool SettingsViewModel::startManagedPlugin(const QString& id,
         QDir(m_exeDir).filePath(QStringLiteral("plugins"));
     bool loaded = m_pluginManager->loadOne(pluginsDirectory, rootEntry);
     if (loaded) {
-        for (const QString& affected : affectedIds) {
+        auto startOrder = affectedIds;
+        std::reverse(startOrder.begin(), startOrder.end());
+        for (const QString& affected : startOrder) {
             if (affected == id || m_pluginManager->isLoaded(affected)) continue;
             PluginConfigEntry childEntry;
             if (!findEntry(affected, &childEntry)
@@ -759,7 +764,7 @@ bool SettingsViewModel::apply() {
     //（save() 已把 m_raw 更新为同一内容，此处重算即新快照）
     m_openFingerprint = currentFingerprint();
     setErrorMessage({});
-    qDebug() << "[Settings] applied:"
+    qDebug() << "[Settings] saved; awaiting runtime confirmation:"
              << "height=" << m_barHeight << "edge=" << m_barEdge
              << "barMode=" << m_barMode
              << "themeId=" << m_themeId << "theme=" << m_theme
@@ -772,4 +777,30 @@ void SettingsViewModel::setErrorMessage(const QString& m) {
     if (m_errorMessage == m) return;
     m_errorMessage = m;
     emit errorMessageChanged();
+}
+
+bool SettingsViewModel::configApplyFailed() const {
+    return m_config->applyState() == QLatin1String("failed");
+}
+
+QString SettingsViewModel::configStatusMessage() const {
+    const auto tr = [](const char* text) {
+        return QCoreApplication::translate("xuanhub.settings.status", text);
+    };
+    const auto state = m_config->applyState();
+    if (state == QLatin1String("saved")) return tr("已保存，等待应用");
+    if (state == QLatin1String("applying")) return tr("正在应用配置");
+    if (state == QLatin1String("pending")) return tr("已保存，等待插件确认");
+    if (state == QLatin1String("applied")) return tr("配置已生效");
+    if (state != QLatin1String("failed")) return {};
+    QStringList failures;
+    if (!m_config->applyError().isEmpty()) failures.append(m_config->applyError());
+    const auto states = m_config->pluginApplyStates();
+    for (auto it = states.cbegin(); it != states.cend(); ++it) {
+        const auto result = it.value().toMap();
+        if (result.value(QStringLiteral("state")) == QLatin1String("failed"))
+            failures.append(it.key() + QStringLiteral(": ")
+                            + result.value(QStringLiteral("error")).toString());
+    }
+    return tr("部分配置未生效：%1").arg(failures.join(QStringLiteral("; ")));
 }

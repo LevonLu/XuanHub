@@ -129,3 +129,36 @@ PluginDependencyPlan PluginDependencyGraph::build(
     }
     return plan;
 }
+
+QStringList PluginDependencyGraph::stopOrder(
+    const QVector<xuanhub::PluginDescriptor>& descriptors,
+    const QHash<QString, QString>& hostedBy, const QStringList& roots) {
+    QHash<QString, QStringList> consumers;
+    QHash<QString, QString> versions;
+    for (const auto& descriptor : descriptors)
+        versions.insert(descriptor.id, descriptor.version);
+    for (const auto& descriptor : descriptors) {
+        for (const auto& dependency : descriptor.dependencies) {
+            if (versions.contains(dependency.id)
+                && SemanticVersion::matches(versions.value(dependency.id),
+                                            dependency.versionConstraint))
+                consumers[dependency.id].append(descriptor.id);
+        }
+    }
+    for (auto it = hostedBy.cbegin(); it != hostedBy.cend(); ++it)
+        consumers[it.value()].append(it.key());
+    QSet<QString> visited;
+    QStringList result;
+    std::function<void(const QString&)> visit = [&](const QString& id) {
+        if (visited.contains(id)) return;
+        visited.insert(id);
+        auto children = consumers.value(id);
+        children.sort();
+        for (const auto& child : children) visit(child);
+        result.append(id);
+    };
+    auto sortedRoots = roots;
+    sortedRoots.sort();
+    for (const auto& id : sortedRoots) visit(id);
+    return result;
+}

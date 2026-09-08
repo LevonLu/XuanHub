@@ -90,6 +90,10 @@ qt_add_executable(XuanHub WIN32
 
     src/PluginManager.h
     src/PluginManager.cpp
+    src/PluginReconciler.cpp
+    src/PluginCatalog.cpp
+    src/PluginCatalog.h
+    src/PluginReconciler.h
 
     src/PluginFilterModel.h
     src/PluginFilterModel.cpp
