@@ -1,8 +1,10 @@
-// TaskbarEmbed.cpp
+// TaskbarEmbed.cpp — 同步原生任务栏与 Qt 子窗口的实际几何和 DPI 变化
 #include "TaskbarEmbed.h"
 
 #include <QWindow>
 #include <QDebug>
+#include <QEvent>
+#include <QRect>
 
 #include <windows.h>
 
@@ -22,7 +24,6 @@ bool TaskbarEmbed::attach(QWindow* win, int offsetXLogical) {
     }
     m_trayHwnd = tray;
     m_offsetX = offsetXLogical;
-    m_lastTarget = {};
 
     // 已 attach 同一窗口：幂等更新（热重载反复走到），不重复 SetParent
     if (m_win != win) {
@@ -35,7 +36,9 @@ bool TaskbarEmbed::attach(QWindow* win, int offsetXLogical) {
             qWarning() << "[TaskbarEmbed] QWindow::fromWinId failed, will retry";
             return false;
         }
+        if (m_win) m_win->removeEventFilter(this);
         m_win = win;
+        win->installEventFilter(this);
         delete m_foreign;
         m_foreign = foreign;
         win->setParent(m_foreign);
@@ -59,6 +62,7 @@ void TaskbarEmbed::detach() {
     m_timer.stop();
     if (m_win) {
         QWindow* w = m_win;
+        w->removeEventFilter(this);
         m_win.clear();
         const HWND hwnd = reinterpret_cast<HWND>(w->winId());
         // 句柄可能已随任务栏销毁（explorer 重启），Win32 调用对失效句柄只是失败返回，无害
@@ -71,13 +75,25 @@ void TaskbarEmbed::detach() {
         qDebug() << "[TaskbarEmbed] detached";
     }
     m_trayHwnd = nullptr;
-    m_lastTarget = {};
+}
+
+bool TaskbarEmbed::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == m_win && event->type() == QEvent::DevicePixelRatioChange
+            && !m_relayoutPending) {
+        // Qt 处理 DPI 通知时还会调整原生子窗口；等本轮消息完成后再按任务栏布局，
+        // 保留 Qt 自身对 DPR、渲染目标和 QML 逻辑尺寸的更新。
+        m_relayoutPending = true;
+        QTimer::singleShot(0, this, [this] {
+            m_relayoutPending = false;
+            relayout();
+        });
+    }
+    return QObject::eventFilter(watched, event);
 }
 
 void TaskbarEmbed::setContentWidth(int wLogical) {
     if (wLogical == m_contentWidth) return;
     m_contentWidth = wLogical;
-    m_lastTarget = {};
     if (isAttached()) relayout();
 }
 
@@ -89,25 +105,32 @@ void TaskbarEmbed::relayout() {
         return;
     }
     RECT rc{};
-    if (!GetWindowRect(tray, &rc)) return;
+    if (!GetClientRect(tray, &rc)) return;
     const int trayH = rc.bottom - rc.top;
     if (trayH <= 0) return;
 
     // QML 内容按逻辑像素，Win32 矩形按物理像素，用窗口 DPR 换算
     const qreal dpr = m_win->devicePixelRatio();
     const int w = qMax(1, qRound(m_contentWidth * dpr));
-    // 子窗口坐标相对父窗口客户区：任务栏左缘 + 配置偏移
-    POINT pt{ rc.left + qRound(m_offsetX * dpr), rc.top };
-    ScreenToClient(tray, &pt);
+    // 子窗口直接使用父窗口客户区坐标，不把任务栏边框算进可用高度。
+    const QPoint pos(rc.left + qRound(m_offsetX * dpr), rc.top);
 
     const HWND hwnd = reinterpret_cast<HWND>(m_win->winId());
-    const QRect target(pt.x, pt.y, w, trayH);
-    if (target == m_lastTarget) return;
-    // HWND_TOP：仅在几何变化时把窗口抬回兄弟窗口顶层；此前每 500ms 无条件调用会
-    // 造成无谓窗口消息与电量唤醒，任务栏矩形/内容宽变化仍会立即失效缓存。
-    SetWindowPos(hwnd, HWND_TOP, pt.x, pt.y, w, trayH,
-                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    m_lastTarget = target;
+    const QRect target(pos, QSize(w, trayH));
+    RECT actual{};
+    if (!GetWindowRect(hwnd, &actual)) return;
+    POINT actualPos{actual.left, actual.top};
+    if (!ScreenToClient(tray, &actualPos)) return;
+    const QRect current(actualPos.x, actualPos.y,
+                        actual.right - actual.left, actual.bottom - actual.top);
+    // DPI 变化期间 Qt/Windows 会再次缩放子窗口；即使期望矩形没变，实际矩形也可能
+    // 已被改小。核对 HWND 当前几何，不能用“上次请求成功”代替当前状态。
+    if (target == current) return;
+    // 几何一致时仍不重复 SetWindowPos，保留稳定状态下避免无谓窗口消息的优化。
+    if (!SetWindowPos(hwnd, HWND_TOP, pos.x(), pos.y(), w, trayH,
+                      SWP_NOACTIVATE | SWP_SHOWWINDOW)) {
+        qWarning() << "[TaskbarEmbed] SetWindowPos failed:" << GetLastError();
+    }
 }
 
 void TaskbarEmbed::poll() {

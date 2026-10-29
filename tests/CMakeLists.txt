@@ -143,6 +143,27 @@ set_tests_properties(xuanhub_plugin_slot_health_tests PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORM_PLUGIN_PATH=${XUANHUB_BIN_DIR}/platforms;QT_QPA_FONTDIR=$ENV{WINDIR}/Fonts"
     TIMEOUT 15)
 
+# 原生任务栏几何回归：测试窗口置于客户区外，不调整系统缩放或任务栏设置。
+add_executable(xuanhub_taskbar_embed_tests
+    TaskbarEmbedTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/TaskbarEmbed.h
+    ${CMAKE_SOURCE_DIR}/app/src/TaskbarEmbed.cpp
+)
+set_target_properties(xuanhub_taskbar_embed_tests PROPERTIES
+    AUTOMOC ON
+    RUNTIME_OUTPUT_DIRECTORY "${XUANHUB_BIN_DIR}")
+target_include_directories(xuanhub_taskbar_embed_tests PRIVATE ${CMAKE_SOURCE_DIR}/app/src)
+target_compile_definitions(xuanhub_taskbar_embed_tests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(xuanhub_taskbar_embed_tests PRIVATE Qt6::Quick Qt6::Test user32)
+add_dependencies(xuanhub_taskbar_embed_tests XuanHub)
+foreach(scale IN ITEMS 1 1.25 1.5 2)
+    add_test(NAME xuanhub_taskbar_embed_scale_${scale} COMMAND xuanhub_taskbar_embed_tests)
+    set_tests_properties(xuanhub_taskbar_embed_scale_${scale} PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=windows;QT_SCREEN_SCALE_FACTORS=${scale}"
+        RUN_SERIAL TRUE
+        TIMEOUT 20)
+endforeach()
+
 add_executable(xuanhub_popup_service_tests
     PopupServiceTest.cpp
     ${CMAKE_SOURCE_DIR}/app/src/PopupService.h

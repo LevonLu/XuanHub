@@ -7,7 +7,6 @@
 #pragma once
 #include <QObject>
 #include <QPointer>
-#include <QRect>
 #include <QTimer>
 
 class QWindow;
@@ -37,6 +36,9 @@ signals:
     // 任务栏 HWND 失效（explorer 重启，子窗口随父销毁），调用方需重建窗口后重新 attach
     void taskbarVanished();
 
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
 private:
     void poll();   // 轮询矫正：任务栏矩形变化 / 自身被压底 / 任务栏失效检测
 
@@ -46,5 +48,5 @@ private:
     void* m_trayHwnd = nullptr;  // HWND，头文件不引入 windows.h
     int m_offsetX = 0;           // 逻辑像素
     int m_contentWidth = 0;      // 逻辑像素
-    QRect m_lastTarget;          // 上次已应用的父窗口客户区目标矩形，避免 500ms 重复 SetWindowPos
+    bool m_relayoutPending = false; // DPI 消息处理结束后合并一次布局，避免被 Qt 的缩放再次覆盖
 };
