@@ -94,19 +94,21 @@ private Q_SLOTS:
         QVERIFY(nativeGeometry() != expected);
         if (repairPath == QStringLiteral("direct")) {
             m_embed.relayout();
-            QCOMPARE(nativeGeometry(), expected);
+            QCOMPARE(nativeGeometry(), targetGeometry());
         } else if (repairPath == QStringLiteral("dpi")) {
             QEvent dpiChange(QEvent::DevicePixelRatioChange);
             QCoreApplication::sendEvent(&m_window, &dpiChange);
             // 排空本轮事件即可恢复，不依赖下一次 500ms 轮询。
             QCoreApplication::processEvents();
-            QCOMPARE(nativeGeometry(), expected);
+            QCOMPARE(nativeGeometry(), targetGeometry());
         } else {
-            QTRY_COMPARE_WITH_TIMEOUT(nativeGeometry(), expected, 1500);
+            QTRY_COMPARE_WITH_TIMEOUT(nativeGeometry(), targetGeometry(), 1500);
         }
-        const int logicalHeight = qRound(expected.height() / m_window.devicePixelRatio());
-        QTRY_COMPARE(m_window.height(), logicalHeight);
-        QTRY_COMPARE(qRound(m_window.rootObject()->height()), logicalHeight);
+        // 原生消息可能把初始屏幕 DPR 切换为任务栏 DPR；重试时必须按当前值计算，
+        // 不能跨越事件处理仍固定使用切换前的期望矩形或逻辑高度。
+        QTRY_COMPARE(m_window.height(),
+                     qRound(targetGeometry().height() / m_window.devicePixelRatio()));
+        QTRY_COMPARE(qRound(m_window.rootObject()->height()), m_window.height());
     }
 
     void stableGeometryDoesNotRepeatSetWindowPos() {
