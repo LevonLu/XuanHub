@@ -1,7 +1,7 @@
 // XuanHubMenu.qml — bar 品牌图标与宿主快速设置弹窗
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Window
+import XuanHub
 
 Item {
     id: root
@@ -17,7 +17,6 @@ Item {
         "border": "#45475a", "onAccent": "#1e1e2e"
     })
     readonly property var actionService: pluginContext ? pluginContext.actions : null
-    property bool menuOpenOnBarPress: false
     readonly property var declaredActions: {
         if (!root.actionService) return []
         // revision 建立动态状态依赖；actions() 返回当前本地化后的快照。
@@ -46,53 +45,18 @@ Item {
         glyphColor: root.colors.fg
     }
 
-    Connections {
-        target: root.pluginContext || null
-        function onBarPressed() {
-            root.menuOpenOnBarPress = menuWin.visible
-            menuWin.hide()
-        }
-    }
-
     MouseArea {
         id: iconArea
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: {
-            if (root.menuOpenOnBarPress) {
-                root.menuOpenOnBarPress = false
-                return
-            }
-            root.openMenu()
-        }
+        onClicked: root.openMenu()
     }
 
     function openMenu() {
         if (plugin) plugin.requestState()
 
-        const gap = 7
-        const anchorBelow = root.mapToGlobal(Qt.point(root.width / 2, root.height + gap))
-        let x = Math.round(anchorBelow.x - menuWin.width / 2)
-        let y = Math.round(anchorBelow.y)
-        const sg = pluginContext ? pluginContext.screenGeometry
-                                 : null
-        if (sg && sg.width > 0) {
-            const right = sg.x + sg.width
-            const bottom = sg.y + sg.height
-            if (x + menuWin.width > right) x = Math.round(right - menuWin.width)
-            if (x < sg.x) x = sg.x
-            if (y + menuWin.height > bottom) {
-                const anchorAbove = root.mapToGlobal(Qt.point(root.width / 2, -gap))
-                y = Math.round(anchorAbove.y - menuWin.height)
-            }
-            if (y < sg.y) y = sg.y
-        }
-        menuWin.x = x
-        menuWin.y = y
-        menuWin.show()
-        menuWin.raise()
-        menuWin.requestActivate()
+        menuWin.toggleFromBar()
     }
 
     component MenuRow: Item {
@@ -162,18 +126,14 @@ Item {
         }
     }
 
-    Window {
+    PluginPopup {
         id: menuWin
-        // taskbar 模式下 bar 是 Shell_TrayWnd 的子窗口，不能作为 transient parent。
-        transientParent: null
-        visible: false
+        anchorItem: root
+        pluginContext: root.pluginContext
+        gap: 7
         width: 240
+        // 首次布局与动作列表更新都会改变高度，由宿主按最终尺寸重定位后显现。
         height: Math.min(520, menuColumn.implicitHeight + 26)
-        color: "transparent"
-        flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
-
-        onActiveChanged: if (!active && visible) hide()
-        Shortcut { sequence: "Escape"; onActivated: menuWin.hide() }
 
         Rectangle {
             anchors.fill: parent

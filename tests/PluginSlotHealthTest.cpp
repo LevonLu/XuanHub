@@ -2,6 +2,7 @@
 #include "PopupService.h"
 #include <QQuickWindow>
 #include <QQuickView>
+#include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QJSEngine>
@@ -10,6 +11,7 @@
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QTemporaryFile>
+#include <QTemporaryDir>
 #include <QtTest>
 
 #include <memory>
@@ -39,6 +41,13 @@ public:
     }
     QVariantMap colors() const {
         return {
+            {QStringLiteral("bg"), QStringLiteral("#1e1e2e")},
+            {QStringLiteral("fg"), QStringLiteral("#cdd6f4")},
+            {QStringLiteral("muted"), QStringLiteral("#7f849c")},
+            {QStringLiteral("accent"), QStringLiteral("#89b4fa")},
+            {QStringLiteral("success"), QStringLiteral("#a6e3a1")},
+            {QStringLiteral("warning"), QStringLiteral("#f9e2af")},
+            {QStringLiteral("onAccent"), QStringLiteral("#1e1e2e")},
             {QStringLiteral("panel"), QStringLiteral("#313244")},
             {QStringLiteral("hover"), QStringLiteral("#45475a")},
             {QStringLiteral("border"), QStringLiteral("#45475a")},
@@ -72,12 +81,14 @@ private:
 
 class PluginContextStub final : public QObject {
     Q_OBJECT
+    Q_PROPERTY(QVariantMap colors READ colors CONSTANT)
     Q_PROPERTY(QVariantMap screenGeometry READ screenGeometry WRITE setScreenGeometry NOTIFY screenGeometryChanged)
     Q_PROPERTY(QString barEdge READ barEdge WRITE setBarEdge NOTIFY barEdgeChanged)
     Q_PROPERTY(QObject* popupService MEMBER m_popupService NOTIFY servicesChanged)
     Q_PROPERTY(QObject* actions MEMBER m_actions NOTIFY servicesChanged)
 public:
     using QObject::QObject;
+    QVariantMap colors() const { return ThemeStub().colors(); }
     QVariantMap screenGeometry() const { return m_screenGeometry; }
     void setScreenGeometry(const QVariantMap& value) {
         if (m_screenGeometry == value) return;
@@ -101,6 +112,35 @@ private:
     QObject* m_actions = nullptr;
     QVariantMap m_screenGeometry;
     QString m_barEdge = QStringLiteral("top");
+};
+
+class MenuActionsStub final : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(int revision READ revision NOTIFY revisionChanged)
+public:
+    int revision() const { return m_count; }
+    void setCount(int count) {
+        m_count = count;
+        Q_EMIT revisionChanged();
+    }
+    Q_INVOKABLE QVariantList actions(const QString&) const {
+        QVariantList result;
+        for (int i = 0; i < m_count; ++i) {
+            result.append(QVariantMap{
+                {QStringLiteral("pluginId"), QStringLiteral("test_plugin")},
+                {QStringLiteral("actionId"), QString::number(i)},
+                {QStringLiteral("label"), QStringLiteral("测试动作 %1").arg(i)},
+                {QStringLiteral("checkable"), false},
+                {QStringLiteral("checked"), false},
+                {QStringLiteral("enabled"), true},
+            });
+        }
+        return result;
+    }
+Q_SIGNALS:
+    void revisionChanged();
+private:
+    int m_count = 0;
 };
 
 class BarWindowStub final : public QObject {
@@ -191,6 +231,92 @@ private Q_SLOTS:
         context.notifyBarPressed();
         QTRY_VERIFY(!second->property("visible").toBool());
         QVERIFY(!service.activePopup());
+        QVERIFY(warnings.isEmpty());
+    }
+
+    void quickMenuStaysInsideScreenOnFirstOpenAndContentGrowth_data() {
+        QTest::addColumn<int>("barY");
+        QTest::addColumn<QRect>("available");
+        QTest::addColumn<QString>("barEdge");
+        QTest::newRow("top-appbar") << 0 << QRect(0, 40, 1280, 640)
+                                     << QStringLiteral("top");
+        QTest::newRow("bottom-appbar") << 640 << QRect(0, 0, 1280, 640)
+                                        << QStringLiteral("bottom");
+        // taskbar 的实际锚点在底部，配置中的 appbar edge 仍可能是 top。
+        QTest::newRow("bottom-taskbar") << 680 << QRect(0, 0, 1280, 680)
+                                         << QStringLiteral("top");
+    }
+
+    void quickMenuStaysInsideScreenOnFirstOpenAndContentGrowth() {
+        QFETCH(int, barY);
+        QFETCH(QRect, available);
+        QFETCH(QString, barEdge);
+        QTemporaryDir menuDir;
+        QVERIFY(menuDir.isValid());
+        // 按运行目录带上品牌图标，避免源码目录缺少部署资源掩盖 QML 告警。
+        for (const QString& name : {QStringLiteral("XuanHubMenu.qml"),
+                                    QStringLiteral("XuanHubGlyph.qml")}) {
+            QVERIFY(QFile::copy(QStringLiteral(XUANHUB_SOURCE_DIR "/plugins/xuanhub_menu/")
+                                    + name, menuDir.filePath(name)));
+        }
+        QVERIFY(QFile::copy(QStringLiteral(XUANHUB_SOURCE_DIR "/app/resources/xuanhub-tray-icon-64.png"),
+                            menuDir.filePath(QStringLiteral("xuanhub-tray-icon-64.png"))));
+        QQmlEngine engine;
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        PopupService popups;
+        MenuActionsStub actions;
+        PluginContextStub context;
+        context.setProperty("popupService", QVariant::fromValue<QObject*>(&popups));
+        context.setProperty("actions", QVariant::fromValue<QObject*>(&actions));
+        context.setBarEdge(barEdge);
+        context.setScreenGeometry({{QStringLiteral("x"), available.x()},
+                                   {QStringLiteral("y"), available.y()},
+                                   {QStringLiteral("width"), available.width()},
+                                   {QStringLiteral("height"), available.height()}});
+        QQmlComponent component(&engine, QUrl::fromLocalFile(
+            menuDir.filePath(QStringLiteral("XuanHubMenu.qml"))));
+        std::unique_ptr<QObject> root(component.createWithInitialProperties({
+            {QStringLiteral("plugin"), QVariant::fromValue<QObject*>(nullptr)},
+            {QStringLiteral("pluginContext"), QVariant::fromValue(&context)},
+        }));
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto* item = qobject_cast<QQuickItem*>(root.get());
+        QVERIFY(item);
+        auto* popup = root->findChild<QQuickWindow*>();
+        QVERIFY(popup);
+        QQuickView window(&engine, nullptr);
+        window.setFlags(Qt::Tool | Qt::FramelessWindowHint);
+        window.setGeometry(0, barY, 40, 40);
+        window.setContent(component.url(), &component, item);
+        root.release();
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        auto clickBar = [&] {
+            context.notifyBarPressed();
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, QPoint(20, 20));
+        };
+        // 首次打开前不预先 show 菜单，也不等待它的隐藏内容完成布局。
+        clickBar();
+        QTRY_VERIFY(popup->isVisible());
+        QTRY_VERIFY(popup->height() > 200);
+        QTRY_COMPARE(popup->opacity(), 1.0);
+        QTRY_VERIFY(available.contains(popup->geometry()));
+        const int initialHeight = popup->height();
+        actions.setCount(5);
+        QTRY_VERIFY(popup->height() > initialHeight);
+        QTRY_COMPARE(popup->opacity(), 1.0);
+        QTRY_VERIFY(available.contains(popup->geometry()));
+        QCOMPARE(popups.activePopup(), popup);
+        clickBar();
+        QTRY_VERIFY(!popup->isVisible());
+        QVERIFY(!popups.activePopup());
+        clickBar();
+        QTRY_VERIFY(popup->isVisible());
+        QTRY_COMPARE(popup->opacity(), 1.0);
+        QVERIFY(available.contains(popup->geometry()));
+        QObject otherPopup;
+        popups.activate(&otherPopup);
+        QTRY_VERIFY(!popup->isVisible());
         QVERIFY(warnings.isEmpty());
     }
 
