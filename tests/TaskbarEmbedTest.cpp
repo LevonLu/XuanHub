@@ -18,8 +18,9 @@ private:
     HWND m_tray = nullptr;
     HWND m_hwnd = nullptr;
     int m_positionMessages = 0;
-    // 测试子窗口放在任务栏客户区外，不遮挡用户正在使用的任务栏。
-    static constexpr int Offset = -10000;
+    // 保持 HWND 位于真实任务栏屏幕内，避免远离屏幕的坐标让 Qt 关联到另一块屏幕；
+    // 窗口完全透明且不接收输入，不遮挡用户正在使用的任务栏。
+    static constexpr int Offset = 0;
     static constexpr int ContentWidth = 161;
 
     QRect nativeGeometry() const {
@@ -55,6 +56,7 @@ private Q_SLOTS:
                           | Qt::WindowDoesNotAcceptFocus | Qt::WindowTransparentForInput);
         m_window.setResizeMode(QQuickView::SizeRootObjectToView);
         m_window.setColor(Qt::transparent);
+        m_window.setOpacity(0);
         m_window.setContent(QUrl(), nullptr, new QQuickItem);
         qApp->installNativeEventFilter(this);
     }

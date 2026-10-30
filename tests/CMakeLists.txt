@@ -149,7 +149,7 @@ set_tests_properties(xuanhub_plugin_slot_health_tests PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORM_PLUGIN_PATH=${XUANHUB_BIN_DIR}/platforms;QT_QPA_FONTDIR=$ENV{WINDIR}/Fonts"
     TIMEOUT 15)
 
-# 原生任务栏几何回归：测试窗口置于客户区外，不调整系统缩放或任务栏设置。
+# 原生任务栏几何回归：测试窗口透明且不接收输入，不调整系统缩放或任务栏设置。
 add_executable(xuanhub_taskbar_embed_tests
     TaskbarEmbedTest.cpp
     ${CMAKE_SOURCE_DIR}/app/src/TaskbarEmbed.h
