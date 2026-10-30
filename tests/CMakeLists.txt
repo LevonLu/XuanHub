@@ -113,6 +113,12 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
             "${XUANHUB_BIN_DIR}/platforms/$<TARGET_FILE_NAME:Qt6::QOffscreenIntegrationPlugin>"
         VERBATIM)
 endif()
+
+add_test(NAME xuanhub_portable_package_safety_tests
+    COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+        "${CMAKE_CURRENT_SOURCE_DIR}/PortablePackageSafetyTest.ps1"
+        -PackageScript "${CMAKE_SOURCE_DIR}/scripts/package_portable.ps1")
+set_tests_properties(xuanhub_portable_package_safety_tests PROPERTIES TIMEOUT 15)
 add_test(NAME xuanhub_qml_smoke_hello
     COMMAND xuanhub_qml_smoke
         "${CMAKE_SOURCE_DIR}/plugins_py/hello/Hello.qml"

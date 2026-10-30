@@ -99,6 +99,19 @@ function Get-FileSha256 {
     }
 }
 
+function Get-PackageCredentialScanText {
+    param([string]$RelativePath, [AllowEmptyString()][string]$Content)
+
+    # cryptography 的公开 SSH 格式标记不是密钥；只移除已核对的整行常量，
+    # 不跳过文件。同文件追加的私钥、令牌和本机路径仍由后续全部规则扫描。
+    if ($RelativePath.Replace('\', '/') -eq
+        'Lib/site-packages/cryptography/hazmat/primitives/serialization/ssh.py') {
+        return [regex]::Replace($Content,
+            '(?m)^_SK_START = b"-----BEGIN OPENSSH PRIVATE KEY-----"\r?$', '')
+    }
+    return $Content
+}
+
 # 最终发布闸门：运行时文件一律拒绝，config.json 必须与仓库内置默认配置一致；
 # 文本文件再检查高置信凭据形状和本机用户目录，避免“打包机状态”混入成品。
 function Assert-PackageSafe {
@@ -168,6 +181,8 @@ function Assert-PackageSafe {
         ".json", ".qml", ".py", ".md", ".txt", ".ini", ".conf", ".yaml", ".yml",
         ".toml", ".ps1", ".cmake", ".xml", ".js", ".ts", ".css", ".html"
     )
+    $packageRoot = [IO.Path]::GetFullPath($PackageDir).TrimEnd('\', '/') +
+                   [IO.Path]::DirectorySeparatorChar
     $secretPatterns = @(
         @{ Name = "私钥头"; Pattern = '-----BEGIN(?: [A-Z0-9]+)? PRIVATE KEY-----' },
         @{ Name = "AWS Access Key"; Pattern = '(?:AKIA|ASIA)[A-Z0-9]{16}' },
@@ -182,7 +197,9 @@ function Assert-PackageSafe {
         if ($file.Length -gt 5MB -or $file.Extension.ToLowerInvariant() -notin $textExtensions) {
             continue
         }
-        $content = [IO.File]::ReadAllText($file.FullName)
+        $relativePath = $file.FullName.Substring($packageRoot.Length)
+        $content = Get-PackageCredentialScanText -RelativePath $relativePath `
+            -Content ([IO.File]::ReadAllText($file.FullName))
         foreach ($rule in $secretPatterns) {
             if ($content -match $rule.Pattern) {
                 $violations.Add("$($rule.Name): $($file.FullName)")
