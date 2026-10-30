@@ -84,7 +84,10 @@ Item {
     Binding {
         target: model.pluginContext
         property: "screenGeometry"
-        value: typeof barScreenGeometry !== "undefined" ? barScreenGeometry : ({})
+        // QRect 的 QML 值类型不能直接转换为 QVariantMap，必须显式展开字段。
+        value: typeof barScreenGeometry !== "undefined" && barScreenGeometry
+               ? ({x: barScreenGeometry.x, y: barScreenGeometry.y,
+                   width: barScreenGeometry.width, height: barScreenGeometry.height}) : ({})
         when: model.pluginContext !== null && model.pluginContext !== undefined
     }
     Binding {

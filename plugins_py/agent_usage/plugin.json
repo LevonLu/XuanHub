@@ -1,0 +1,697 @@
+{
+  "id": "py_agent_usage",
+  "name": "Agent 用量",
+  "version": "0.2.0",
+  "author": "XuanHub",
+  "apiVersion": 2,
+  "configVersion": 1,
+  "capabilities": [
+    "barItem",
+    "settings",
+    "popup"
+  ],
+  "permissions": [],
+  "qml": "AgentUsage.qml",
+  "settings": [
+    {
+      "group": "状态栏",
+      "fields": [
+        {
+          "key": "barPrefix",
+          "type": "string",
+          "label": "用量前缀",
+          "description": "支持文字或 emoji，留空只显示用量数字；不显示 tokens 后缀。",
+          "placeholder": "例如：🤖 或 用量",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "group": "监控",
+      "fields": [
+        {
+          "key": "period",
+          "type": "enum",
+          "label": "统计周期",
+          "default": "today",
+          "options": [
+            {
+              "value": "today",
+              "label": "今天"
+            },
+            {
+              "value": "7d",
+              "label": "近 7 天"
+            },
+            {
+              "value": "30d",
+              "label": "近 30 天"
+            },
+            {
+              "value": "all",
+              "label": "全部历史"
+            }
+          ]
+        },
+        {
+          "key": "refreshSeconds",
+          "type": "int",
+          "label": "刷新间隔（秒）",
+          "default": 300,
+          "min": 60,
+          "max": 3600
+        },
+        {
+          "key": "includeAccount",
+          "type": "bool",
+          "label": "总量包含账号级来源",
+          "description": "Cursor 和 TRAE Work CN 可能包含其他设备，默认仅在明细中展示。",
+          "default": false
+        },
+        {
+          "key": "showAll",
+          "type": "bool",
+          "label": "列出无记录的工具",
+          "default": false
+        },
+        {
+          "key": "quotaEnabled",
+          "type": "bool",
+          "label": "获取套餐额度",
+          "description": "使用各工具已有登录状态访问额度接口，必要时刷新并保存过期凭据。",
+          "default": true
+        },
+        {
+          "key": "devinEnabled",
+          "type": "bool",
+          "label": "启用 Devin 额度查询",
+          "default": false
+        }
+      ]
+    },
+    {
+      "group": "点击后的工具列表",
+      "fields": [
+        {
+          "key": "popupAgentMode",
+          "type": "enum",
+          "label": "显示范围",
+          "default": "all",
+          "description": "仅本周期有消耗时只显示 Token 总数大于 0 的工具；自定义模式仅显示勾选项。显示范围不改变总量统计和后台采集。",
+          "options": [
+            {
+              "value": "all",
+              "label": "自动显示全部"
+            },
+            {
+              "value": "active",
+              "label": "仅本周期有 Token 消耗"
+            },
+            {
+              "value": "custom",
+              "label": "自定义选择"
+            }
+          ]
+        },
+        {
+          "key": "popupAgent_antigravity",
+          "type": "bool",
+          "label": "Antigravity",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_anythingllm",
+          "type": "bool",
+          "label": "AnythingLLM",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_agent-plan",
+          "type": "bool",
+          "label": "Ark Agent Plan",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_coding-plan",
+          "type": "bool",
+          "label": "Ark Coding Plan",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_acode",
+          "type": "bool",
+          "label": "AStudio",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_claude",
+          "type": "bool",
+          "label": "Claude Code",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_claude-science",
+          "type": "bool",
+          "label": "Claude Science",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_cline",
+          "type": "bool",
+          "label": "Cline",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_codebuddy",
+          "type": "bool",
+          "label": "CodeBuddy",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_codex",
+          "type": "bool",
+          "label": "Codex",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_command-code",
+          "type": "bool",
+          "label": "Command Code",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_craft",
+          "type": "bool",
+          "label": "Craft Agents",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_cursor",
+          "type": "bool",
+          "label": "Cursor",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_dsh",
+          "type": "bool",
+          "label": "DeepSeek Harness",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_devin",
+          "type": "bool",
+          "label": "Devin CLI",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_dots",
+          "type": "bool",
+          "label": "Dots",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_droid",
+          "type": "bool",
+          "label": "Droid",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_dumate",
+          "type": "bool",
+          "label": "DuMate",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_every-code",
+          "type": "bool",
+          "label": "Every Code",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_gemini",
+          "type": "bool",
+          "label": "Gemini CLI",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_copilot",
+          "type": "bool",
+          "label": "GitHub Copilot",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_goose",
+          "type": "bool",
+          "label": "Goose",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_grok",
+          "type": "bool",
+          "label": "Grok Build",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_hermes",
+          "type": "bool",
+          "label": "Hermes Agent",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_kilo-cli",
+          "type": "bool",
+          "label": "Kilo CLI",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_kilo-code",
+          "type": "bool",
+          "label": "Kilo Code",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_kimi",
+          "type": "bool",
+          "label": "Kimi / Kimi Code",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          },
+          "description": "Kimi 与 Kimi Code 的记录合并展示。"
+        },
+        {
+          "key": "popupAgent_kiro",
+          "type": "bool",
+          "label": "Kiro",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_lmstudio",
+          "type": "bool",
+          "label": "LM Studio",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_mimo",
+          "type": "bool",
+          "label": "Mimo Code",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_minimax-code",
+          "type": "bool",
+          "label": "MiniMax Code",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_muse",
+          "type": "bool",
+          "label": "Muse Code",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_omp",
+          "type": "bool",
+          "label": "oh-my-pi",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_omo",
+          "type": "bool",
+          "label": "OmO",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_openclaw",
+          "type": "bool",
+          "label": "OpenClaw",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_opencode",
+          "type": "bool",
+          "label": "OpenCode",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_opencode-go",
+          "type": "bool",
+          "label": "OpenCode Go",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_opensquilla",
+          "type": "bool",
+          "label": "OpenSquilla",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_pi",
+          "type": "bool",
+          "label": "pi",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          },
+          "description": "包含此工具动态发现的所有后端。"
+        },
+        {
+          "key": "popupAgent_prime-agent",
+          "type": "bool",
+          "label": "Prime Agent",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          },
+          "description": "包含此工具动态发现的所有后端。"
+        },
+        {
+          "key": "popupAgent_qoder",
+          "type": "bool",
+          "label": "Qoder",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_qoder-cn",
+          "type": "bool",
+          "label": "Qoder CN",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_reasonix",
+          "type": "bool",
+          "label": "Reasonix",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_roocode",
+          "type": "bool",
+          "label": "Roo Code",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_trae",
+          "type": "bool",
+          "label": "TRAE",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_trae-cn",
+          "type": "bool",
+          "label": "TRAE Work CN",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_unsloth",
+          "type": "bool",
+          "label": "Unsloth Studio",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_workbuddy",
+          "type": "bool",
+          "label": "WorkBuddy",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_workbuddy-ai",
+          "type": "bool",
+          "label": "WorkBuddy AI",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_zcode",
+          "type": "bool",
+          "label": "ZCode",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_zed",
+          "type": "bool",
+          "label": "Zed Agent",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          }
+        },
+        {
+          "key": "popupAgent_other",
+          "type": "bool",
+          "label": "其他工具",
+          "default": false,
+          "visibleWhen": {
+            "key": "popupAgentMode",
+            "equals": "custom"
+          },
+          "description": "包含尚未列入选项的新来源。"
+        }
+      ]
+    },
+    {
+      "group": "网络",
+      "fields": [
+        {
+          "key": "proxyMode",
+          "type": "enum",
+          "label": "代理模式",
+          "default": "auto",
+          "options": [
+            {
+              "value": "auto",
+              "label": "自动迁移已有代理"
+            },
+            {
+              "value": "system",
+              "label": "系统代理"
+            },
+            {
+              "value": "off",
+              "label": "不使用代理"
+            },
+            {
+              "value": "manual",
+              "label": "手动代理"
+            }
+          ]
+        },
+        {
+          "key": "proxyUrl",
+          "type": "string",
+          "label": "代理地址",
+          "default": "",
+          "secret": true,
+          "description": "支持 http、https、socks5，仅手动代理模式使用。"
+        }
+      ]
+    }
+  ],
+  "python": {
+    "version": ">=3.12,<4.0",
+    "packages": [
+      {
+        "name": "cryptography",
+        "import": "cryptography",
+        "version": ">=41.0",
+        "native": true
+      },
+      {
+        "name": "zstandard",
+        "import": "zstandard",
+        "version": ">=0.22",
+        "native": true
+      }
+    ]
+  }
+}

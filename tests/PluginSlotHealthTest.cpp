@@ -1,6 +1,7 @@
 // PluginSlotHealthTest.cpp — 验证槽位上下文注入、弹窗服务与稳定启动耗时
 #include "PopupService.h"
 #include <QQuickWindow>
+#include <QQuickView>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QJSEngine>
@@ -71,19 +72,30 @@ private:
 
 class PluginContextStub final : public QObject {
     Q_OBJECT
-    Q_PROPERTY(QVariantMap screenGeometry READ screenGeometry WRITE setScreenGeometry)
-    Q_PROPERTY(QString barEdge READ barEdge WRITE setBarEdge)
-    Q_PROPERTY(QObject* popupService MEMBER m_popupService)
-    Q_PROPERTY(QObject* actions MEMBER m_actions)
+    Q_PROPERTY(QVariantMap screenGeometry READ screenGeometry WRITE setScreenGeometry NOTIFY screenGeometryChanged)
+    Q_PROPERTY(QString barEdge READ barEdge WRITE setBarEdge NOTIFY barEdgeChanged)
+    Q_PROPERTY(QObject* popupService MEMBER m_popupService NOTIFY servicesChanged)
+    Q_PROPERTY(QObject* actions MEMBER m_actions NOTIFY servicesChanged)
 public:
     using QObject::QObject;
     QVariantMap screenGeometry() const { return m_screenGeometry; }
-    void setScreenGeometry(const QVariantMap& value) { m_screenGeometry = value; }
+    void setScreenGeometry(const QVariantMap& value) {
+        if (m_screenGeometry == value) return;
+        m_screenGeometry = value;
+        Q_EMIT screenGeometryChanged();
+    }
     QString barEdge() const { return m_barEdge; }
-    void setBarEdge(const QString& value) { m_barEdge = value; }
+    void setBarEdge(const QString& value) {
+        if (m_barEdge == value) return;
+        m_barEdge = value;
+        Q_EMIT barEdgeChanged();
+    }
     Q_INVOKABLE void notifyBarPressed() { Q_EMIT barPressed(); }
 Q_SIGNALS:
     void barPressed();
+    void screenGeometryChanged();
+    void barEdgeChanged();
+    void servicesChanged();
 private:
     QObject* m_popupService = nullptr;
     QObject* m_actions = nullptr;
@@ -133,9 +145,13 @@ class PluginSlotHealthTest final : public QObject {
     Q_OBJECT
 private Q_SLOTS:
     void initTestCase() {
+        qputenv("QT_QUICK_CONTROLS_STYLE", QByteArrayLiteral("Basic"));
         qmlRegisterSingletonType<UiMetricsStub>(
             "XuanHub", 1, 0, "UiMetrics",
             [](QQmlEngine*, QJSEngine*) -> QObject* { return new UiMetricsStub; });
+        qmlRegisterType(QUrl::fromLocalFile(
+            QStringLiteral(XUANHUB_SOURCE_DIR "/app/qml/PluginPopup.qml")),
+            "XuanHub", 1, 0, "PluginPopup");
     }
 
     void popupUsesOnlyScopedServicesForPlacementAndDismissal() {
@@ -201,8 +217,7 @@ private Q_SLOTS:
         engine.rootContext()->setContextProperty(QStringLiteral("barConfig"), &barConfig);
         engine.rootContext()->setContextProperty(
             QStringLiteral("barScreenGeometry"),
-            QVariantMap{{QStringLiteral("x"), 0}, {QStringLiteral("y"), 0},
-                        {QStringLiteral("width"), 1920}, {QStringLiteral("height"), 1080}});
+            QRect(0, 0, 1920, 1080));
 
         const QString slotPath = QStringLiteral(XUANHUB_SOURCE_DIR "/app/qml/PluginSlot.qml");
         QQmlComponent component(&engine, QUrl::fromLocalFile(slotPath));
@@ -227,6 +242,10 @@ private Q_SLOTS:
         QCOMPARE(loadedPlugin->property("pluginContext").value<QObject*>(), &pluginContext);
         QCOMPARE(loadedPlugin->property("plugin").value<QObject*>(), &worker);
         QVERIFY(loadedPlugin->property("contextReady").toBool());
+        // 与 BarWindow 相同地传入 QRect，避免 Map 替身掩盖值类型转换丢失。
+        QCOMPARE(pluginContext.screenGeometry(),
+                 (QVariantMap{{QStringLiteral("x"), 0}, {QStringLiteral("y"), 0},
+                              {QStringLiteral("width"), 1920}, {QStringLiteral("height"), 1080}}));
 
         QTRY_VERIFY_WITH_TIMEOUT(
             pluginModel.latestHealth().value(QStringLiteral("loadDurationMs")).toLongLong()
@@ -257,6 +276,83 @@ private Q_SLOTS:
         QCOMPARE(pluginModel.latestHealth()
                      .value(QStringLiteral("loadDurationMs")).toLongLong(),
                  completedWorkerDuration);
+    }
+
+    void agentUsageClickOpensPopupThroughSlot_data() {
+        QTest::addColumn<int>("hoverDelayMs");
+        QTest::newRow("immediate-click") << 0;
+        QTest::newRow("click-after-hover") << 1000;
+    }
+
+    void agentUsageClickOpensPopupThroughSlot() {
+        QFETCH(int, hoverDelayMs);
+        QQmlEngine engine;
+        QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+        ThemeStub theme;
+        WorkerHealthStub worker;
+        PluginContextStub context;
+        BarWindowStub barWindow;
+        BarConfigStub barConfig;
+        PluginModelStub model;
+        PopupService popups;
+        engine.rootContext()->setContextProperty(QStringLiteral("themeManager"), &theme);
+        engine.rootContext()->setContextProperty(QStringLiteral("pluginModel"), &model);
+        engine.rootContext()->setContextProperty(QStringLiteral("barWindow"), &barWindow);
+        engine.rootContext()->setContextProperty(QStringLiteral("barConfig"), &barConfig);
+        engine.rootContext()->setContextProperty(QStringLiteral("popupService"), &popups);
+        engine.rootContext()->setContextProperty(QStringLiteral("barScreenGeometry"), QRect(0, 0, 1280, 720));
+        QQmlComponent component(&engine, QUrl::fromLocalFile(
+            QStringLiteral(XUANHUB_SOURCE_DIR "/app/qml/PluginSlot.qml")));
+        const QVariantMap row{
+            {QStringLiteral("id"), QStringLiteral("py_agent_usage")},
+            {QStringLiteral("viewModel"), QVariant::fromValue(&worker)},
+            {QStringLiteral("pluginContext"), QVariant::fromValue(&context)},
+            {QStringLiteral("qmlUrl"), QUrl::fromLocalFile(
+                QStringLiteral(XUANHUB_SOURCE_DIR "/plugins_py/agent_usage/AgentUsage.qml"))},
+            {QStringLiteral("width"), 0}, {QStringLiteral("effectiveWidth"), 0},
+            {QStringLiteral("loadDurationMs"), 0}, {QStringLiteral("lastError"), QString{}},
+        };
+        std::unique_ptr<QObject> root(component.createWithInitialProperties(
+            {{QStringLiteral("model"), row}}));
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto* item = qobject_cast<QQuickItem*>(root.get());
+        QVERIFY(item);
+        QQuickView window(&engine, nullptr);
+        window.setGeometry(100, 100, 300, 40);
+        window.setContent(component.url(), &component, item);
+        root.release();
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QTest::qWait(100);
+        auto* mouse = item->findChild<QObject*>(QStringLiteral("agentUsageButton"));
+        QVERIFY(mouse);
+        QSignalSpy clicked(mouse, SIGNAL(clicked(QQuickMouseEvent*)));
+        // 必须覆盖停留后再点击，单纯给 ToolTip 加延迟仍会遮住这条矮状态栏。
+        QTest::mouseMove(&window, QPoint(30, 20));
+        QTest::qWait(hoverDelayMs);
+        auto clickBar = [&] {
+            // 真实宿主在投递鼠标事件前通知插件关闭旧弹窗。
+            context.notifyBarPressed();
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, QPoint(30, 20));
+        };
+        clickBar();
+        QTRY_VERIFY_WITH_TIMEOUT(popups.activePopup(), 2000);
+        QCOMPARE(clicked.count(), 1);
+        auto* popup = qobject_cast<QQuickWindow*>(popups.activePopup());
+        QVERIFY(popup);
+        QTRY_COMPARE(popup->opacity(), 1.0);
+        QVERIFY(popup->isVisible());
+        QCOMPARE(popup->size(), QSize(620, 650));
+        QVERIFY(QRect(0, 0, 1280, 720).contains(popup->geometry()));
+        clickBar();
+        QTRY_VERIFY(!popup->isVisible());
+        QVERIFY(!popups.activePopup());
+        clickBar();
+        QTRY_VERIFY(popup->isVisible());
+        QTRY_COMPARE(popup->opacity(), 1.0);
+        QCOMPARE(clicked.count(), 3);
+        popup->hide();
+        QVERIFY(warnings.isEmpty());
     }
 };
 
