@@ -59,6 +59,7 @@ python scripts/xuanhub_plugin.py package <插件目录或运行时目录> --outp
 
 ## 发布记录
 
+- [`v0.4.3`](releases/v0.4.3.md)：菜单分段切换、Token Usage 统一账户与弹窗优化、内存及多屏定位改进。
 - [`v0.4.2`](releases/v0.4.2.md)：taskbar 几何与菜单定位修复、内置插件 SDK V2 升级、多工具用量监控。
 - [`v0.4.1`](releases/v0.4.1.md)：主题 Schema v2、玄枢菜单动态操作与插件运行诊断修正。
 - [`v0.4.0`](releases/v0.4.0.md)：插件框架 SDK V2、跨运行时服务、插件生态与开发工具链。
