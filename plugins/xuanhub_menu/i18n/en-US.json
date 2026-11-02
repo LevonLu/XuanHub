@@ -6,7 +6,11 @@
       "管理主题、布局与插件": "Manage themes, layout, and plugins",
       "开机自启": "Start with Windows",
       "任务栏模式": "Taskbar mode",
-      "浅色模式": "Light mode",
+      "显示模式": "Display mode",
+      "独立状态栏": "Standalone bar",
+      "外观": "Appearance",
+      "浅色": "Light",
+      "深色": "Dark",
       "重新加载配置": "Reload configuration",
       "退出 XuanHub": "Exit XuanHub"
     },

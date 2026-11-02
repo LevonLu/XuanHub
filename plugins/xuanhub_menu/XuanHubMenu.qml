@@ -59,6 +59,75 @@ Item {
         menuWin.toggleFromBar()
     }
 
+    function selectMode(taskbar) {
+        // 使用明确的目标值，避免“关闭任务栏模式”隐藏另一个模式的含义。
+        if (!plugin || plugin.taskbarMode === taskbar) return
+        menuWin.hide()
+        plugin.invokeAction("taskbarMode", taskbar)
+    }
+
+    function selectTheme(light) {
+        if (!plugin || plugin.themeMode === (light ? "light" : "dark")) return
+        plugin.invokeAction("lightMode", light)
+    }
+
+    component SegmentedSelector: Rectangle {
+        id: chooser
+        property string firstText
+        property string secondText
+        property string firstObjectName
+        property string secondObjectName
+        property bool secondSelected: false
+        signal optionChosen(bool second)
+        width: parent ? parent.width : 256
+        height: 38; radius: 10; color: Qt.alpha(root.colors.fg, 0.045)
+        enabled: !!root.plugin
+        Row {
+            anchors.fill: parent; anchors.margins: 3; spacing: 4
+            Repeater {
+                model: 2
+                delegate: FocusScope {
+                    id: segment
+                    required property int index
+                    readonly property bool second: index === 1
+                    readonly property bool checked: chooser.secondSelected === second
+                    objectName: second ? chooser.secondObjectName : chooser.firstObjectName
+                    width: (parent.width - parent.spacing) / 2; height: parent.height
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.RadioButton
+                    Accessible.name: second ? chooser.secondText : chooser.firstText
+                    Accessible.checkable: true
+                    Accessible.checked: checked
+                    Accessible.onPressAction: chooser.optionChosen(second)
+                    Keys.onSpacePressed: chooser.optionChosen(second)
+                    Keys.onReturnPressed: chooser.optionChosen(second)
+                    Rectangle {
+                        anchors.fill: parent; radius: 8
+                        color: segmentMouse.pressed ? Qt.alpha(root.colors.accent, 0.16)
+                            : segment.checked ? root.colors.bg
+                            : segmentMouse.containsMouse ? Qt.alpha(root.colors.accent, 0.08) : "transparent"
+                        border.color: segment.activeFocus ? root.colors.accent
+                            : segment.checked ? Qt.alpha(root.colors.border, 0.7) : "transparent"
+                        Behavior on color { ColorAnimation { duration: 120 } }
+                    }
+                    Text {
+                        anchors.fill: parent; anchors.leftMargin: 6; anchors.rightMargin: 6
+                        text: segment.second ? chooser.secondText : chooser.firstText
+                        color: segment.checked || segmentMouse.containsMouse ? root.colors.accent : root.colors.fg
+                        font.pixelSize: 12; font.weight: segment.checked ? Font.DemiBold : Font.Medium
+                        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                    }
+                    MouseArea {
+                        id: segmentMouse
+                        anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                        onClicked: chooser.optionChosen(segment.second)
+                    }
+                }
+            }
+        }
+    }
+
     component MenuRow: Item {
         id: row
         property string title
@@ -128,10 +197,11 @@ Item {
 
     PluginPopup {
         id: menuWin
+        objectName: "xuanhubMenuPopup"
         anchorItem: root
         pluginContext: root.pluginContext
         gap: 7
-        width: 240
+        width: 280
         // 首次布局与动作列表更新都会改变高度，由宿主按最终尺寸重定位后显现。
         height: Math.min(520, menuColumn.implicitHeight + 26)
 
@@ -170,20 +240,43 @@ Item {
                 checked: root.plugin ? root.plugin.autoStartEnabled : false
                 onTriggered: if (root.plugin) root.plugin.invokeAction("autostart", !checked)
             }
-            MenuRow {
-                title: qsTranslate("plugin.xuanhub_menu.main", "任务栏模式")
-                checkable: true
-                checked: root.plugin ? root.plugin.taskbarMode : false
-                onTriggered: {
-                    menuWin.hide()
-                    if (root.plugin) root.plugin.invokeAction("taskbarMode", !checked)
+            Column {
+                width: parent.width; spacing: 6
+                Item {
+                    width: parent.width; height: 20
+                    Text {
+                        x: 11; anchors.verticalCenter: parent.verticalCenter
+                        text: qsTranslate("plugin.xuanhub_menu.main", "显示模式")
+                        color: root.colors.muted; font.pixelSize: 11
+                    }
                 }
+                SegmentedSelector {
+                    firstObjectName: "menuTaskbarMode"; secondObjectName: "menuAppbarMode"
+                    firstText: qsTranslate("plugin.xuanhub_menu.main", "任务栏模式")
+                    secondText: qsTranslate("plugin.xuanhub_menu.main", "独立状态栏")
+                    secondSelected: root.plugin ? !root.plugin.taskbarMode : true
+                    onOptionChosen: function(second) { root.selectMode(!second) }
+                }
+                Item { width: parent.width; height: 4 }
             }
-            MenuRow {
-                title: qsTranslate("plugin.xuanhub_menu.main", "浅色模式")
-                checkable: true
-                checked: root.plugin ? root.plugin.themeMode === "light" : false
-                onTriggered: if (root.plugin) root.plugin.invokeAction("lightMode", !checked)
+            Column {
+                width: parent.width; spacing: 6
+                Item {
+                    width: parent.width; height: 20
+                    Text {
+                        x: 11; anchors.verticalCenter: parent.verticalCenter
+                        text: qsTranslate("plugin.xuanhub_menu.main", "外观")
+                        color: root.colors.muted; font.pixelSize: 11
+                    }
+                }
+                SegmentedSelector {
+                    firstObjectName: "menuLightMode"; secondObjectName: "menuDarkMode"
+                    firstText: qsTranslate("plugin.xuanhub_menu.main", "浅色")
+                    secondText: qsTranslate("plugin.xuanhub_menu.main", "深色")
+                    secondSelected: root.plugin ? root.plugin.themeMode !== "light" : true
+                    onOptionChosen: function(second) { root.selectTheme(!second) }
+                }
+                Item { width: parent.width; height: 8 }
             }
             MenuRow {
                 title: qsTranslate("plugin.xuanhub_menu.main", "重新加载配置")

@@ -115,6 +115,39 @@ private:
     QString m_barEdge = QStringLiteral("top");
 };
 
+class MenuPluginStub final : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(bool taskbarMode READ taskbarMode NOTIFY stateChanged)
+    Q_PROPERTY(bool autoStartEnabled READ autoStartEnabled CONSTANT)
+    Q_PROPERTY(QString themeMode READ themeMode NOTIFY stateChanged)
+    Q_PROPERTY(bool pluginActionsEnabled READ pluginActionsEnabled CONSTANT)
+    Q_PROPERTY(int actionFilterRevision READ actionFilterRevision CONSTANT)
+public:
+    bool taskbarMode() const { return m_taskbarMode; }
+    bool autoStartEnabled() const { return false; }
+    QString themeMode() const { return m_themeMode; }
+    bool pluginActionsEnabled() const { return true; }
+    int actionFilterRevision() const { return 0; }
+    Q_INVOKABLE void requestState() {}
+    Q_INVOKABLE bool isPluginActionEnabled(const QString&, const QString&) const { return true; }
+    Q_INVOKABLE void invokeAction(const QString& action, bool enabled) {
+        Q_EMIT actionInvoked(action, enabled);
+        if (action == QStringLiteral("taskbarMode") && m_taskbarMode != enabled) {
+            m_taskbarMode = enabled;
+            Q_EMIT stateChanged();
+        } else if (action == QStringLiteral("lightMode")) {
+            m_themeMode = enabled ? QStringLiteral("light") : QStringLiteral("dark");
+            Q_EMIT stateChanged();
+        }
+    }
+Q_SIGNALS:
+    void stateChanged();
+    void actionInvoked(const QString& action, bool enabled);
+private:
+    bool m_taskbarMode = false;
+    QString m_themeMode = QStringLiteral("dark");
+};
+
 class MenuActionsStub final : public QObject {
     Q_OBJECT
     Q_PROPERTY(int revision READ revision NOTIFY revisionChanged)
@@ -315,6 +348,8 @@ private Q_SLOTS:
         QSignalSpy warnings(&engine, &QQmlEngine::warnings);
         PopupService popups;
         MenuActionsStub actions;
+        MenuPluginStub plugin;
+        QSignalSpy commands(&plugin, &MenuPluginStub::actionInvoked);
         PluginContextStub context;
         context.setProperty("popupService", QVariant::fromValue<QObject*>(&popups));
         context.setProperty("actions", QVariant::fromValue<QObject*>(&actions));
@@ -326,7 +361,7 @@ private Q_SLOTS:
         QQmlComponent component(&engine, QUrl::fromLocalFile(
             menuDir.filePath(QStringLiteral("XuanHubMenu.qml"))));
         std::unique_ptr<QObject> root(component.createWithInitialProperties({
-            {QStringLiteral("plugin"), QVariant::fromValue<QObject*>(nullptr)},
+            {QStringLiteral("plugin"), QVariant::fromValue(&plugin)},
             {QStringLiteral("pluginContext"), QVariant::fromValue(&context)},
         }));
         QVERIFY2(root, qPrintable(component.errorString()));
@@ -367,6 +402,79 @@ private Q_SLOTS:
         QObject otherPopup;
         popups.activate(&otherPopup);
         QTRY_VERIFY(!popup->isVisible());
+
+        // 两种目标同时可见，重复选择当前模式不发布命令；切换后由宿主状态回执更新选中项。
+        clickBar();
+        QTRY_COMPARE(popup->opacity(), 1.0);
+        // Repeater 委托的 QObject 归属不等于可视父项，按真实输入分发所用的 Item 树查找。
+        auto findOption = [popup](const QString& name) {
+            const auto findVisual = [](auto&& self, QQuickItem* item,
+                                        const QString& target) -> QQuickItem* {
+                if (item->objectName() == target) return item;
+                for (QQuickItem* child : item->childItems())
+                    if (auto* found = self(self, child, target)) return found;
+                return nullptr;
+            };
+            return findVisual(findVisual, popup->contentItem(), name);
+        };
+        auto* taskbarOption = findOption(QStringLiteral("menuTaskbarMode"));
+        auto* appbarOption = findOption(QStringLiteral("menuAppbarMode"));
+        QVERIFY(taskbarOption);
+        QVERIFY(appbarOption);
+        QCOMPARE(appbarOption->property("checked").toBool(), true);
+        QCOMPARE(taskbarOption->property("checked").toBool(), false);
+        auto clickOption = [popup](QQuickItem* option) {
+            QTest::mouseClick(popup, Qt::LeftButton, Qt::NoModifier,
+                option->mapToScene(QPointF(option->width() / 2, option->height() / 2)).toPoint());
+        };
+        clickOption(appbarOption);
+        QCOMPARE(commands.count(), 0);
+        QVERIFY(popup->isVisible());
+        clickOption(taskbarOption);
+        QTRY_VERIFY(!popup->isVisible());
+        QCOMPARE(commands.count(), 1);
+        QCOMPARE(commands.at(0).at(0).toString(), QStringLiteral("taskbarMode"));
+        QCOMPARE(commands.at(0).at(1).toBool(), true);
+        clickBar();
+        QTRY_COMPARE(popup->opacity(), 1.0);
+        QCOMPARE(taskbarOption->property("checked").toBool(), true);
+        QCOMPARE(appbarOption->property("checked").toBool(), false);
+        clickOption(taskbarOption);
+        QCOMPARE(commands.count(), 1);
+        clickOption(appbarOption);
+        QTRY_VERIFY(!popup->isVisible());
+        QCOMPARE(commands.count(), 2);
+        QCOMPARE(commands.at(1).at(0).toString(), QStringLiteral("taskbarMode"));
+        QCOMPARE(commands.at(1).at(1).toBool(), false);
+
+        // 外观分段使用同样的受控选中状态；换色保留菜单，重复点击不发送命令。
+        clickBar();
+        QTRY_COMPARE(popup->opacity(), 1.0);
+        auto* lightOption = findOption(QStringLiteral("menuLightMode"));
+        auto* darkOption = findOption(QStringLiteral("menuDarkMode"));
+        QVERIFY(lightOption);
+        QVERIFY(darkOption);
+        QCOMPARE(darkOption->property("checked").toBool(), true);
+        QCOMPARE(lightOption->property("checked").toBool(), false);
+        clickOption(darkOption);
+        QCOMPARE(commands.count(), 2);
+        clickOption(lightOption);
+        QCOMPARE(commands.count(), 3);
+        QCOMPARE(commands.at(2).at(0).toString(), QStringLiteral("lightMode"));
+        QCOMPARE(commands.at(2).at(1).toBool(), true);
+        QTRY_VERIFY(lightOption->property("checked").toBool());
+        QVERIFY(!darkOption->property("checked").toBool());
+        QVERIFY(popup->isVisible());
+        clickOption(lightOption);
+        QCOMPARE(commands.count(), 3);
+        clickOption(darkOption);
+        QCOMPARE(commands.count(), 4);
+        QCOMPARE(commands.at(3).at(0).toString(), QStringLiteral("lightMode"));
+        QCOMPARE(commands.at(3).at(1).toBool(), false);
+        QTRY_VERIFY(darkOption->property("checked").toBool());
+        QVERIFY(!lightOption->property("checked").toBool());
+        QVERIFY(popup->isVisible());
+        popup->hide();
         QVERIFY(warnings.isEmpty());
     }
 
