@@ -11,7 +11,7 @@ xuanhub::PluginDescriptor XuanHubMenuPlugin::descriptor() const {
     xuanhub::PluginDescriptor value;
     value.id = QStringLiteral("xuanhub_menu");
     value.displayName = QStringLiteral("玄枢菜单");
-    value.version = QStringLiteral("0.2.0");
+    value.version = QStringLiteral("0.2.1");
     value.apiVersion = 2;
     value.configVersion = 1;
     value.minHostVersion = QStringLiteral("0.4.1");
