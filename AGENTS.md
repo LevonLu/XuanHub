@@ -248,3 +248,18 @@ python scripts/xuanhub_plugin.py doctor <插件目录或运行时目录>
 - Python 桥接：`plugins/pybridge/PyBridgePlugin.{h,cpp}`（发现/运行时）、`PyWorkerViewModel.{h,cpp}`（异步 IPC 代理）、`plugins_py/bridge_worker.py`（隔离执行器）、`lib/barplugin/ProcessReaper.{h,cpp}`（跨 DLL 进程回收）
 - Python 子插件契约：`plugins_py/README.md`；示例 `hello/`（参考样例）、`intime/`（定时提醒）、`usage_hub/`（用量看板）
 - 开发者 CLI：`scripts/xuanhub_plugin.py`；测试入口：`tests/` 与顶层 `CMakeLists.txt`
+
+## 11. 重要改动的决策笔记
+
+本项目启用 `write-notes-like-deepseek`，上游 Git 仓库为
+[`czm15053/write-notes-like-deepseek`](https://github.com/czm15053/write-notes-like-deepseek)。
+首次参与维护时，检出上游提交 `72573a5b179de7798bbb7c4aeacdc0df6bf62439`，将其中的
+`skills/write-notes-like-deepseek/` 完整复制到本项目的 `.agents/skills/write-notes-like-deepseek/`，
+再读取本地 `SKILL.md`。该提交为当前验证版本；升级后需重新运行笔记校验，并更新这里的提交号。
+
+- `.agents/notes/` 中的决策笔记纳入 Git，新增、修改、迁移或归档必须与对应代码或流程改动在同一次提交中完成；不得因其位于隐藏目录而漏交。技能本体仅在本机安装，由 `.gitignore` 排除，不随本仓库提交。
+- 非平凡改动（行为、架构、跨文件契约、流程与工具链、测试策略、落盘/网络/配置格式）前，读取并遵循该技能；纯样式、格式化、错别字、打标及不改行为的机械改动免写笔记。
+- 写之前先检索 `.agents/notes/` 的同主题历史，使用 `rg --hidden --glob '!.agents/notes/archived/**' "<关键词>" .agents/notes/`；目录尚不存在时无需搜索。已有归属的事实就地更新，决定或理由翻转时另写新篇并互链。
+- 路径遵循 `.agents/notes/{proposed,implemented,rejected,archived}/{feature,bug-fix,simplification,architecture,process,testing}/yyyy-mm-dd-topic.md`，仅按需创建目录，不建总索引。新方案先记为 `proposed`，落地时与代码同批转入 `implemented`，同步状态与正文。
+- 真实考虑过的备选方案先写最强理由，再解释为何放弃；后果同时记录收益、代价与验证边界。旧决定被完全取代时按技能脚本归档，保持封印与入站链接有效。
+- 新增或修改笔记后，以及提交前，在项目根目录运行 `pixi run verify-notes`；校验失败先修复。该任务依赖上述本地技能安装、Node.js 与 npm/npx，使用固定版本 `tsx`，首次运行或无缓存时需要联网获取。

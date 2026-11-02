@@ -51,3 +51,6 @@ config.private.*
 .zcode/
 .trae/
 CLAUDE.md
+
+# 外部技能仅在本机安装；.agents/notes/ 决策笔记需随相关代码提交
+/.agents/skills/write-notes-like-deepseek/
