@@ -13,6 +13,9 @@
 #include <QTemporaryDir>
 #include <QtTest>
 
+#include <windows.h>
+#include <psapi.h>
+
 class PythonBusResponder final : public QObject {
     Q_OBJECT
 public:
@@ -32,6 +35,43 @@ class PyWorkerViewModelTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void discardsWorkerStdoutWithoutRetainingItInHost() {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        QFile mainFile(temporary.filePath(QStringLiteral("main.py")));
+        QVERIFY(mainFile.open(QIODevice::WriteOnly | QIODevice::Text));
+        QVERIFY(mainFile.write(R"PY(
+import sys
+def update():
+    return {"ready": True}
+def invoke(name, args):
+    for _ in range(512):
+        sys.stdout.write("x" * 65536)
+    sys.stdout.flush()
+    return "done"
+)PY") > 0);
+        mainFile.close();
+        PyWorkerViewModel viewModel(QStringLiteral("py_stdout_test"), temporary.path(), {},
+                                    qEnvironmentVariable("XUANHUB_TEST_PYTHON"),
+                                    qEnvironmentVariable("XUANHUB_TEST_WORKER"), nullptr);
+        QVERIFY(viewModel.start());
+        QTRY_VERIFY_WITH_TIMEOUT(viewModel.running(), 5000);
+        QTRY_VERIFY(viewModel.values().value(QStringLiteral("ready")).toBool());
+        PROCESS_MEMORY_COUNTERS_EX before{};
+        QVERIFY(K32GetProcessMemoryInfo(GetCurrentProcess(),
+            reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&before), sizeof(before)));
+        QSignalSpy finished(&viewModel, &PyWorkerViewModel::callFinished);
+        QVERIFY(viewModel.call(QStringLiteral("flood"), {}).toMap()
+                    .value(QStringLiteral("queued")).toBool());
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 5000);
+        QVERIFY(finished.first().at(1).toBool());
+        PROCESS_MEMORY_COUNTERS_EX after{};
+        QVERIFY(K32GetProcessMemoryInfo(GetCurrentProcess(),
+            reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&after), sizeof(after)));
+        // 输出 32 MiB，但允许初始化与分配器噪声；缺少 stdout 重定向时会完整积压。
+        QVERIFY2(after.PrivateUsage < before.PrivateUsage + 8 * 1024 * 1024,
+                 "worker stdout must not accumulate in the host QProcess buffer");
+    }
     void reportsRejectedConfigReceiptAndPendingTimeout() {
         PyWorkerViewModel vm(QStringLiteral("receipts"), {}, {}, {}, {}, nullptr);
         vm.m_authenticated = true;

@@ -5,6 +5,7 @@ import QtQuick.Layouts
 
 Flickable {
     id: root
+    objectName: "tokenAccountPanel"
     property var plugin
     property var values: ({})
     property var colors

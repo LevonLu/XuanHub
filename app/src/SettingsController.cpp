@@ -1,4 +1,4 @@
-// SettingsController.cpp
+// SettingsController.cpp — 按需创建和释放设置视图，保留异步任务状态
 #include "SettingsController.h"
 #include "SettingsViewModel.h"
 #include "ThemeManager.h"
@@ -17,6 +17,7 @@
 #include <QQuickView>
 #include <QQmlContext>
 #include <QTest>
+#include <QTimer>
 
 SettingsController::SettingsController(ConfigService* config, ThemeManager* theme,
                                        ThemeRegistry* registry,
@@ -35,12 +36,17 @@ SettingsController::~SettingsController() {
 }
 
 void SettingsController::open() {
+    // 回执与异步安装属于后台状态，不能随设置视图一起销毁。
+    if (!m_vm) {
+        m_vm = new SettingsViewModel(m_config, m_registry, m_theme, m_locale,
+                                     m_exeDir, m_barPlugins, m_pluginManager, this);
+    }
+    m_vm->reloadFromConfig();
+    m_vm->reloadThemePacks();
     if (!m_window) {
         // Basic 样式已在 main() 创建任何 QML 引擎前设置；此处重复调用不仅无效，
         // 还会在每次首次打开设置窗口时产生“必须在加载 QML 前调用”的误导性警告。
 
-        m_vm = new SettingsViewModel(m_config, m_registry, m_theme, m_locale,
-                                     m_exeDir, m_barPlugins, m_pluginManager, this);
         auto* w = new QQuickView();
         w->setTitle(QCoreApplication::translate(
             "xuanhub.settings", "玄枢设置 XuanHub Settings"));
@@ -91,11 +97,17 @@ void SettingsController::open() {
             for (const auto& e : w->errors())
                 qWarning() << "[Settings] QML error:" << e.toString();
         }
-        // 标题栏关闭按钮 = 隐藏（QWindow::close 默认行为即 hide），窗口不销毁
         m_window = w;
+        connect(w, &QWindow::visibleChanged, this, [this, w](bool visible) {
+            if (visible) return;
+            // 等 QML 的关闭处理返回后再释放引擎；同一轮立即重开时继续复用现有窗口。
+            QTimer::singleShot(0, w, [this, w] {
+                if (m_window != w || w->isVisible()) return;
+                m_window.clear();
+                w->deleteLater();
+            });
+        });
     }
-    m_vm->reloadFromConfig();
-    m_vm->reloadThemePacks();   // 打开时刷新主题包下拉（用户可能新装/卸载了包）
     m_window->show();
     m_window->raise();
     m_window->requestActivate();

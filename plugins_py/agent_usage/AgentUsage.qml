@@ -46,13 +46,17 @@ Item {
     PluginPopup {
         id: popup; anchorItem: root; pluginContext: root.pluginContext
         width: Math.min(420, root.pluginContext && root.pluginContext.screenGeometry ? root.pluginContext.screenGeometry.width - 20 : 420)
-        height: Math.min(popupPanel.implicitHeight, 620,
+        height: Math.min(popupContent.item ? popupContent.item.implicitHeight : 140, 620,
             root.pluginContext && root.pluginContext.screenGeometry ? root.pluginContext.screenGeometry.height - 40 : 620)
-        TokenPanel {
-            id: popupPanel
+        // 只保留轻量窗口和宿主状态机；隐藏时卸载详情，重开后由宿主按最终尺寸重新定位。
+        Loader {
+            id: popupContent
             anchors.fill: parent
-            plugin: root.plugin; pluginContext: root.pluginContext
-            values: root.values; colors: root.colors
+            active: popup.visible
+            sourceComponent: TokenPanel {
+                plugin: root.plugin; pluginContext: root.pluginContext
+                values: root.values; colors: root.colors
+            }
         }
     }
 }

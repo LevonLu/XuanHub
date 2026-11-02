@@ -195,7 +195,7 @@ int main(int argc, char* argv[]) {
     QObject::connect(&tray, &TrayIcon::reloadRequested,
                      &reloader, &ConfigHotReloader::forceReload);
 
-    // 设置窗口（M8）：托盘 "设置..." 打开（懒建，关闭=隐藏不销毁）
+    // 设置窗口（M8）：托盘按需打开；关闭释放视图，后台任务状态由控制器保留。
     SettingsController settingsCtl(&config, &theme, &registry, &locale, exeDir,
                                    &model, &pm, &pluginActions);
     QObject::connect(&tray, &TrayIcon::settingsRequested,

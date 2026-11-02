@@ -14,6 +14,10 @@
 #include <algorithm>
 #include <utility>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
+
 #include "barplugin/ProcessReaper.h"
 #include "barplugin/PluginLog.h"
 #include "barplugin/EventBus.h"
@@ -194,6 +198,15 @@ bool PyWorkerViewModel::start() {
     auto* process = new QProcess;
     m_process = process;
     process->setProcessChannelMode(QProcess::SeparateChannels);
+    // 插件的 print() 不参与 IPC；直接丢弃 stdout，避免无人读取的 QProcess 缓冲持续增长。
+    process->setStandardOutputFile(QProcess::nullDevice());
+#ifdef Q_OS_WIN
+    // 隔离 worker 通过 socket 与 stderr 管道通信，不需要为 python.exe 分配隐藏控制台。
+    process->setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments* args) {
+        args->flags &= ~(CREATE_NEW_CONSOLE | CREATE_NO_WINDOW);
+        args->flags |= DETACHED_PROCESS;
+    });
+#endif
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     // worker 使用自身解释器定位标准库，避免宿主的 PYTHONHOME/PYTHONPATH 污染子进程。
     environment.remove(QStringLiteral("PYTHONHOME"));

@@ -11,7 +11,9 @@ Rectangle {
     property var values: ({})
     property var colors
     property int page: 0
-    implicitHeight: page === 0 ? tools.implicitHeight + 42 : Math.min(570, Math.max(140, accountsView.contentHeight + 64))
+    implicitHeight: page === 0
+        ? (tools.item ? tools.item.implicitHeight : 140) + 42
+        : Math.min(570, Math.max(140, (accountsView.item ? accountsView.item.contentHeight : 0) + 64))
     color: colors.bg; radius: 12; border.color: colors.border
     function tr(s) { return qsTranslate("plugin.py_agent_usage.main", s) }
     Row {
@@ -20,16 +22,20 @@ Rectangle {
         Button { text: root.tr("账户额度"); highlighted: root.page === 1; onClicked: root.page = 1 }
         Button { text: root.tr("刷新"); onClicked: if (root.plugin) root.plugin.call("refresh", []) }
     }
-    UsagePanel {
-        id: tools; visible: root.page === 0
+    Loader {
+        id: tools; active: root.page === 0
         anchors.top: tabs.bottom; anchors.bottom: parent.bottom; width: parent.width
-        plugin: root.plugin; pluginContext: root.pluginContext; values: root.values; colors: root.colors
-        onRefreshRequested: if (root.plugin) root.plugin.call("refresh", [])
+        sourceComponent: UsagePanel {
+            plugin: root.plugin; pluginContext: root.pluginContext; values: root.values; colors: root.colors
+            onRefreshRequested: if (root.plugin) root.plugin.call("refresh", [])
+        }
     }
-    AccountPanel {
+    Loader {
         id: accountsView
-        visible: root.page === 1; anchors.top: tabs.bottom; anchors.bottom: parent.bottom
+        active: root.page === 1; anchors.top: tabs.bottom; anchors.bottom: parent.bottom
         anchors.left: parent.left; anchors.right: parent.right; anchors.margins: 12
-        plugin: root.plugin; values: root.values; colors: root.colors
+        sourceComponent: AccountPanel {
+            plugin: root.plugin; values: root.values; colors: root.colors
+        }
     }
 }

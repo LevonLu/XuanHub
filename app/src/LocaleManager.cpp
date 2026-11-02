@@ -47,8 +47,13 @@ QString LocaleManager::resolveActive(const QString& requested,
 
 void LocaleManager::registerEngine(QQmlEngine* engine) {
     if (!engine) return;
-    for (const auto& existing : std::as_const(m_engines)) {
-        if (existing == engine) return;
+    for (auto it = m_engines.begin(); it != m_engines.end();) {
+        if (!*it) {
+            it = m_engines.erase(it);
+        } else {
+            if (*it == engine) return;
+            ++it;
+        }
     }
     m_engines.append(engine);
 }

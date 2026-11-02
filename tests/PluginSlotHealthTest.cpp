@@ -502,6 +502,7 @@ private Q_SLOTS:
         QTest::qWait(100);
         auto* mouse = item->findChild<QObject*>(QStringLiteral("agentUsageButton"));
         QVERIFY(mouse);
+        QVERIFY(!item->findChild<QQuickItem*>(QStringLiteral("tokenUsagePanel")));
         QSignalSpy clicked(mouse, SIGNAL(clicked(QQuickMouseEvent*)));
         // 必须覆盖停留后再点击，单纯给 ToolTip 加延迟仍会遮住这条矮状态栏。
         QTest::mouseMove(&window, QPoint(30, 20));
@@ -521,14 +522,17 @@ private Q_SLOTS:
         QCOMPARE(popup->width(), 420);
         auto* panel = popup->findChild<QQuickItem*>(QStringLiteral("tokenUsagePanel"));
         QVERIFY(panel);
+        QPointer<QQuickItem> previousPanel(panel);
         QTRY_COMPARE(popup->height(), qRound(qMin(panel->implicitHeight(), qreal(620))));
         QVERIFY(QRect(0, 0, 1280, 720).contains(popup->geometry()));
         clickBar();
         QTRY_VERIFY(!popup->isVisible());
         QVERIFY(!popups.activePopup());
+        QTRY_VERIFY(previousPanel.isNull());
         clickBar();
         QTRY_VERIFY(popup->isVisible());
         QTRY_COMPARE(popup->opacity(), 1.0);
+        QVERIFY(popup->findChild<QQuickItem*>(QStringLiteral("tokenUsagePanel")));
         QCOMPARE(clicked.count(), 3);
         popup->hide();
         QVERIFY(warnings.isEmpty());

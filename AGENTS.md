@@ -168,6 +168,8 @@ V2 的命名空间、异步投递、保留状态、请求响应、权限和背�
 
 **插件设置 schema 化**：设置窗口插件页为 master-detail。插件 config 编辑方式两种并存，**自绘优先（settingsQml > settings > 无）**：`settings` 由 sidecar 声明分组→字段（bool/int/double/string/color/enum/json），框架生成表单（契约见 `plugins_py/README.md`）；`settingsQml` 是插件自带 QML（示例 `plugins/sysinfo/SysInfoSettings.qml`），根 Item 声明 `property var plugin`，注入 `SettingsPluginProxy` 草稿桥，经 `value(key)/setValue(key,v)` 读写草稿；`revision` 属性随 `setValue` 递增并触发 `valuesChanged`——`value()` 是函数调用无通知，预览类绑定在表达式里引用一次 `plugin.revision` 建立依赖即可实时刷新。草稿存于 `SettingsPluginModel` 行内（未知键保留），导出按 schema 校验，保存仍走 `apply() → save → watcher`。**时序契约**：切换选中时框架保证 `pluginProxy.pluginId` 先于右侧面板刷新指向新插件（`pluginList.onCurrentIdChanged` 显式定序，不用 Binding——求值顺序不保证，曾致 countdown 默认键写进 sysinfo 条目）；自绘页读草稿初始化放 `onPluginChanged`（注入晚于 `Component.onCompleted`），异步写默认值前校验 `plugin.pluginId`。
 
+**设置视图生命周期**：页面首次访问时创建，本次编辑期间保留非法输入与选择；关闭窗口后在事件循环中释放视图及 QML 引擎。`SettingsViewModel` 由控制器保留，继续接收依赖安装与更新回执；重新打开时从当前配置刷新草稿。不要为释放窗口而一并销毁负责异步回执的模型。
+
 ## 6. 代码风格与约定
 
 - **注释与文档一律使用简体中文**；源文件首行是 `// 文件名 — 一句话职责` 头注释；关键设计取舍在代码附近注释"为什么"（含被拒绝的备选）。

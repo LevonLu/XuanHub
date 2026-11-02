@@ -79,4 +79,17 @@ TestCase {
         verify(waitForRendering(panel))
         compare(panel.values.accounts.length,1)
     }
+    function test_only_selected_popup_page_exists() {
+        var panel=createTemporaryObject(panelComponent,tests,{values:{agents:[],accounts:[]}})
+        verify(panel !== null)
+        verify(findChild(panel,"agentUsagePanel") !== null)
+        compare(findChild(panel,"tokenAccountPanel"),null)
+        panel.page=1
+        tryCompare(panel,"page",1)
+        verify(findChild(panel,"tokenAccountPanel") !== null)
+        tryVerify(function(){return findChild(panel,"agentUsagePanel") === null})
+        panel.page=0
+        verify(findChild(panel,"agentUsagePanel") !== null)
+        tryVerify(function(){return findChild(panel,"tokenAccountPanel") === null})
+    }
 }
