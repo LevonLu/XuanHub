@@ -12,6 +12,8 @@ Agent 用量与 Usage Hub 的额度查询重叠，但余额、手填账户和历
 
 DeepSeek 金额按相邻余额减少量累计，使用 Decimal，始终标为估算。余额增加标记受影响，换号、换币种及日期边界不复用不可信基线。
 
+账户额度页隐藏 `configured=false` 或 `not_configured` 的条目。自动发现的来源还须已有额度、余额、套餐信息，或已确认查询成功（含 `no_quota`）；只有探测失败的占位条目不显示。已配置的手动账户查询失败时继续显示错误，自动账户已有缓存时继续显示缓存。筛选仅在 `AccountPanel.qml` 执行，不改变后台采集、重试、状态栏列及原始账户快照。
+
 ## Historical audit
 
 [bar 额度](../../implemented/feature/2026-11-02-agent-usage-bar-quotas.md)的固定布局由列编辑接管，精确窗口匹配继续成立；[移除预估金额](../../implemented/simplification/2026-11-02-agent-usage-remove-cost-estimates.md)的模型计价禁用继续成立，本篇只加入真实余额与余额差；[紧凑弹窗](../../implemented/simplification/2026-11-02-agent-usage-compact-popup.md)的内容分层继续成立。三篇均部分重叠，保留并互链，不归档。其余检索结果无关。
@@ -27,6 +29,7 @@ DeepSeek 金额按相邻余额减少量累计，使用 Decimal，始终标为估
 - 原 Agent 的 155 项 Python 回归、新账户与列解析的 10 项隔离回归通过；全目录 QML 回归 31 项通过。插件 CLI 的 validate、doctor、两轮 Worker 生命周期及 run 通过。
 - 宿主迁移回归覆盖仅旧 Hub、两者共存、重复读取、DPAPI 转存、原配置不写回及跨插件凭据拒绝。既有密钥事务回归继续覆盖失败回滚。
 - 原生 Qt 截图核对单列 Token 与双行额度、余额的混排。真实账号、真实不同 DPI 和所有 Win32 交互仍需人工验收，不以离屏截图代替。
+- 账户页 QML 回归覆盖未配置与未确认自动来源隐藏、零占用额度和缓存保留、手动账户错误保留，以及筛选后空状态与数据更新。
 
 ## Consequences
 

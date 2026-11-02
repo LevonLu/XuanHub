@@ -1,6 +1,7 @@
 // AgentDetail.qml — 单工具日期区间查询、Token 分项和按日/模型明细
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Basic as Basic
 import QtQuick.Layouts
 import "TokenFormat.js" as TokenFormat
 
@@ -92,25 +93,25 @@ Item {
         onTriggered: detail.localError = "timeout"
     }
 
-    component Action: Rectangle {
+    component Action: PopupAction {
         property string label
         signal triggered()
-        implicitWidth: text.implicitWidth + 22; implicitHeight: 30; radius: 6; color: detail.colors.panel
-        Text { id: text; anchors.centerIn: parent; text: parent.label; font.pixelSize: 12; color: detail.colors.accent }
-        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: parent.triggered() }
+        colors: detail.colors
+        text: label
+        onClicked: triggered()
     }
-    component DateInput: TextField {
-        implicitHeight: 32; Layout.fillWidth: true; Layout.minimumWidth: 100
+    component DateInput: Basic.TextField {
+        implicitHeight: 34; Layout.fillWidth: true; Layout.minimumWidth: 100
         placeholderText: "YYYY-MM-DD"; font.pixelSize: 12
         color: detail.colors.fg; placeholderTextColor: detail.colors.muted; selectionColor: detail.colors.accent
-        background: Rectangle { color: detail.colors.panel; radius: 6; border.color: parent.activeFocus ? detail.colors.accent : detail.colors.border }
+        background: Rectangle { color: Qt.alpha(detail.colors.fg, 0.025); radius: 8; border.color: parent.activeFocus ? detail.colors.accent : Qt.alpha(detail.colors.border, 0.7) }
         onTextEdited: detail.localError = ""
         onAccepted: detail.submit()
         selectByMouse: true; maximumLength: 10
     }
 
     ColumnLayout {
-        anchors.fill: parent; anchors.margins: 16; spacing: 10
+        anchors.fill: parent; anchors.margins: 20; spacing: 12
         RowLayout {
             Layout.fillWidth: true; spacing: 10
             Action { objectName: "detailBack"; label: "‹ " + detail.tr("工具列表"); onTriggered: detail.backRequested() }
@@ -145,9 +146,9 @@ Item {
         }
         Text { objectName: "detailMessage"; text: detail.message(); visible: text.length > 0; Layout.fillWidth: true; wrapMode: Text.Wrap; color: detail.colors.warning; font.pixelSize: 12 }
         Rectangle {
-            Layout.fillWidth: true; implicitHeight: summary.implicitHeight + 24; radius: 8; color: detail.colors.panel
+            Layout.fillWidth: true; implicitHeight: summary.implicitHeight + 32; radius: 12; color: Qt.alpha(detail.colors.accent, 0.055)
             ColumnLayout {
-                id: summary; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 12; spacing: 6
+                id: summary; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 16; spacing: 6
                 Text { objectName: "detailTotal"; text: detail.detailData ? detail.number(detail.detailData.totals.total_tokens) : "—"; color: detail.colors.fg; font.pixelSize: 28; font.bold: true; Layout.fillWidth: true }
                 Text { text: detail.tr("区间 Token 总量"); color: detail.colors.muted; font.pixelSize: 11; Layout.fillWidth: true }
                 Text {
@@ -162,8 +163,8 @@ Item {
         }
         RowLayout {
             spacing: 8
-            Action { objectName: "detailDaily"; label: detail.tr("按日明细"); border.color: detail.viewMode === "day" ? detail.colors.accent : "transparent"; onTriggered: detail.viewMode = "day" }
-            Action { objectName: "detailModels"; label: detail.tr("按模型明细"); border.color: detail.viewMode === "model" ? detail.colors.accent : "transparent"; onTriggered: detail.viewMode = "model" }
+            Action { objectName: "detailDaily"; label: detail.tr("按日明细"); selected: detail.viewMode === "day"; onTriggered: detail.viewMode = "day" }
+            Action { objectName: "detailModels"; label: detail.tr("按模型明细"); selected: detail.viewMode === "model"; onTriggered: detail.viewMode = "model" }
         }
         ListView {
             id: breakdown; objectName: "detailBreakdown"; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; spacing: 7
@@ -175,7 +176,7 @@ Item {
             }
             delegate: Rectangle {
                 required property var modelData
-                width: breakdown.width - 8; height: 50; radius: 6; color: detail.colors.panel
+                width: breakdown.width - 8; height: 50; radius: 8; color: Qt.alpha(detail.colors.fg, 0.025)
                 ColumnLayout {
                     anchors.fill: parent; anchors.margins: 10; spacing: 5
                     RowLayout {

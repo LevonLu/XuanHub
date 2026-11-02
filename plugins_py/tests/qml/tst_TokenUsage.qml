@@ -79,6 +79,45 @@ TestCase {
         verify(waitForRendering(panel))
         compare(panel.values.accounts.length,1)
     }
+    function test_account_page_hides_unconfigured_and_unconfirmed_discovery() {
+        var panel=createTemporaryObject(panelComponent,tests,{page:1,values:{accounts:[
+            {id:"missing",configured:false,status:"not_configured"},
+            {id:"probe",automatic:true,configured:true,status:"unavailable",windows:[]},
+            {id:"quota",automatic:true,configured:true,status:"ok",name:"Codex",windows:[{seconds:18000,used:0}]},
+            {id:"cached",automatic:true,configured:true,status:"unavailable",name:"Cached",stale:true,windows:[{seconds:604800,used:10}]},
+            {id:"manual",configured:true,status:"unavailable",name:"DeepSeek"},
+            {id:"manual-empty",configured:false,status:"not_configured",name:"Empty"}
+        ]}})
+        verify(panel !== null)
+        verify(waitForRendering(panel))
+        var accounts=findChild(panel,"tokenAccountPanel")
+        compare(findChild(accounts,"accountCards").count,3)
+        compare(findChild(accounts,"accountCard_probe"),null)
+        compare(findChild(accounts,"accountCard_manual-empty"),null)
+        verify(findChild(accounts,"accountCard_quota") !== null)
+        verify(findChild(accounts,"accountCard_cached") !== null)
+        verify(findChild(accounts,"accountCard_manual") !== null)
+        verify(!findChild(accounts,"accountEmptyState").visible)
+        // 展示筛选不改动后端快照，状态栏仍可独立解析全部来源。
+        compare(panel.values.accounts.length,6)
+    }
+    function test_account_empty_state_updates_after_filtering() {
+        var panel=createTemporaryObject(panelComponent,tests,{page:1,values:{accounts:[
+            {id:"probe",automatic:true,configured:true,status:"unavailable"},
+            {id:"empty",configured:false,status:"not_configured"}
+        ]}})
+        verify(panel !== null)
+        verify(waitForRendering(panel))
+        var accounts=findChild(panel,"tokenAccountPanel")
+        compare(findChild(accounts,"accountCards").count,0)
+        verify(findChild(accounts,"accountEmptyState").visible)
+        var emptyHeight=accounts.contentHeight
+        panel.values={accounts:[{id:"ready",automatic:true,configured:true,status:"ok",name:"Codex",windows:[{seconds:604800,used:3}]}]}
+        tryCompare(findChild(accounts,"accountCards"),"count",1)
+        verify(!findChild(accounts,"accountEmptyState").visible)
+        verify(findChild(accounts,"accountCard_ready") !== null)
+        tryVerify(function(){return accounts.contentHeight>emptyHeight})
+    }
     function test_only_selected_popup_page_exists() {
         var panel=createTemporaryObject(panelComponent,tests,{values:{agents:[],accounts:[]}})
         verify(panel !== null)

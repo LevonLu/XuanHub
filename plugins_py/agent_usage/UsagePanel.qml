@@ -13,6 +13,8 @@ Rectangle {
     property var colors: ({"bg": "#1e1e2e", "panel": "#313244", "fg": "#cdd6f4", "muted": "#9399b2",
         "border": "#45475a", "accent": "#89b4fa", "warning": "#f9e2af", "danger": "#f38ba8", "success": "#a6e3a1"})
     property var selectedAgent: null
+    property bool showHeader: true
+    property bool framed: true
     signal refreshRequested()
     onValuesChanged: {
         // 设置隐藏当前工具时返回总览，防止详情脱离用户的显示范围。
@@ -22,8 +24,9 @@ Rectangle {
     width: 420
     height: Math.min(620, implicitHeight)
     // 列表使用自然内容高度；不能从可视高度反推，避免与宿主的限高形成循环。
-    implicitHeight: selectedAgent ? 570 : overview.implicitHeight + 32
-    color: colors.bg; radius: 12; border.color: colors.border
+    implicitHeight: selectedAgent ? 570 : overview.implicitHeight + 40
+    color: framed ? colors.bg : "transparent"; radius: 16
+    border.color: framed ? Qt.alpha(colors.border, 0.8) : "transparent"
 
     function tr(s) { return qsTranslate("plugin.py_agent_usage.main", s) }
     function openAgent(agent) { selectedAgent = ({id: agent.id, name: agent.name, scope: agent.scope}) }
@@ -75,39 +78,46 @@ Rectangle {
     ColumnLayout {
         id: overview
         visible: !panel.selectedAgent
-        anchors.fill: parent; anchors.margins: 16; spacing: 14
+        anchors.fill: parent; anchors.margins: 20; spacing: 16
         RowLayout {
-            Layout.fillWidth: true
-            Text { text: "Token Usage"; color: panel.colors.fg; font.pixelSize: 17; font.bold: true; Layout.fillWidth: true }
-            Rectangle {
-                implicitWidth: 52; implicitHeight: 28; radius: 6; color: panel.colors.panel
-                Text { anchors.centerIn: parent; text: panel.tr("刷新"); color: panel.colors.accent; font.pixelSize: 11 }
-                MouseArea {
-                    objectName: "agentRefreshButton"
-                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                    onClicked: panel.refreshRequested()
-                }
+            Layout.fillWidth: true; visible: panel.showHeader
+            Text { text: panel.tr("Token Usage"); color: panel.colors.fg; font.pixelSize: 18; font.weight: Font.DemiBold; Layout.fillWidth: true }
+            PopupAction {
+                objectName: "agentRefreshButton"
+                text: panel.tr("刷新"); iconText: "↻"; colors: panel.colors; quiet: true
+                onClicked: panel.refreshRequested()
             }
         }
-        RowLayout {
-            Layout.fillWidth: true; spacing: 12
+        Rectangle {
+            Layout.fillWidth: true; implicitHeight: hero.implicitHeight + 32
+            radius: 12; color: Qt.alpha(panel.colors.accent, 0.055)
             ColumnLayout {
-                spacing: 2
+                id: hero
+                anchors.fill: parent; anchors.margins: 16; spacing: 6
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text { text: panel.tr("Token 总用量"); color: panel.colors.muted; font.pixelSize: 11; Layout.fillWidth: true }
+                    Rectangle {
+                        implicitWidth: periodLabel.implicitWidth + 16; implicitHeight: 23; radius: 6
+                        color: Qt.alpha(panel.colors.accent, 0.08)
+                        Text { id: periodLabel; anchors.centerIn: parent; text: panel.periodName(); color: panel.colors.accent; font.pixelSize: 10; font.weight: Font.Medium }
+                    }
+                }
                 Text {
                     objectName: "agentOverviewTotal"
+                    Layout.fillWidth: true
                     text: panel.values.usageUpdated ? panel.number(panel.values.totalTokens) : "—"
-                    color: panel.colors.fg; font.pixelSize: 30; font.bold: true
+                    color: panel.colors.fg; font.pixelSize: 36; font.weight: Font.DemiBold
+                    font.letterSpacing: -1; elide: Text.ElideRight
                 }
-                Text { text: panel.tr("Token 总用量"); color: panel.colors.muted; font.pixelSize: 10 }
-            }
-            Item { Layout.fillWidth: true }
-            ColumnLayout {
-                Layout.alignment: Qt.AlignRight | Qt.AlignVCenter; spacing: 5
-                Text { Layout.alignment: Qt.AlignRight; text: panel.periodName(); color: panel.colors.fg; font.pixelSize: 12 }
-                Text {
-                    Layout.alignment: Qt.AlignRight
-                    text: panel.values.includeAccount ? panel.tr("含账号级来源") : panel.tr("仅本机来源汇总")
-                    color: panel.colors.muted; font.pixelSize: 10
+                RowLayout {
+                    Layout.fillWidth: true; spacing: 6
+                    Rectangle { implicitWidth: 5; implicitHeight: 5; radius: 3; color: panel.colors.muted; opacity: 0.7 }
+                    Text {
+                        Layout.fillWidth: true; wrapMode: Text.Wrap
+                        text: panel.values.includeAccount ? panel.tr("含账号级来源") : panel.tr("仅本机来源汇总")
+                        color: panel.colors.muted; font.pixelSize: 10
+                    }
                 }
             }
         }
@@ -133,7 +143,7 @@ Rectangle {
             }
             Column {
                 id: cards
-                width: agentsView.width - 8; spacing: 8
+                width: agentsView.width - (agentsView.contentHeight > agentsView.height ? 8 : 0); spacing: 10
                 Repeater {
                     model: panel.values.agents || []
                     delegate: Rectangle {
@@ -141,20 +151,30 @@ Rectangle {
                         required property var modelData
                         readonly property var stats: modelData.stats
                         readonly property var quota: modelData.quota || ({status:"pending",windows:[]})
-                        width: cards.width; height: details.implicitHeight + 24
-                        radius: 8; color: panel.colors.panel
-                        border.color: cardMouse.containsMouse ? panel.colors.accent : "transparent"
+                        width: cards.width; height: details.implicitHeight + 32
+                        radius: 12
+                        color: cardMouse.containsMouse ? Qt.alpha(panel.colors.accent, 0.055) : Qt.alpha(panel.colors.fg, 0.025)
+                        border.color: cardMouse.containsMouse ? Qt.alpha(panel.colors.accent, 0.4) : Qt.alpha(panel.colors.border, 0.65)
+                        Behavior on color { ColorAnimation { duration: 120 } }
                         ColumnLayout {
                             id: details
                             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
-                            anchors.margins: 12; spacing: 9
+                            anchors.margins: 16; spacing: 12
                             RowLayout {
-                                Layout.fillWidth: true; spacing: 6
+                                Layout.fillWidth: true; spacing: 10
+                                Rectangle {
+                                    implicitWidth: 32; implicitHeight: 32; radius: 10
+                                    color: Qt.alpha(panel.colors.accent, 0.09)
+                                    Text {
+                                        anchors.centerIn: parent; text: String(card.modelData.name || "?").charAt(0).toUpperCase()
+                                        color: panel.colors.accent; font.pixelSize: 14; font.weight: Font.DemiBold
+                                    }
+                                }
                                 ColumnLayout {
                                     Layout.fillWidth: true; spacing: 3
                                     Text {
                                         Layout.fillWidth: true; text: card.modelData.name; textFormat: Text.PlainText
-                                        elide: Text.ElideRight; color: panel.colors.fg; font.bold: true; font.pixelSize: 14
+                                        elide: Text.ElideRight; color: panel.colors.fg; font.weight: Font.DemiBold; font.pixelSize: 13
                                     }
                                     Text {
                                         Layout.fillWidth: true; visible: text.length > 0; elide: Text.ElideRight
@@ -164,7 +184,7 @@ Rectangle {
                                 }
                                 Text {
                                     text: card.stats ? panel.number(card.stats.total_tokens) : "—"
-                                    color: panel.colors.fg; font.pixelSize: 18; font.bold: true
+                                    color: panel.colors.fg; font.pixelSize: 19; font.weight: Font.DemiBold
                                 }
                                 Text { text: "›"; color: panel.colors.muted; font.pixelSize: 19 }
                             }
@@ -175,13 +195,13 @@ Rectangle {
                                     Layout.fillWidth: true; spacing: 5
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        Text { text: panel.windowName(modelData); color: panel.colors.fg; font.pixelSize: 11; Layout.fillWidth: true }
+                                        Text { text: panel.windowName(modelData); color: panel.colors.muted; font.pixelSize: 10; Layout.fillWidth: true }
                                         Text { text: Number(modelData.used).toFixed(1) + "%"; color: modelData.used >= 90 ? panel.colors.danger : panel.colors.accent; font.pixelSize: 12; font.bold: true }
                                     }
                                     Rectangle {
-                                        Layout.fillWidth: true; height: 4; radius: 2; color: panel.colors.border
+                                        Layout.fillWidth: true; height: 5; radius: 3; color: Qt.alpha(panel.colors.accent, 0.12)
                                         Rectangle {
-                                            height: parent.height; radius: 2; width: parent.width * Math.max(0, Math.min(100, modelData.used)) / 100
+                                            height: parent.height; radius: 3; width: parent.width * Math.max(0, Math.min(100, modelData.used)) / 100
                                             color: modelData.used >= 90 ? panel.colors.danger : panel.colors.accent
                                         }
                                     }
