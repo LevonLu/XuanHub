@@ -302,7 +302,7 @@ class Quotas:
                 windows.append(window(key, 100 - number(remaining), reset, seconds))
         return result(windows, plan.get("planName"))
 
-    def collect(self, devin_enabled=False):
+    def collect(self, devin_enabled=False, only=None):
         from . import quota_local, quota_products
         providers = {
             "claude": self.claude, "codex": self.codex, "cursor": self.cursor,
@@ -317,11 +317,13 @@ class Quotas:
             "agentPlan": lambda: quota_products.ark(self, "agent-plan"),
             "workbuddy": lambda: quota_local.workbuddy(self),
         }
+        if only is not None:
+            providers = {key: value for key, value in providers.items() if key in only}
         completed = queue.Queue()
         values = {}
         cache = obj(read_json(self.cache_dir / "quota.json")) if self.cache_dir else {}
         cache = obj(cache.get("providers"))
-        next_cache = {}
+        next_cache = {key: value for key, value in cache.items() if key not in providers}
         now = time.time()
         identities = {key: self.credential_identity(key) for key in providers}
         def run(key, callback):
@@ -362,8 +364,8 @@ class Quotas:
                 if values[key]["windows"]:
                     next_cache[key] = previous
         # Cursor 的 GrokBot 与 Grok 账单可能是同一池；相同占用及重置时间不重复展示。
-        grok = next((w for w in values["grok"]["windows"] if w["id"] == "primary_window"), None)
-        if grok:
+        grok = next((w for w in values.get("grok", {}).get("windows", []) if w["id"] == "primary_window"), None)
+        if grok and "cursor" in values:
             values["cursor"]["windows"] = [w for w in values["cursor"]["windows"] if not (w["id"] == "quaternary_window" and abs(w["used"] - grok["used"]) < 0.001 and w["resetAt"] == grok["resetAt"])]
         if self.cache_dir:
             self.cache_dir.mkdir(parents=True, exist_ok=True)

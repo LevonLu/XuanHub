@@ -113,4 +113,7 @@ private:
     QVector<Row> m_rows;
     QString m_secretDir;  // secrets.json 与当前 config.json 同目录（便携模式也成立）
     bool m_dirty = false;
+    bool m_tokenUsageEdited = false;
+    QJsonObject m_legacyUsageHubRaw;
+    QJsonObject m_originalTokenUsageRaw;
 };

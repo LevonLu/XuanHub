@@ -100,7 +100,7 @@ sidecar 与运行时 Descriptor 必须一致；内置 `clock/sysinfo/xuanhub_men
 - 槽位（`PluginSlot`）`clip: true`：插件根 Item 声明的 width 即其占位宽度，**任何超出槽位边界的绘制都会被裁掉**（ListView 只裁整列不裁单个 delegate，槽位不裁剪时溢出内容会直接画到相邻插件上）。插件必须保证根 Item 宽度 ≥ 实际内容宽度；固定宽模式下被截断属预期行为，由插件自行处理对齐。
 - Manifest 可声明 `layout.region/minWidth/preferredWidth/maxWidth/flex/priority/overflow`。appbar 按全栏预算先收缩低 priority，再执行 `hide/menu`；`menu` 进入末尾 overflow 弹窗。未声明者、taskbar 紧凑模式和 config `width > 0` 保持旧语义，完整契约见 `docs/plugin-sdk-v2.md`。
 - 不用 `QML_ELEMENT` 静态注册——外部 DLL 无法在宿主编译期注册类型；`Loader + source URL` 是既定方案。
-- 宿主 QML 根上下文的 context property（插件 QML 同引擎可访问）：`pluginModel`（含 left/center/right 过滤子模型）、`themeManager`（`themeId`/`mode`/`colors` 11 字段色板，用 `themeManager.colors.bg` 取色）、`barConfig`、`barScreenGeometry`（当前屏 `availableGeometry` 逻辑像素，弹窗越界修正的唯一可靠来源——taskbar 模式下 `Item.Screen` 失效）、`barWindow`（插件用 `Connections` 收听其 `barPressed()` 实现"点 bar 关闭弹窗"；信号先于 item 的 `onClicked` 到达，toggle 部件需记录按下瞬间的弹窗状态防重开，范式见 `plugins_py/usage_hub/UsageHub.qml`）。
+- 宿主 QML 根上下文的 context property（插件 QML 同引擎可访问）：`pluginModel`（含 left/center/right 过滤子模型）、`themeManager`（`themeId`/`mode`/`colors` 11 字段色板，用 `themeManager.colors.bg` 取色）、`barConfig`、`barScreenGeometry`（当前屏 `availableGeometry` 逻辑像素，弹窗越界修正的唯一可靠来源——taskbar 模式下 `Item.Screen` 失效）、`barWindow`（插件用 `Connections` 收听其 `barPressed()` 实现"点 bar 关闭弹窗"；信号先于 item 的 `onClicked` 到达，toggle 部件需记录按下瞬间的弹窗状态防重开，范式见 `plugins_py/agent_usage/AgentUsage.qml`）。
 - 插件弹窗优先使用 `import XuanHub` 提供的 `PluginPopup`：设置 `anchorItem`、`pluginContext`，bar 点击调用 `toggleFromBar()`；宿主统一处理当前屏边界、顶部/底部方向、动态高度稳定显现、跨插件互斥、Esc/失焦/bar 点击关闭。只有特殊 flags 或非互斥场景才自建 `Window` 并自行处理定位。**改插件 QML 后必须重启进程验证**：引擎对 file:// 组件有内存缓存，热重载不加载磁盘新文件。
 - QML 加载失败默认静默：`PluginSlot.qml` 监听 `Loader.Error` 画红色占位符，真实错误在 `xuanhub.log` 的 qWarning 里。
 
@@ -246,7 +246,7 @@ python scripts/xuanhub_plugin.py doctor <插件目录或运行时目录>
 - 工作区/AppBar：`app/src/AppBarWin32.cpp`、`WorkAreaGuard.{h,cpp}`；任务栏嵌入：`TaskbarEmbed.{h,cpp}`
 - 线程范式样例：`plugins/sysinfo/SysInfoWorker.{h,cpp}`；新插件 CMake 模板：`plugins/clock/CMakeLists.txt`
 - Python 桥接：`plugins/pybridge/PyBridgePlugin.{h,cpp}`（发现/运行时）、`PyWorkerViewModel.{h,cpp}`（异步 IPC 代理）、`plugins_py/bridge_worker.py`（隔离执行器）、`lib/barplugin/ProcessReaper.{h,cpp}`（跨 DLL 进程回收）
-- Python 子插件契约：`plugins_py/README.md`；示例 `hello/`（参考样例）、`intime/`（定时提醒）、`usage_hub/`（用量看板）
+- Python 子插件契约：`plugins_py/README.md`；示例 `hello/`（参考样例）、`intime/`（定时提醒）、`agent_usage/`（Token Usage）
 - 开发者 CLI：`scripts/xuanhub_plugin.py`；测试入口：`tests/` 与顶层 `CMakeLists.txt`
 
 ## 11. 重要改动的决策笔记

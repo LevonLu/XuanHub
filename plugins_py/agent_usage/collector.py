@@ -19,7 +19,31 @@ def run(request):
         configure_proxy(request.get("proxyMode", "auto"), request.get("proxyUrl", ""), cache_dir=Path(request["cacheDir"]) / "native-v2")
     if lane == "quota":
         from native.quota import Quotas
-        return {"providers": Quotas(cache_dir=Path(request["cacheDir"]) / "native-v2").collect(bool(request.get("devinEnabled"))), "version": VERSION}
+        from native.accounts import Accounts
+        from native.network import enable_request_coalescing
+        enable_request_coalescing()
+        import threading
+        cache = Path(request["cacheDir"]) / "native-v2"
+        force = request.get("forceAccounts", [])
+        partial = bool(force and "*" not in force)
+        selected = None if not partial else {key.removeprefix("auto:") for key in force if key.startswith("auto:")}
+        aliases = {"codex-spark": "codex", "opencode-go": "opencodeGo", "command-code": "commandCode", "qoder-cn": "qoderCn", "coding-plan": "codingPlan", "agent-plan": "agentPlan"}
+        if selected is not None:
+            selected = {aliases.get(key, key) for key in selected}
+        accounts, errors = [], []
+        def collect_accounts():
+            try:
+                configured = request.get("accounts", [])
+                if partial:
+                    configured = [a for a in configured if a["id"] in force]
+                accounts.extend(Accounts(cache).collect(configured, force, request.get("quotaEnabled", True)))
+            except Exception:
+                errors.append("accounts_unavailable")
+        worker = threading.Thread(target=collect_accounts, daemon=True)
+        worker.start()
+        providers = Quotas(cache_dir=cache).collect(bool(request.get("devinEnabled")), selected) if request.get("quotaEnabled", True) else {}
+        worker.join(timeout=33)
+        return {"providers": providers, "accounts": accounts, "partial": partial, "accountError": bool(errors or worker.is_alive()), "version": VERSION}
     if not all(isinstance(request.get(k), (int, float)) for k in ("fromMs", "toMs")):
         raise ValueError("invalid_request")
     if not 0 <= request["fromMs"] < request["toMs"] <= 253_402_300_800_000:
@@ -29,8 +53,8 @@ def run(request):
 
 if __name__ == "__main__":
     try:
-        raw = sys.stdin.buffer.read(65537)
-        if len(raw) > 65536:
+        raw = sys.stdin.buffer.read(2 * 1024 * 1024 + 1)
+        if len(raw) > 2 * 1024 * 1024:
             raise ValueError("invalid_request")
         result = {"ok": True, "data": run(json.loads(raw))}
     except Exception as error:

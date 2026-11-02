@@ -99,15 +99,15 @@ class AgentUsageTests(unittest.TestCase):
 
     def test_bar_quota_settings_defaults_and_validation(self):
         manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))
-        fields = {f["key"]: f for g in manifest["settings"] for f in g["fields"] if f["key"].startswith("barQuota_")}
-        self.assertEqual(set(fields), {"barQuota_" + key for key in monitor.BAR_QUOTA_NAMES})
+        fields = {f["key"]: f for g in manifest["settings"] for f in g["fields"]}
+        self.assertIn("barColumns", fields)
+        self.assertEqual(manifest["configVersion"], 2)
+        self.assertEqual(fields["accounts"]["itemKey"], "id")
         self.assertEqual(monitor.compose({}, {}, {})["barQuotas"], [])
-        for key, field in fields.items():
-            self.assertEqual(field["default"], "none")
-            self.assertEqual({option["value"] for option in field["options"]}, set(monitor.BAR_QUOTA_MODES))
+        for key in monitor.BAR_QUOTA_NAMES:
             for value in (True, 5, [], {}, "daily"):
                 with self.subTest(key=key, value=value), self.assertRaises(ValueError):
-                    monitor.normalize_config({key: value})
+                    monitor.normalize_config({"barQuota_" + key: value})
 
     def test_local_calendar_period_and_exclusive_end(self):
         now = datetime(2026, 10, 29, 15, 0)

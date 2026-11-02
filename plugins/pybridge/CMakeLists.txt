@@ -47,9 +47,10 @@ add_custom_command(TARGET pybridge POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/i18n"
         "${XUANHUB_BIN_DIR}/plugins/pybridge/i18n"
-    # 先清理旧目录再同步，避免已从源码移除的子插件继续残留在开发/发布目录中。
-    COMMAND ${CMAKE_COMMAND} -E rm -rf
-        "${XUANHUB_BIN_DIR}/plugins_py"
+    # 定向清除退役插件代码，保留运行目录中的用户账户配置和第三方插件。
+    COMMAND ${CMAKE_COMMAND}
+        "-DXUANHUB_RUNTIME_DIR=${XUANHUB_BIN_DIR}"
+        -P "${CMAKE_SOURCE_DIR}/scripts/retire_usage_hub.cmake"
     # bridge_worker.py 与子插件一同部署；新 worker 进程只读取这棵目录。
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/plugins_py"

@@ -11,6 +11,9 @@ import socket
 import ssl
 import struct
 import time
+import copy
+import hashlib
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -18,6 +21,16 @@ import urllib.request
 from .common import obj, read_json
 
 _proxy_state = {"mode": "system", "url": ""}
+_coalesce = False
+_requests_lock = threading.Lock()
+_requests = {}
+
+
+def enable_request_coalescing():
+    """只在一次性额度进程中启用，自动账户和手填账户共用相同 GET。"""
+    global _coalesce
+    _coalesce = True
+    _requests.clear()
 
 
 def proxy_url(value):
@@ -274,9 +287,30 @@ class Http:
         self.opener = build_opener()
 
     def __call__(self, url, *, headers=None, body=None, form=None, raw=False, raw_body=None):
+        if _coalesce and body is None and form is None and raw_body is None:
+            identity = {str(k).lower(): str(v) for k, v in (headers or {}).items() if str(k).lower() not in {"accept", "user-agent", "accept-language"}}
+            key = hashlib.sha256(json.dumps([url, identity, raw], sort_keys=True).encode()).digest()
+            with _requests_lock:
+                owner = key not in _requests
+                entry = _requests.setdefault(key, {"event": threading.Event()})
+            if owner:
+                try:
+                    entry["value"] = self._perform(url, headers=headers, raw=raw)
+                except Exception as error:
+                    entry["error"] = error
+                finally:
+                    entry["event"].set()
+            if not entry["event"].wait(self.timeout):
+                raise RequestError("unavailable")
+            if "error" in entry:
+                raise entry["error"]
+            return copy.deepcopy(entry["value"])
+        return self._perform(url, headers=headers, body=body, form=form, raw=raw, raw_body=raw_body)
+
+    def _perform(self, url, *, headers=None, body=None, form=None, raw=False, raw_body=None):
         if urllib.parse.urlsplit(url).scheme != "https":
             raise RequestError("invalid_endpoint")
-        request_headers = {"Accept": "application/json", "User-Agent": "XuanHub-AgentUsage/0.2", **(headers or {})}
+        request_headers = {"Accept": "application/json", "User-Agent": "XuanHub-TokenUsage/0.3", **(headers or {})}
         if sum(value is not None for value in (body, form, raw_body)) > 1:
             raise RequestError("invalid_request")
         data = raw_body

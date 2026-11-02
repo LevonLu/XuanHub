@@ -469,7 +469,7 @@ private Q_SLOTS:
         QTRY_COMPARE(popup->opacity(), 1.0);
         QVERIFY(popup->isVisible());
         QCOMPARE(popup->width(), 420);
-        auto* panel = popup->findChild<QQuickItem*>(QStringLiteral("agentUsagePanel"));
+        auto* panel = popup->findChild<QQuickItem*>(QStringLiteral("tokenUsagePanel"));
         QVERIFY(panel);
         QTRY_COMPARE(popup->height(), qRound(qMin(panel->implicitHeight(), qreal(620))));
         QVERIFY(QRect(0, 0, 1280, 720).contains(popup->geometry()));

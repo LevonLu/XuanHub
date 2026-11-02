@@ -138,7 +138,13 @@ def compose(usage, quota, config):
     selected = [s for s in sources.values() if config.get("includeAccount") or s.get("scope") != "account"]
     # 列表选择仅控制展示，隐藏工具仍继续采集并计入原有总量口径。
     popup_mode = config.get("popupAgentMode", "all")
-    return {"agents": agents, "barPrefix": config.get("barPrefix", ""), "barQuotas": bar_quotas(providers, config),
+    from blocks import account_views, resolve_columns
+    from configuration import default_columns
+    accounts = account_views(providers, quota.get("accounts", []))
+    total = sum(s.get("total_tokens", 0) for s in selected)
+    columns = resolve_columns(config.get("barColumns", default_columns(config)), sources, accounts, total, "sources" in usage)
+    return {"accounts": accounts, "accountError": quota.get("accountError", False), "barColumns": columns,
+            "agents": agents, "barPrefix": config.get("barPrefix", ""), "barQuotas": bar_quotas(providers, config),
             "popupAgentMode": popup_mode, "popupFiltered": popup_mode != "all",
             "hiddenAgentIds": sorted(hidden), "totalTokens": sum(s.get("total_tokens", 0) for s in selected),
             "period": config.get("period", "today"),

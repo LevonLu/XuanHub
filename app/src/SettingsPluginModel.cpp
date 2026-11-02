@@ -269,6 +269,7 @@ bool SettingsPluginModel::setData(const QModelIndex& index, const QVariant& valu
         default: return false;
     }
     m_dirty = true;
+    if (r.id == QStringLiteral("py_agent_usage")) m_tokenUsageEdited = true;
     // 启用状态与区域会改变 QML ListView 的分组键，必须连同派生 role 一并通知，
     // 否则代理排序虽更新，分隔标题仍可能保留旧状态。
     if (role == EnabledRole || role == PositionRole)
@@ -323,6 +324,9 @@ void SettingsPluginModel::reload(const QList<PluginConfigEntry>& entries,
         if (!id.isEmpty()) rawById.insert(id, o);
     }
 
+    m_tokenUsageEdited = false;
+    m_legacyUsageHubRaw = rawById.value(QStringLiteral("py_usage_hub"));
+    m_originalTokenUsageRaw = rawById.value(QStringLiteral("py_agent_usage"));
     // 1) config 条目（跳过 pybridge：基础设施总开关，导出时自动托管）
     for (const auto& e : entries) {
         if (e.id == QStringLiteral("pybridge")) continue;
@@ -336,6 +340,14 @@ void SettingsPluginModel::reload(const QList<PluginConfigEntry>& entries,
         r.width = e.width;
         r.config = e.config; // 插件自有迁移器负责版本兼容；宿主只保留未知键。
         r.raw = rawById.value(e.id);
+        if (e.id == QStringLiteral("py_agent_usage") && r.raw.isEmpty()
+            && rawById.contains(QStringLiteral("py_usage_hub"))) {
+            r.raw = rawById.value(QStringLiteral("py_usage_hub"));
+            r.raw.insert(QStringLiteral("id"), e.id);
+            QJsonObject config = r.raw.value(QStringLiteral("config")).toObject();
+            config.remove(QStringLiteral("vendors"));
+            r.raw.insert(QStringLiteral("config"), config);
+        }
         // kind 先按 id 前缀猜，磁盘发现命中后会被纠正
         r.kind = e.id.startsWith(QStringLiteral("py_")) ? QStringLiteral("python")
                                                         : QStringLiteral("dll");
@@ -371,7 +383,7 @@ void SettingsPluginModel::reload(const QList<PluginConfigEntry>& entries,
 void SettingsPluginModel::mergeDiscovered(const QJsonObject& meta, const QString& kind,
                                           const QString& dir) {
     const QString id = meta.value(QStringLiteral("id")).toString();
-    if (id.isEmpty() || id == QStringLiteral("pybridge")) return;
+    if (id.isEmpty() || id == QStringLiteral("pybridge") || id == QStringLiteral("py_usage_hub")) return;
 
     // sidecar 声明的设置 schema 与自绘设置页（均可空）
     const QJsonArray schema = meta.value(QStringLiteral("settings")).toArray();
@@ -454,6 +466,7 @@ bool SettingsPluginModel::setConfigValue(const QString& id, const QString& key,
                                          const QVariant& value) {
     for (int i = 0; i < m_rows.size(); ++i) {
         if (m_rows[i].id != id) continue;
+        if (id == QStringLiteral("py_agent_usage")) m_tokenUsageEdited = true;
         if (m_rows[i].migrationReady) {
             m_rows[i].config = m_rows[i].migrationConfig;
             m_rows[i].configVersion = m_rows[i].targetConfigVersion;
@@ -500,6 +513,7 @@ bool SettingsPluginModel::acceptMigration(const QString& id) {
         Row& row = m_rows[i];
         if (row.id != id) continue;
         if (!row.migrationReady) return false;
+        if (id == QStringLiteral("py_agent_usage")) m_tokenUsageEdited = true;
         row.config = row.migrationConfig;
         row.configVersion = row.targetConfigVersion;
         row.migrationReady = false;
@@ -562,6 +576,12 @@ bool SettingsPluginModel::toPluginEntriesJson(
     SecretStore::Transaction* transaction = secretTransaction
         ? secretTransaction : &localTransaction;
     for (const auto& r : m_rows) {
+        // 未在 Token Usage 页采用迁移时，编辑其他插件也不顺带持久化合并。
+        if (!m_legacyUsageHubRaw.isEmpty() && !m_tokenUsageEdited && r.id == QStringLiteral("py_agent_usage")) {
+            if (!m_originalTokenUsageRaw.isEmpty()) arr.append(m_originalTokenUsageRaw);
+            anyPython = true;
+            continue;
+        }
         if (!r.enabled) continue;
         if (r.position != QStringLiteral("left") && r.position != QStringLiteral("center")
             && r.position != QStringLiteral("right")) {
@@ -596,6 +616,10 @@ bool SettingsPluginModel::toPluginEntriesJson(
         // 磁盘发现行无原始对象（raw 为空），退化为全新组装
         QJsonObject o = r.raw;
         QVariantMap config = r.config;
+        if (r.id == QStringLiteral("py_agent_usage") && m_tokenUsageEdited) {
+            config.remove(QStringLiteral("legacyImportPending"));
+            config.remove(QStringLiteral("legacyBarAccounts"));
+        }
         const QJsonObject rawConfig = r.raw.value(QStringLiteral("config")).toObject();
         // 顶层、自绘 object 和稳定 itemKey 数组统一走 Schema 遍历；插件 ID 与
         // RFC 6901 JSON Pointer 共同限定密钥身份，删除项会在同一事务清理孤儿密文。
@@ -610,6 +634,7 @@ bool SettingsPluginModel::toPluginEntriesJson(
         arr.append(o);
         if (r.kind == QStringLiteral("python")) anyPython = true;
     }
+    if (!m_legacyUsageHubRaw.isEmpty() && !m_tokenUsageEdited) arr.append(m_legacyUsageHubRaw);
     // pybridge 总开关托管：有任一 Python 子插件启用则自动带上该条目
     //（其 config 段当前无内容，合成即可）；全不启用则不写，PluginManager 会整个跳过桥
     if (anyPython) {

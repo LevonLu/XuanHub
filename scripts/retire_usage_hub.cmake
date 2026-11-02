@@ -1,0 +1,28 @@
+# retire_usage_hub.cmake — 退役旧用量中心代码，保留遗留配置供宿主迁移
+if(NOT DEFINED XUANHUB_RUNTIME_DIR)
+    message(FATAL_ERROR "缺少运行目录")
+endif()
+file(REAL_PATH "${XUANHUB_RUNTIME_DIR}" runtime_root)
+set(old_bar "${runtime_root}/plugins_py/agent_usage/BarQuotaSummary.qml")
+if(EXISTS "${old_bar}")
+    file(REAL_PATH "${old_bar}" old_bar_real)
+    string(FIND "${old_bar_real}" "${runtime_root}/" prefix)
+    if(NOT prefix EQUAL 0)
+        message(FATAL_ERROR "旧状态栏组件越过运行目录，拒绝清理")
+    endif()
+    file(REMOVE "${old_bar}")
+endif()
+set(legacy "${runtime_root}/plugins_py/usage_hub")
+if(EXISTS "${legacy}")
+    file(REAL_PATH "${legacy}" legacy_real)
+    string(FIND "${legacy_real}/" "${runtime_root}/" prefix)
+    if(NOT prefix EQUAL 0)
+        message(FATAL_ERROR "旧插件路径越过运行目录，拒绝清理")
+    endif()
+    foreach(relative IN ITEMS plugin.json main.py UsageHub.qml UsageSettings.qml
+            vendors/__init__.py vendors/deepseek.py vendors/glm.py vendors/opencode_go.py
+            i18n/zh-CN.json i18n/en-US.json)
+        # file(REMOVE) 只删除已知代码文件；user_config.json 和未知用户文件原地保留。
+        file(REMOVE "${legacy}/${relative}")
+    endforeach()
+endif()

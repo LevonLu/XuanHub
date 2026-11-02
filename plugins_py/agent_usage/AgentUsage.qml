@@ -26,15 +26,11 @@ Item {
         color: root.values.usageStatus === "ok" ? root.colors.success : root.colors.warning
     }
 
-    BarQuotaSummary {
+    BarColumns {
         id: summary
         anchors.left: parent.left; anchors.leftMargin: 20
         anchors.verticalCenter: parent.verticalCenter
-        // 用户前缀按纯文本显示，支持 emoji，也避免被 Text.AutoText 当作富文本解析。
-        usageText: (root.values.barPrefix ? root.values.barPrefix + " " : "")
-            + (root.values.usageUpdated ? root.compact(root.values.totalTokens)
-               : root.values.usageStatus === "loading" ? root.tr("采集中") : root.tr("待连接"))
-        entries: root.values.barQuotas || []
+        columns: root.values.barColumns || []
         colors: root.colors
     }
     MouseArea {
@@ -52,12 +48,11 @@ Item {
         width: Math.min(420, root.pluginContext && root.pluginContext.screenGeometry ? root.pluginContext.screenGeometry.width - 20 : 420)
         height: Math.min(popupPanel.implicitHeight, 620,
             root.pluginContext && root.pluginContext.screenGeometry ? root.pluginContext.screenGeometry.height - 40 : 620)
-        UsagePanel {
+        TokenPanel {
             id: popupPanel
             anchors.fill: parent
             plugin: root.plugin; pluginContext: root.pluginContext
             values: root.values; colors: root.colors
-            onRefreshRequested: if (root.plugin) root.plugin.call("refresh", [])
         }
     }
 }

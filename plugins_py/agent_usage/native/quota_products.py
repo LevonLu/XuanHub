@@ -167,7 +167,10 @@ def go_windows(payload):
         if seconds is not None:
             reset = time.time() + number(seconds)
         # weekly 明确是七天；rolling 与剩余重置时间不能证明是五小时窗口。
-        values.append(window(SLOTS[index], percent, reset, 604800 if key == "weekly" else 0))
+        entry = window(SLOTS[index], percent, reset, 604800 if key == "weekly" else 0)
+        if entry:
+            entry["label"] = key
+        values.append(entry)
     if not any(values):
         raise RequestError("invalid_response")
     return result(values, "OpenCode Go")
@@ -194,7 +197,12 @@ def go_html(html):
             text = re.sub(r"<!--.*?-->", "", reset[2])
             seconds = sum(number(n) * {"d": 86400, "h": 3600, "m": 60, "s": 1}[unit] for n, unit in re.findall(r"([\d.]+)\s*([dhms])", text.lower()))
             values[key] = {"percent": float(percent[1]), "resetInSec": seconds}
-    return go_windows(values)
+    value = result(plan="OpenCode Go") if not values and re.search(r"data-slot\s*=\s*['\"]subscribe-button['\"]", cleaned) else go_windows(values)
+    value["subscribed"] = bool(re.search(r"您已订阅 OpenCode Go|You're subscribed to OpenCode Go", html))
+    match = re.search(r"useBalance:\s*(![01]|true|false)", html)
+    if match:
+        value["useBalance"] = match[1] in {"!0", "true"}
+    return value
 
 
 def opencode_go(q):
@@ -541,7 +549,11 @@ def zcode_quota(body):
                 used = max(0, number(raw["number"]) - number(raw["remaining"]))
             if used is not None:
                 percent = number(used) / number(raw["number"]) * 100
-        windows.append(window(key, percent, raw.get("nextResetTime")))
+        seconds = 18000 if matches(raw, "TOKENS_LIMIT", 3, 5) else 604800 if matches(raw, "TOKENS_LIMIT", 6, 1) else 0
+        entry = window(key, percent, raw.get("nextResetTime"), seconds)
+        if entry:
+            entry["detail"] = str(raw.get("currentValue", "—")) + " / " + str(raw.get("usage", "—"))
+        windows.append(entry)
     return result(windows, data.get("level") or "Coding")
 
 

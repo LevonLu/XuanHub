@@ -649,7 +649,10 @@ def test_plugin(args: argparse.Namespace) -> dict[str, Any]:
 
             hello = harness.start()
             step("hello", capabilities=hello.get("capabilities", []))
-            initialized = harness.request("init", {"config": config, "locale": args.locale})
+            # CLI 也必须传目标配置版本；省略时 Worker 会按 V1 处理并拒绝新版插件。
+            version = json.loads((args.plugin_dir / "plugin.json").read_text(encoding="utf-8-sig")).get("configVersion", 1)
+            initialized = harness.request("init", {"config": config, "locale": args.locale,
+                                                    "configVersion": version, "targetConfigVersion": version})
             if not initialized.get("ok"):
                 raise WorkerHarnessError(f"init failed: {initialized.get('error', 'unknown error')}")
             step("init", capabilities=initialized.get("result", {}).get("capabilities", []))

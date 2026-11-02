@@ -1,5 +1,6 @@
 // ConfigService.cpp
 #include "ConfigService.h"
+#include "UsageHubMigration.h"
 #include "ConfigSecretProcessor.h"
 #include "SecretStore.h"
 #include <QDir>
@@ -206,10 +207,12 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
         // 嵌套 object/array 密钥由 sidecar settings schema 驱动；即使 schema 缺失，
         // 也会递归剥离引用对象，绝不把密钥引用本身交给插件当作普通配置使用。
         ConfigSecretProcessor::hydrate(
-            e.id, ConfigSecretProcessor::loadSchema(exeDir, e.id),
+            e.id, e.id == QStringLiteral("py_usage_hub") ? UsageHubMigration::legacySchema() : ConfigSecretProcessor::loadSchema(exeDir, e.id),
             configObject, &e.config, secrets);
         if (!e.id.isEmpty()) m_pluginEntries.append(e);
     }
+
+    UsageHubMigration::merge(m_pluginEntries, exeDir);
 
     qDebug() << "[Config] loaded" << path
              << "| height=" << m_barHeight << "edge=" << m_barEdge

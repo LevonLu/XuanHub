@@ -602,7 +602,7 @@ if(Python_Interpreter_FOUND)
         plugins_py/hello
         plugins_py/intime
         plugins_py/todo
-        plugins_py/usage_hub
+        plugins_py/agent_usage
     )
     foreach(plugin_dir IN LISTS XUANHUB_BUILTIN_PLUGIN_DIRS)
         string(REPLACE "/" "_" plugin_test_name "${plugin_dir}")

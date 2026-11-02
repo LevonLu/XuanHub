@@ -49,6 +49,71 @@ class ConfigServiceTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void mergesUsageHubWithoutWritingAndProtectsAdoptedAccounts() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        SecretStore store(dir.path());
+        const QString oldSecret = SecretStore::idForPluginPointer(QStringLiteral("py_usage_hub"), QStringLiteral("/vendors/stable/apiKey"));
+        QVERIFY(store.write(oldSecret, QStringLiteral("fixture-key")));
+        QJsonObject vendor{{"id", "deepseek"}, {"secretId", "stable"}, {"mode", "balance"}, {"apiKey", SecretStore::referenceValue(oldSecret)}};
+        QJsonObject old = plugin(QStringLiteral("py_usage_hub"), {{"vendors", QJsonArray{vendor}}});
+        old["position"] = "left";
+        old["note"] = "preserved";
+        QVERIFY(writeJson(dir.path(), QJsonDocument(configWithPlugins({old}))));
+        const auto before = QJsonDocument(configWithPlugins({old})).toJson(QJsonDocument::Compact);
+        ConfigService config;
+        QVERIFY(config.load(dir.path(), {}));
+        QCOMPARE(config.pluginEntries().size(), 1);
+        const auto entry = config.pluginEntries().first();
+        QCOMPARE(entry.id, QStringLiteral("py_agent_usage"));
+        QCOMPARE(entry.position, QStringLiteral("left"));
+        const auto accounts = entry.config.value(QStringLiteral("accounts")).toList();
+        QCOMPARE(accounts.size(), 1);
+        QCOMPARE(accounts.first().toMap().value(QStringLiteral("credential")).toString(), QStringLiteral("fixture-key"));
+        QFile original(dir.filePath(QStringLiteral("config.json")));
+        QVERIFY(original.open(QIODevice::ReadOnly));
+        QCOMPARE(original.readAll(), before);
+        QVERIFY(config.load(dir.path(), {}));
+        QCOMPARE(config.pluginEntries().first().config.value(QStringLiteral("accounts")).toList().size(), 1);
+
+        const auto schema = QJsonDocument::fromJson(R"([{"fields":[{"key":"accounts","type":"array","itemKey":"id","items":{"type":"object","fields":[{"key":"credential","type":"string","secret":true}]}}]}])").array();
+        QVERIFY(writeJsonObject(dir.filePath(QStringLiteral("plugins_py/agent_usage/plugin.json")), {{"id", "py_agent_usage"}, {"name", "Token Usage"}, {"apiVersion", 2}, {"settings", schema}}));
+        SettingsPluginModel model;
+        model.reload(config.pluginEntries(), config.rawConfig().value(QStringLiteral("plugins")).toArray(), dir.path(), config.activePath());
+        QJsonArray exported;
+        QString error;
+        QVERIFY2(model.toPluginEntriesJson(&exported, &error), qPrintable(error));
+        QVERIFY(QJsonDocument(exported).toJson().contains("py_usage_hub"));
+        QVERIFY(model.setConfigValue(QStringLiteral("py_agent_usage"), QStringLiteral("legacyImportPending"), false));
+        auto transaction = store.beginTransaction();
+        QVERIFY2(model.toPluginEntriesJson(&exported, &error, &transaction), qPrintable(error));
+        const auto serialized = QJsonDocument(exported).toJson();
+        QVERIFY(!serialized.contains("fixture-key"));
+        QVERIFY(!serialized.contains("py_usage_hub"));
+        QVERIFY(serialized.contains("preserved"));
+        QVERIFY(transaction.commit());
+        transaction.finalize();
+        const QString newSecret = SecretStore::idForPluginPointer(QStringLiteral("py_agent_usage"), QStringLiteral("/accounts/legacy-stable/credential"));
+        QCOMPARE(store.read(newSecret).value_or(QString()), QStringLiteral("fixture-key"));
+        QVERIFY(store.read(oldSecret).has_value());
+    }
+
+    void mergesBothUsagePluginsAndRejectsForeignCredentials() {
+        QTemporaryDir dir;
+        SecretStore store(dir.path());
+        const QString foreign = SecretStore::idForPluginPointer(QStringLiteral("py_other"), QStringLiteral("/vendors/a/apiKey"));
+        QVERIFY(store.write(foreign, QStringLiteral("private-fixture")));
+        const QJsonObject vendor{{"id", "glm"}, {"secretId", "a"}, {"mode", "plan"}, {"apiKey", SecretStore::referenceValue(foreign)}};
+        QVERIFY(writeJson(dir.path(), QJsonDocument(configWithPlugins({plugin(QStringLiteral("py_usage_hub"), {{"vendors", QJsonArray{vendor}}}), plugin(QStringLiteral("py_agent_usage"), {{"period", "30d"}, {"custom", 42}})}))));
+        ConfigService config;
+        QVERIFY(config.load(dir.path(), {}));
+        QCOMPARE(config.pluginEntries().size(), 1);
+        const auto entry = config.pluginEntries().first();
+        QCOMPARE(entry.config.value(QStringLiteral("period")).toString(), QStringLiteral("30d"));
+        QCOMPARE(entry.config.value(QStringLiteral("custom")).toInt(), 42);
+        QVERIFY(entry.config.value(QStringLiteral("accounts")).toList().first().toMap().value(QStringLiteral("credential")).toString().isEmpty());
+    }
+
     void settingsQmlFollowsRuntimeManifestEntry_data() {
         QTest::addColumn<QString>("kind");
         QTest::addColumn<int>("apiVersion");
@@ -581,7 +646,7 @@ private Q_SLOTS:
         QFile sidecar(QDir(pluginDir).filePath(QStringLiteral("plugin.json")));
         QVERIFY(sidecar.open(QIODevice::WriteOnly | QIODevice::Truncate));
         QVERIFY(sidecar.write(QJsonDocument(QJsonObject{
-            {QStringLiteral("id"), QStringLiteral("py_usage_hub")},
+            {QStringLiteral("id"), QStringLiteral("py_nested_secret_fixture")},
             {QStringLiteral("settings"), settings}
         }).toJson(QJsonDocument::Compact)) > 0);
         sidecar.close();
@@ -591,11 +656,11 @@ private Q_SLOTS:
         const QJsonObject vendor2{{QStringLiteral("id"), QStringLiteral("glm")},
                                   {QStringLiteral("name"), QStringLiteral("GLM")},
                                   {QStringLiteral("apiKey"), QStringLiteral("second-key")}};
-        const QJsonObject rawEntry = plugin(QStringLiteral("py_usage_hub"),
+        const QJsonObject rawEntry = plugin(QStringLiteral("py_nested_secret_fixture"),
                                             {{QStringLiteral("vendors"),
                                               QJsonArray{vendor, vendor2}}});
         PluginConfigEntry entry;
-        entry.id = QStringLiteral("py_usage_hub");
+        entry.id = QStringLiteral("py_nested_secret_fixture");
         entry.position = QStringLiteral("right");
         entry.config = rawEntry.value(QStringLiteral("config")).toObject().toVariantMap();
 
@@ -619,10 +684,10 @@ private Q_SLOTS:
         QVERIFY(!token2.isEmpty());
         QVERIFY(token != token2);
         const QString secretId = SecretStore::idForPluginPointer(
-            QStringLiteral("py_usage_hub"),
+            QStringLiteral("py_nested_secret_fixture"),
             QStringLiteral("/vendors/%1/apiKey").arg(token));
         const QString secretId2 = SecretStore::idForPluginPointer(
-            QStringLiteral("py_usage_hub"),
+            QStringLiteral("py_nested_secret_fixture"),
             QStringLiteral("/vendors/%1/apiKey").arg(token2));
         QCOMPARE(SecretStore::referenceId(savedVendor.value(QStringLiteral("apiKey"))), secretId);
         QCOMPARE(SecretStore::referenceId(savedVendor2.value(QStringLiteral("apiKey"))), secretId2);

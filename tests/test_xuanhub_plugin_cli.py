@@ -252,6 +252,18 @@ class DoctorCommandTest(unittest.TestCase):
 
 
 class WorkerHarnessTest(unittest.TestCase):
+    def test_runs_current_config_version_without_implicit_v1(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_plugin(root)
+            manifest = json.loads((root / "plugin.json").read_text(encoding="utf-8"))
+            manifest["configVersion"] = 2
+            (root / "plugin.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (root / "main.py").write_text("CONFIG_VERSION = 2\ndef update():\n    return {}\n", encoding="utf-8")
+            completed = subprocess.run([sys.executable, "-B", str(CLI_PATH), "test", str(root), "--repeat", "2", "--json"], capture_output=True, text=True, encoding="utf-8", timeout=20)
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            self.assertTrue(json.loads(completed.stdout)["ok"])
+
     def test_runs_protocol_v2_lifecycle_without_qt(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

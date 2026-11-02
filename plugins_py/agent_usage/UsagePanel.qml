@@ -78,7 +78,7 @@ Rectangle {
         anchors.fill: parent; anchors.margins: 16; spacing: 14
         RowLayout {
             Layout.fillWidth: true
-            Text { text: panel.tr("Agent 用量"); color: panel.colors.fg; font.pixelSize: 17; font.bold: true; Layout.fillWidth: true }
+            Text { text: "Token Usage"; color: panel.colors.fg; font.pixelSize: 17; font.bold: true; Layout.fillWidth: true }
             Rectangle {
                 implicitWidth: 52; implicitHeight: 28; radius: 6; color: panel.colors.panel
                 Text { anchors.centerIn: parent; text: panel.tr("刷新"); color: panel.colors.accent; font.pixelSize: 11 }
