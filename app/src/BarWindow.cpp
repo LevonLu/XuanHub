@@ -17,6 +17,7 @@
 #include <QMouseEvent>
 #include <QTimer>
 #include <QDebug>
+#include <QEvent>
 
 BarWindow::BarWindow(ConfigService* config, PluginListModel* model,
                        ThemeManager* theme, LocaleManager* locale,
@@ -35,6 +36,18 @@ BarWindow::BarWindow(ConfigService* config, PluginListModel* model,
     engine()->rootContext()->setContextProperty("barWindow", this);
     // PopupService：插件共享定位与互斥服务。高级插件仍可继续自建 Window。
     engine()->rootContext()->setContextProperty("popupService", m_popupService);
+    updatePopupScreenGeometry();
+    // 主屏、工作区和缩放可在进程存活时改变；弹窗边界不能等下一次保存配置才刷新。
+    const auto watchScreen = [this](QScreen* target) {
+        connect(target, &QScreen::availableGeometryChanged,
+                this, &BarWindow::updatePopupScreenGeometry);
+    };
+    for (QScreen* target : QGuiApplication::screens()) watchScreen(target);
+    connect(qGuiApp, &QGuiApplication::screenAdded, this,
+            [this, watchScreen](QScreen* target) { watchScreen(target); updatePopupScreenGeometry(); });
+    connect(qGuiApp, &QGuiApplication::screenRemoved, this, &BarWindow::updatePopupScreenGeometry);
+    connect(qGuiApp, &QGuiApplication::primaryScreenChanged,
+            this, &BarWindow::updatePopupScreenGeometry);
     // 声明式动作注册表：插件菜单只拿到经过 Manifest 校验的稳定动作 ID。
     if (pluginActions)
         engine()->rootContext()->setContextProperty("pluginActions", pluginActions);
@@ -85,6 +98,30 @@ BarWindow::~BarWindow() {
     if (m_guard) m_guard->release();
 }
 
+bool BarWindow::event(QEvent* event) {
+    const bool refresh = event->type() == QEvent::Move
+        || event->type() == QEvent::ScreenChangeInternal
+        || event->type() == QEvent::DevicePixelRatioChange;
+    const bool handled = QQuickView::event(event);
+    if (refresh && m_embed) {
+        // 外部任务栏的重定位/DPI 消息先交给 Qt，下一轮再读取最终原生屏幕。
+        QTimer::singleShot(0, this, &BarWindow::updatePopupScreenGeometry);
+    }
+    return handled;
+}
+
+void BarWindow::updatePopupScreenGeometry() {
+    // appbar 明确布局到主屏；taskbar 在 attach 后以 HWND 的实际监视器为准。
+    // 不能只在 screen()==nullptr 时回退：外部父窗口下的非空关联也可能指向副屏。
+    QScreen* target = m_embed && m_embed->isAttached()
+        ? PopupService::screenForNativeWindow(this) : QGuiApplication::primaryScreen();
+    if (target) {
+        const QRect available = target->availableGeometry();
+        if (engine()->rootContext()->contextProperty(QStringLiteral("barScreenGeometry")).toRect() != available)
+            engine()->rootContext()->setContextProperty(QStringLiteral("barScreenGeometry"), available);
+    }
+}
+
 void BarWindow::mousePressEvent(QMouseEvent* event) {
     // 先于 item 投递广播：Connections 直连接收，弹窗关闭发生在
     // 被点 item 的 onPressed/onClicked 之前（插件据此区分"点部件 toggle 关闭"
@@ -94,25 +131,13 @@ void BarWindow::mousePressEvent(QMouseEvent* event) {
 }
 
 void BarWindow::setupBar() {
-    // 暴露 bar 所在屏幕的可用几何给 QML（含插件 QML，同引擎根上下文）。
-    // 用 availableGeometry 而非 virtualGeometry：弹窗越界修正要收在「当前屏」
-    // 内，多屏并集的左/右缘不是本屏边缘（实测日历左缘越出主屏不修正）；
-    // 可用几何还会排除任务栏占位，下界正好贴在任务栏上沿。
-    // taskbar 模式下 bar 是任务栏子窗口，QWindow::screen() 关联失效（QML 侧
-    // Item.Screen.virtualGeometry 为 undefined），此时回落主屏——目前 bar
-    // 只支持主屏（appbar reserve 与主任务栏都在主屏），回落是准确的。
-    // 每次 setupBar 刷新，保证热重载/换屏后值不过期。
-    {
-        QScreen* s = screen();
-        if (!s) s = QGuiApplication::primaryScreen();
-        if (s) engine()->rootContext()->setContextProperty(
-            QStringLiteral("barScreenGeometry"), s->availableGeometry());
-    }
-
     // taskbar 模式：嵌入原生任务栏左侧，不占工作区
     if (m_config->barMode() == QStringLiteral("taskbar")) {
         m_guard->release();   // 从 appbar 切来时归还已 reserve 的工作区（幂等）
-        if (m_embed->attach(this, m_config->taskbarOffsetX())) return;
+        if (m_embed->attach(this, m_config->taskbarOffsetX())) {
+            updatePopupScreenGeometry();
+            return;
+        }
         // 任务栏还没准备好（如 explorer 正在重启）→ 1s 后重试，
         // 直到 attach 成功或模式被热重载切走
         qWarning() << "[BarWindow] taskbar attach failed, retry in 1s";
@@ -161,6 +186,7 @@ void BarWindow::setupBar() {
         const int y = top ? sg.y() : (sg.bottom() - h + 1);
         setGeometry(sg.x(), y, sg.width(), h);
     }
+    updatePopupScreenGeometry();
 }
 
 void BarWindow::recreateForTaskbar() {

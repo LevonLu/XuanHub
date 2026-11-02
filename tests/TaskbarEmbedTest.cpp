@@ -1,14 +1,18 @@
 // TaskbarEmbedTest.cpp — 验证任务栏子窗口在原生几何变化后恢复并同步 QML 高度
 #include "TaskbarEmbed.h"
+#include "PopupService.h"
 
 #include <QAbstractNativeEventFilter>
 #include <QEvent>
 #include <QGuiApplication>
 #include <QQuickItem>
 #include <QQuickView>
+#include <QScreen>
+#include <QtGui/qscreen_platform.h>
 #include <QtTest>
 
 #include <windows.h>
+#include <memory>
 
 class TaskbarEmbedTest final : public QObject, public QAbstractNativeEventFilter {
     Q_OBJECT
@@ -121,6 +125,42 @@ private Q_SLOTS:
         QTest::qWait(1100);
         QCOMPARE(nativeGeometry(), targetGeometry());
         QCOMPARE(m_positionMessages, 0);
+    }
+
+    void popupScreenMatchesNativeTaskbar() {
+        const HMONITOR expected = MonitorFromWindow(m_tray, MONITOR_DEFAULTTONULL);
+        QVERIFY(expected);
+        QScreen* actual = PopupService::screenForNativeWindow(&m_window);
+        QVERIFY(actual);
+        const auto* native = actual->nativeInterface<QNativeInterface::QWindowsScreen>();
+        QVERIFY(native);
+        QCOMPARE(native->handle(), expected);
+        qInfo() << "原生任务栏屏幕:" << actual->name() << actual->availableGeometry()
+                << "Qt 窗口关联:" << m_window.screen()->name();
+    }
+
+    void foreignWindowScreenUsesNativeMonitor() {
+        QScreen* target = nullptr;
+        for (QScreen* candidate : QGuiApplication::screens())
+            if (candidate != QGuiApplication::primaryScreen()) { target = candidate; break; }
+        if (!target) QSKIP("需要两块显示器");
+        const auto* native = target->nativeInterface<QNativeInterface::QWindowsScreen>();
+        QVERIFY(native);
+        MONITORINFO info{};
+        info.cbSize = sizeof(info);
+        QVERIFY(GetMonitorInfoW(native->handle(), &info));
+        HWND hwnd = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"STATIC", L"",
+                                    WS_POPUP, info.rcMonitor.left + 40, info.rcMonitor.top + 40,
+                                    80, 40, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+        QVERIFY(hwnd);
+        {
+            std::unique_ptr<QWindow> foreign(QWindow::fromWinId(reinterpret_cast<WId>(hwnd)));
+            QVERIFY(foreign);
+            qInfo() << "外部窗口 Qt 关联:" << foreign->screen()->name()
+                    << "原生屏幕:" << target->name();
+            QCOMPARE(PopupService::screenForNativeWindow(foreign.get()), target);
+        }
+        QVERIFY(DestroyWindow(hwnd));
     }
 
     void queuedDpiChangeAfterDetachIsHarmless() {

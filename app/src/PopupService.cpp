@@ -2,6 +2,14 @@
 #include "PopupService.h"
 
 #include <QtMath>
+#include <QGuiApplication>
+#include <QScreen>
+#include <QWindow>
+
+#ifdef Q_OS_WIN
+#include <QtGui/qscreen_platform.h>
+#include <windows.h>
+#endif
 
 namespace {
 qreal number(const QVariantMap& map, const QString& key) {
@@ -10,6 +18,22 @@ qreal number(const QVariantMap& map, const QString& key) {
 }
 
 PopupService::PopupService(QObject* parent) : QObject(parent) {}
+
+QScreen* PopupService::screenForNativeWindow(QWindow* window) {
+#ifdef Q_OS_WIN
+    if (window && window->handle()) {
+        const HMONITOR monitor = MonitorFromWindow(
+            reinterpret_cast<HWND>(window->winId()), MONITOR_DEFAULTTONULL);
+        if (monitor) {
+            for (QScreen* candidate : QGuiApplication::screens()) {
+                const auto* native = candidate->nativeInterface<QNativeInterface::QWindowsScreen>();
+                if (native && native->handle() == monitor) return candidate;
+            }
+        }
+    }
+#endif
+    return window && window->screen() ? window->screen() : QGuiApplication::primaryScreen();
+}
 
 PopupService::Placement PopupService::calculatePlacement(
     const QRectF& anchor, const QRectF& screen, const QSizeF& popupSize,

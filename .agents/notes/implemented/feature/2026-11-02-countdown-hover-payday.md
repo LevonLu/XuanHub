@@ -24,6 +24,9 @@ Python 计算实际日期，QML 翻译固定状态。离线 `calendar_cn.json` �
 关闭。它只复用宿主 `PopupService.calculate` 的定位，不注册互斥弹窗、不请求激活，
 避免鼠标经过时关闭其他插件正在使用的界面。最终尺寸稳定后再次定位并显现。
 
+宿主可用区域采用[原生屏幕选择](../bug-fix/2026-11-02-popup-native-monitor.md)，
+与本篇部分重叠；提示的非交互与非互斥决定继续成立。
+
 ## Alternatives considered
 
 - `QtQuick.Controls.ToolTip`：代码少且支持延迟；已有状态栏实现证明其默认弹层会被矮

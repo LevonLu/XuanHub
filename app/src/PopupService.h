@@ -7,6 +7,9 @@
 #include <QSizeF>
 #include <QVariantMap>
 
+class QScreen;
+class QWindow;
+
 class PopupService final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QObject* activePopup READ activePopup NOTIFY activePopupChanged)
@@ -20,6 +23,9 @@ public:
     explicit PopupService(QObject* parent = nullptr);
 
     QObject* activePopup() const { return m_activePopup.data(); }
+
+    // 外部原生父窗口下，Qt 的 screen() 可以非空但过期；用实际 HWND 所在屏幕。
+    static QScreen* screenForNativeWindow(QWindow* window);
 
     static Placement calculatePlacement(const QRectF& anchor, const QRectF& screen,
                                         const QSizeF& popupSize, qreal gap,

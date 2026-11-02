@@ -39,9 +39,12 @@ Q_SIGNALS:
     void barPressed();
 
 protected:
+    bool event(QEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
 
 private:
+    void updatePopupScreenGeometry();
+
     ConfigService* m_config;
     WorkAreaGuard* m_guard;
     TaskbarEmbed* m_embed;

@@ -10,6 +10,7 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickItem>
+#include <QScreen>
 #include <QTemporaryFile>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -245,6 +246,55 @@ private Q_SLOTS:
         // taskbar 的实际锚点在底部，配置中的 appbar edge 仍可能是 top。
         QTest::newRow("bottom-taskbar") << 680 << QRect(0, 0, 1280, 680)
                                          << QStringLiteral("top");
+    }
+
+    void popupReturnsFromAnotherScreen() {
+        if (QGuiApplication::platformName() != QStringLiteral("windows"))
+            QSKIP("需要 Windows 原生多屏窗口");
+        QScreen* target = QGuiApplication::primaryScreen();
+        QScreen* other = nullptr;
+        for (QScreen* candidate : QGuiApplication::screens())
+            if (candidate != target) { other = candidate; break; }
+        if (!target || !other) QSKIP("需要两块显示器");
+        QQmlEngine engine;
+        PopupService service;
+        PluginContextStub context;
+        context.setProperty("popupService", QVariant::fromValue<QObject*>(&service));
+        const QRect available = target->availableGeometry();
+        context.setScreenGeometry({{QStringLiteral("x"), available.x()},
+                                   {QStringLiteral("y"), available.y()},
+                                   {QStringLiteral("width"), available.width()},
+                                   {QStringLiteral("height"), available.height()}});
+        QQuickWindow window;
+        window.setScreen(target);
+        window.setFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus);
+        window.setOpacity(0);
+        window.setGeometry(available.x() + 40, available.bottom() - 30, 80, 30);
+        QQuickItem anchor(window.contentItem());
+        anchor.setSize(QSizeF(80, 30));
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QQmlComponent component(&engine, QUrl::fromLocalFile(
+            QStringLiteral(XUANHUB_SOURCE_DIR "/app/qml/PluginPopup.qml")));
+        std::unique_ptr<QObject> object(component.createWithInitialProperties({
+            {QStringLiteral("anchorItem"), QVariant::fromValue(&anchor)},
+            {QStringLiteral("pluginContext"), QVariant::fromValue(&context)},
+            {QStringLiteral("closeOnDeactivate"), false},
+            {QStringLiteral("width"), 180}, {QStringLiteral("height"), 100},
+        }));
+        auto* popup = qobject_cast<QQuickWindow*>(object.get());
+        QVERIFY2(popup, qPrintable(component.errorString()));
+        // 模拟已有弹窗关联到另一屏，复用时必须回到锚点所在屏，并更新实际 DPI。
+        popup->setScreen(other);
+        popup->setPosition(other->availableGeometry().topLeft() + QPoint(40, 40));
+        popup->create();
+        QCOMPARE(popup->screen(), other);
+        QVERIFY(QMetaObject::invokeMethod(popup, "openAnchored"));
+        QTRY_COMPARE(popup->opacity(), 1.0);
+        QTRY_COMPARE(popup->screen(), target);
+        QVERIFY(available.contains(popup->geometry()));
+        QCOMPARE(popup->devicePixelRatio(), window.devicePixelRatio());
+        popup->hide();
     }
 
     void quickMenuStaysInsideScreenOnFirstOpenAndContentGrowth() {

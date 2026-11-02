@@ -140,7 +140,7 @@ set_target_properties(xuanhub_plugin_slot_health_tests PROPERTIES
 target_compile_definitions(xuanhub_plugin_slot_health_tests PRIVATE
     XUANHUB_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_link_libraries(xuanhub_plugin_slot_health_tests PRIVATE
-    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test
+    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test user32
 )
 add_dependencies(xuanhub_plugin_slot_health_tests XuanHub)
 add_test(NAME xuanhub_plugin_slot_health_tests
@@ -148,12 +148,20 @@ add_test(NAME xuanhub_plugin_slot_health_tests
 set_tests_properties(xuanhub_plugin_slot_health_tests PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORM_PLUGIN_PATH=${XUANHUB_BIN_DIR}/platforms;QT_QPA_FONTDIR=$ENV{WINDIR}/Fonts"
     TIMEOUT 15)
+add_test(NAME xuanhub_popup_native_multiscreen
+    COMMAND xuanhub_plugin_slot_health_tests popupReturnsFromAnotherScreen)
+set_tests_properties(xuanhub_popup_native_multiscreen PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=windows"
+    RUN_SERIAL TRUE
+    TIMEOUT 20)
 
 # 原生任务栏几何回归：测试窗口透明且不接收输入，不调整系统缩放或任务栏设置。
 add_executable(xuanhub_taskbar_embed_tests
     TaskbarEmbedTest.cpp
     ${CMAKE_SOURCE_DIR}/app/src/TaskbarEmbed.h
     ${CMAKE_SOURCE_DIR}/app/src/TaskbarEmbed.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/PopupService.h
+    ${CMAKE_SOURCE_DIR}/app/src/PopupService.cpp
 )
 set_target_properties(xuanhub_taskbar_embed_tests PROPERTIES
     AUTOMOC ON
@@ -177,10 +185,13 @@ add_executable(xuanhub_popup_service_tests
 )
 set_target_properties(xuanhub_popup_service_tests PROPERTIES AUTOMOC ON)
 target_include_directories(xuanhub_popup_service_tests PRIVATE ${CMAKE_SOURCE_DIR}/app/src)
-target_link_libraries(xuanhub_popup_service_tests PRIVATE Qt6::Core Qt6::Test)
+target_compile_definitions(xuanhub_popup_service_tests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(xuanhub_popup_service_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Test user32)
 add_custom_command(TARGET xuanhub_popup_service_tests POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:Qt6::Core>" "$<TARGET_FILE_DIR:xuanhub_popup_service_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Gui>" "$<TARGET_FILE_DIR:xuanhub_popup_service_tests>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:Qt6::Test>" "$<TARGET_FILE_DIR:xuanhub_popup_service_tests>"
     VERBATIM

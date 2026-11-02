@@ -20,6 +20,9 @@ taskbar 模式下锚点位于屏幕底部，菜单变高后底边可能越过可
 现有 `implemented/process/2026-10-30-project-agent-notes.md` 只涉及笔记流程，与此修复无关。
 标准弹窗约定已存在于 `docs/plugin-sdk-v2.md`，本次沿用该约定。
 
+[原生屏幕选择](2026-11-02-popup-native-monitor.md)补齐宿主屏幕区域的数据来源；
+本篇保留最终尺寸定位和显现时序，两者部分重叠。
+
 ## Alternatives considered
 
 - **在原 Window 增加延迟定位及尺寸监听**：能保留独立实现，局部修改量小；但需要重复维护宿主已有的显现时序、屏幕钳制和点击守卫，因此采用标准组件。
