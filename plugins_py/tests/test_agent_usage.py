@@ -19,11 +19,96 @@ monitor = importlib.util.module_from_spec(spec)
 sys.path.insert(0, str(PLUGIN))
 try:
     spec.loader.exec_module(monitor)
+    from model import QUOTA_IDS
 finally:
     sys.path.pop(0)
 
 
 class AgentUsageTests(unittest.TestCase):
+    def test_bar_quota_modes_and_provider_aliases(self):
+        aliases = {value: key for key, value in QUOTA_IDS.items()}
+        for source in monitor.BAR_QUOTA_NAMES:
+            provider = "codex" if source == "codex-spark" else aliases.get(source, source)
+            prefix = "spark_" if source == "codex-spark" else ""
+            quota = {"providers": {provider: {"status": "ok", "configured": True, "windows": [
+                {"id": prefix + "primary_window", "seconds": 18000, "used": 0},
+                {"id": prefix + "secondary_window", "seconds": 604800, "used": 73.5}]}}}
+            for mode, expected in (("none", []), ("5h", [0]), ("7d", [73.5]), ("both", [0, 73.5])):
+                with self.subTest(source=source, mode=mode):
+                    result = monitor.compose({}, quota, {"barQuota_" + source: mode, "popupAgentMode": "custom"})
+                    self.assertEqual(result["agents"], [])
+                    entries = result["barQuotas"]
+                    self.assertEqual([w["used"] for e in entries for w in e["windows"]], expected)
+                    self.assertEqual(result["totalTokens"], 0)
+
+    def test_bar_quota_exact_durations_whole_plan_and_spark_isolation(self):
+        quota = {"providers": {
+            "codex": {"status": "ok", "windows": [
+                {"id": "primary_window", "seconds": 604800, "used": 20},
+                {"id": "secondary_window", "seconds": 18000, "used": 30},
+                {"id": "spark_primary_window", "seconds": 18000, "used": 99}]},
+            "claude": {"status": "ok", "windows": [
+                {"id": "opus_window", "seconds": 604800, "used": 95},
+                {"id": "primary_window", "seconds": 18000, "used": 10}]},
+            "cursor": {"status": "ok", "windows": [
+                {"id": "primary_window", "seconds": 2592000, "used": 50},
+                {"id": "secondary_window", "seconds": 0, "used": 60}]}}}
+        config = {"barQuota_" + key: "both" for key in ("codex", "codex-spark", "claude", "cursor")}
+        rows = {e["id"]: [w["used"] for w in e["windows"]] for e in monitor.compose({}, quota, config)["barQuotas"]}
+        self.assertEqual(rows, {"claude": [10, None], "codex": [30, 20], "codex-spark": [99, None], "cursor": [None, None]})
+
+    def test_bar_quota_missing_invalid_disabled_and_cached_values(self):
+        service = monitor.Monitor({"barQuota_codex": "both"})
+        self.assertEqual([w["used"] for w in service.snapshot()["barQuotas"][0]["windows"]], [None, None])
+        limits = {"status": "ok", "windows": [{"id": "primary_window", "seconds": 18000, "used": 25}]}
+        service.payload["quota"] = {"providers": {"codex": limits}}
+        service.status["quota"] = "timeout"
+        self.assertTrue(service.snapshot()["barQuotas"][0]["stale"])
+        for value in (None, True, "invalid", float("inf"), float("nan")):
+            with self.subTest(used=value):
+                limits["windows"][0]["used"] = value
+                self.assertIsNone(service.snapshot()["barQuotas"][0]["windows"][0]["used"])
+        limits["windows"][0]["used"] = 25
+        for status in ("reauth", "unavailable", "not_configured"):
+            limits["status"] = status
+            self.assertIsNone(service.snapshot()["barQuotas"][0]["windows"][0]["used"])
+        limits["stale"] = True
+        self.assertEqual(service.snapshot()["barQuotas"][0]["windows"][0]["used"], 25)
+        service.configure({"barQuota_codex": "both", "quotaEnabled": False})
+        service.payload["quota"] = {"providers": {"codex": limits}}
+        row = service.snapshot()["barQuotas"][0]
+        self.assertEqual([w["used"] for w in row["windows"]], [None, None])
+        self.assertFalse(row["stale"])
+
+    def test_bar_quota_hot_update_preserves_collection_and_detail(self):
+        service = monitor.Monitor({})
+        service.payload["usage"] = {"sources": [{"id": "codex", "total_tokens": 50}]}
+        service.payload["quota"] = {"providers": {"codex": {"status": "ok", "windows": [
+            {"id": "primary_window", "seconds": 18000, "used": 20}]}}}
+        service.request_detail("codex", "2026-10-01", "2026-10-29", "query")
+        before = service.snapshot()
+        with patch.object(service, "cancel_processes") as cancel, patch.object(service, "refresh") as refresh:
+            service.configure({"barQuota_codex": "5h"})
+            self.assertEqual(service.snapshot()["barQuotas"][0]["windows"][0]["used"], 20)
+            cancel.assert_not_called()
+            refresh.assert_not_called()
+        after = service.snapshot()
+        self.assertEqual(after["totalTokens"], before["totalTokens"])
+        self.assertEqual(after["detail"], before["detail"])
+        self.assertEqual(service.generation, 0)
+
+    def test_bar_quota_settings_defaults_and_validation(self):
+        manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))
+        fields = {f["key"]: f for g in manifest["settings"] for f in g["fields"] if f["key"].startswith("barQuota_")}
+        self.assertEqual(set(fields), {"barQuota_" + key for key in monitor.BAR_QUOTA_NAMES})
+        self.assertEqual(monitor.compose({}, {}, {})["barQuotas"], [])
+        for key, field in fields.items():
+            self.assertEqual(field["default"], "none")
+            self.assertEqual({option["value"] for option in field["options"]}, set(monitor.BAR_QUOTA_MODES))
+            for value in (True, 5, [], {}, "daily"):
+                with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                    monitor.normalize_config({key: value})
+
     def test_local_calendar_period_and_exclusive_end(self):
         now = datetime(2026, 10, 29, 15, 0)
         bounds = monitor.period_bounds("7d", now)
@@ -56,7 +141,9 @@ class AgentUsageTests(unittest.TestCase):
         self.assertEqual({a["id"] for a in result["agents"]}, {"codex", "gemini"})
         self.assertEqual(result["hiddenAgentIds"], ["claude", "command-code", "cursor"])
         self.assertTrue(result["popupFiltered"])
-        self.assertEqual((result["totalTokens"], result["totalCost"], result["agentCount"]), (40, 4, 3))
+        self.assertEqual((result["totalTokens"], result["agentCount"]), (40, 3))
+        self.assertNotIn("totalCost", result)
+        self.assertNotIn("unpriced", result)
         self.assertEqual(monitor.compose(usage, quota, {**config, "includeAccount": True})["totalTokens"], 100)
         # 旧配置和自动模式保持原有显示，已取消勾选的项不会影响自动模式。
         for settings in ({}, {**config, "popupAgentMode": "all"}):
@@ -124,7 +211,7 @@ class AgentUsageTests(unittest.TestCase):
                 self.assertEqual(result["popupAgentMode"], "active")
                 self.assertTrue(result["popupFiltered"])
                 self.assertEqual(result["totalTokens"], 13)
-                self.assertEqual(result["totalCost"], 6)
+                self.assertNotIn("totalCost", result)
 
     def test_popup_active_follows_period_and_new_collection(self):
         service = monitor.Monitor({"popupAgentMode": "active"})

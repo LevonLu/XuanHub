@@ -74,7 +74,7 @@ class Store:
             # 复制文件可能保留 mtime；同一版本只选确定的较大快照，不能来回降低基线。
             if tuple(number(row.get(k)) for k in FIELDS) <= tuple(number(old.get(k)) for k in FIELDS):
                 return
-        numeric = {k for k, v in row.items() if (k.endswith("_tokens") or k == "total_cost_usd") and isinstance(v, (int, float))}
+        numeric = {k for k, v in row.items() if k.endswith("_tokens") and isinstance(v, (int, float))}
         reset = (row.get("counter_reset") or row.get("cumulative_mode") == "reset") and number(row.get("total_tokens")) < number(old.get("total_tokens"))
         reset |= bool(row.get("counter_reset_any") and any(number(row.get(k)) < number(old.get(k)) for k in FIELDS))
         delta = {k: max(0, number(row.get(k)) - (0 if reset else number(old.get(k)))) for k in numeric}
@@ -105,7 +105,7 @@ class Store:
         finally:
             self.db.execute("RELEASE file_update")
 
-    def query(self, request, pricing):
+    def query(self, request):
         # 先选择全库最新身份，再跨格式去重，最后过滤时间，防止边界镜像重复。
         sql = '''SELECT data FROM (
             SELECT data,ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY
@@ -142,7 +142,6 @@ class Store:
                 continue
             if not any(number(row.get(k)) for k in FIELDS):
                 continue
-            cost, unpriced = pricing.cost(row)
             target = sources.setdefault(source, {"id": source, "scope": scope(source), "models": set(), **empty()})
             target["models"].add(model)
             targets = [target]
@@ -152,8 +151,6 @@ class Store:
             for target in targets:
                 for field in FIELDS:
                     target[field] += number(row.get(field))
-                target["cost"] += cost
-                target["unpriced"] |= unpriced
                 target["estimated"] |= row.get("usage_precision") == "estimated"
             has_records = True
         for source in sources.values():
@@ -162,14 +159,14 @@ class Store:
         if request.get("lane") == "detail":
             source_id = request["sourceId"]
             return {"sourceId": source_id, "totals": sources.get(source_id, empty()), "scope": scope(source_id),
-                    "hasRecords": has_records, "byDay": sorted(days.values(), key=lambda x: x["day"]),
+                    "hasRecords": has_records, "byDay": sorted(days.values(), key=lambda x: x["day"], reverse=True),
                     "byModel": sorted(models.values(), key=lambda x: -x["total_tokens"]), "malformed": 0,
                     "sourceError": diagnostics.get(source_id, "")}
         return {"sources": list(sources.values()), "knownSources": known, "malformed": 0, "sourceErrors": diagnostics}
 
 
 def empty():
-    return {**dict.fromkeys(FIELDS, 0), "cost": 0, "unpriced": False, "estimated": False}
+    return {**dict.fromkeys(FIELDS, 0), "estimated": False}
 
 
 def scope(source):

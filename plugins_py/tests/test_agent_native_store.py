@@ -11,21 +11,13 @@ from unittest.mock import patch
 
 PLUGIN = Path(__file__).resolve().parents[1] / "agent_usage"
 sys.path.insert(0, str(PLUGIN))
-from native import engine
+from native import engine, network
 from native.common import iso, timestamp, totals
 from native.store import Store
 sys.path.pop(0)
 
 D1 = "2026-10-28T08:30:00Z"
 D2 = "2026-10-29T08:30:00Z"
-
-
-class NoNetworkPricing:
-    def __init__(self, *args):
-        pass
-
-    def cost(self, row):
-        return 0.0, bool(row.get("unpriced_input_tokens"))
 
 
 class NativeStoreTests(unittest.TestCase):
@@ -36,7 +28,6 @@ class NativeStoreTests(unittest.TestCase):
         self.path = self.root / "native-v2/usage.sqlite3"
         self.store = Store(self.path)
         self.addCleanup(self.store.close)
-        self.pricing = NoNetworkPricing()
 
     def row(self, key="e", when=D1, source="test", input=100, output=0, **extra):
         return {"event_id": source + ":" + key, "source": source, "model": "model", "hour_start": when,
@@ -44,12 +35,29 @@ class NativeStoreTests(unittest.TestCase):
 
     def query(self, source="test", store=None, **extra):
         request = {"lane": "detail", "sourceId": source, "fromMs": 0, "toMs": timestamp("2100-01-01T00:00:00Z"), **extra}
-        return (store or self.store).query(request, self.pricing)
+        return (store or self.store).query(request)
 
     def publish(self, entries, file="file", signature="signature", **kwargs):
         self.store.begin()
         self.store.replace(file, signature, entries, **kwargs)
         self.store.commit()
+
+    def test_legacy_cost_fields_do_not_enter_usage_or_detail(self):
+        self.publish([self.row(total_cost_usd=12, cost=12, unpriced=True, usage_precision="estimated")])
+        usage = self.query(lane="usage")
+        detail = self.query()
+        aggregates = usage["sources"] + [detail["totals"]] + detail["byDay"] + detail["byModel"]
+        for row in aggregates:
+            self.assertEqual(row["total_tokens"], 100)
+            self.assertTrue(row["estimated"])
+            for field in ("cost", "total_cost_usd", "unpriced"):
+                self.assertNotIn(field, row)
+
+    def test_legacy_cost_only_counter_change_does_not_create_event(self):
+        self.publish([self.row(cumulative=True, source_updated=100, total_cost_usd=1)])
+        self.publish([self.row(cumulative=True, source_updated=200, total_cost_usd=2)], signature="cost-only")
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM events").fetchone()[0], 1)
+        self.assertEqual(self.query()["totals"]["total_tokens"], 100)
 
     def test_transaction_visibility_and_interrupted_writer_rollback(self):
         self.publish([self.row(input=100)])
@@ -97,7 +105,7 @@ class NativeStoreTests(unittest.TestCase):
         self.publish([self.row(input=50, cumulative=True, source_updated=50)], file="old-copy")
         result = self.query()
         self.assertEqual(result["totals"]["total_tokens"], 150)
-        self.assertEqual([row["total_tokens"] for row in result["byDay"]], [100, 50])
+        self.assertEqual([row["total_tokens"] for row in result["byDay"]], [50, 100])
 
     def test_counter_total_reset_preserves_old_history(self):
         self.publish([self.row(input=100, cumulative=True, counter_reset=True, source_updated=100)])
@@ -171,8 +179,8 @@ class NativeStoreTests(unittest.TestCase):
             readonly.close()
         before = hashlib.sha256(self.path.read_bytes()).hexdigest()
         request = {"cacheDir": str(self.root), "lane": "detail", "sourceId": "test", "fromMs": 0, "toMs": timestamp(D2)}
-        with patch.object(engine, "Pricing", NoNetworkPricing), patch.object(engine, "discover", side_effect=AssertionError("detail scanned sources")), patch.object(engine.account_usage, "collect", side_effect=AssertionError("detail fetched account")), patch.object(engine, "Http", side_effect=AssertionError("detail fetched pricing")):
-            result = engine.collect(request, home=self.root, env={}, fetch_prices=True)
+        with patch.object(engine, "discover", side_effect=AssertionError("detail scanned sources")), patch.object(engine.account_usage, "collect", side_effect=AssertionError("detail fetched account")), patch.object(network.Http, "__call__", side_effect=AssertionError("detail fetched network")):
+            result = engine.collect(request, home=self.root, env={})
         self.assertEqual(result["totals"]["total_tokens"], 100)
         self.assertEqual(hashlib.sha256(self.path.read_bytes()).hexdigest(), before)
 
@@ -188,22 +196,29 @@ class NativeStoreTests(unittest.TestCase):
                 yield self.row(source=source, input=999)
                 raise ValueError("private detail must not leak")
             yield self.row(source=source, input=200 if state["fail"] else 100)
-        with patch.object(engine, "Pricing", NoNetworkPricing), patch.object(engine, "discover", return_value=discovered), patch.object(engine, "parser_for", return_value=parser):
-            engine.collect(request, home=self.root, env={}, accounts=False, fetch_prices=False)
+        with patch.object(engine, "discover", return_value=discovered), patch.object(engine, "parser_for", return_value=parser):
+            engine.collect(request, home=self.root, env={}, accounts=False)
             state["fail"] = True
             one.write_text("changed one", encoding="utf-8")
             two.write_text("changed two", encoding="utf-8")
-            result = engine.collect(request, home=self.root, env={}, accounts=False, fetch_prices=False)
+            result = engine.collect(request, home=self.root, env={}, accounts=False)
         self.assertEqual({s["id"]: s["total_tokens"] for s in result["sources"]}, {"first": 100, "second": 200})
         self.assertEqual(result["sourceErrors"], {"first": "parse_failed"})
+
+    def test_local_usage_collection_does_not_fetch_or_write_prices(self):
+        request = {"cacheDir": str(self.root), "lane": "usage", "fromMs": 0, "toMs": timestamp(D2)}
+        with patch.object(engine, "discover", return_value=[]), patch.object(network.Http, "__call__", side_effect=AssertionError("usage fetched network")):
+            result = engine.collect(request, home=self.root, env={}, accounts=False)
+        self.assertEqual(result["sources"], [])
+        self.assertFalse((self.path.parent / "prices.json").exists())
 
     def test_engine_account_append_keeps_history_across_shorter_response(self):
         request = {"cacheDir": str(self.root), "lane": "usage", "fromMs": 0, "toMs": timestamp("2026-10-30T00:00:00Z")}
         responses = [({"cursor": [self.row(key="old", source="cursor", input=100)]}, {}),
                      ({"cursor": [self.row(key="new", source="cursor", input=50, when=D2)]}, {})]
-        with patch.object(engine, "Pricing", NoNetworkPricing), patch.object(engine, "discover", return_value=[]), patch.object(engine.account_usage, "collect", side_effect=responses):
-            engine.collect(request, home=self.root, env={}, fetch_prices=False)
-            result = engine.collect(request, home=self.root, env={}, fetch_prices=False)
+        with patch.object(engine, "discover", return_value=[]), patch.object(engine.account_usage, "collect", side_effect=responses):
+            engine.collect(request, home=self.root, env={})
+            result = engine.collect(request, home=self.root, env={})
         self.assertEqual(result["sources"][0]["total_tokens"], 150)
 
     def test_engine_source_alias_failure_is_visible_to_detail(self):
@@ -211,10 +226,10 @@ class NativeStoreTests(unittest.TestCase):
         path.write_text("{}", encoding="utf-8")
         request = {"cacheDir": str(self.root), "lane": "usage", "fromMs": 0, "toMs": timestamp(D2)}
         for raw_source, source in (("kilocode", "kilo-code"), ("kimi-code", "kimi")):
-            with self.subTest(source=source), patch.object(engine, "Pricing", NoNetworkPricing), patch.object(engine, "discover", return_value=[(raw_source, "formats.test", path)]), patch.object(engine, "parser_for", side_effect=ValueError("broken source")):
-                result = engine.collect(request, home=self.root, env={}, accounts=False, fetch_prices=False)
+            with self.subTest(source=source), patch.object(engine, "discover", return_value=[(raw_source, "formats.test", path)]), patch.object(engine, "parser_for", side_effect=ValueError("broken source")):
+                result = engine.collect(request, home=self.root, env={}, accounts=False)
                 self.assertEqual(result["sourceErrors"], {source: "parse_failed"})
-                detail = engine.collect({**request, "lane": "detail", "sourceId": source}, home=self.root, env={}, accounts=False, fetch_prices=False)
+                detail = engine.collect({**request, "lane": "detail", "sourceId": source}, home=self.root, env={}, accounts=False)
                 self.assertEqual(detail["sourceError"], "parse_failed")
 
     def test_engine_kimi_rotated_log_keeps_previous_day(self):
@@ -225,14 +240,14 @@ class NativeStoreTests(unittest.TestCase):
             record = {"timestamp": timestamp(when) // 1000, "message": {"type": "StatusUpdate", "payload": {
                 "message_id": key, "token_usage": {"input_other": count}}}}
             path.write_text(json.dumps(record) + "\n", encoding="utf-8")
-        with patch.object(engine, "Pricing", NoNetworkPricing), patch.object(engine, "discover", return_value=[("kimi", "formats.kimi", path)]):
+        with patch.object(engine, "discover", return_value=[("kimi", "formats.kimi", path)]):
             write_message("old", D1, 100)
-            engine.collect(request, home=self.root, env={}, accounts=False, fetch_prices=False)
+            engine.collect(request, home=self.root, env={}, accounts=False)
             write_message("new", D2, 50)
-            result = engine.collect(request, home=self.root, env={}, accounts=False, fetch_prices=False)
-            detail = engine.collect({**request, "lane": "detail", "sourceId": "kimi"}, home=self.root, env={}, accounts=False, fetch_prices=False)
+            result = engine.collect(request, home=self.root, env={}, accounts=False)
+            detail = engine.collect({**request, "lane": "detail", "sourceId": "kimi"}, home=self.root, env={}, accounts=False)
         self.assertEqual(result["sources"][0]["total_tokens"], 150)
-        self.assertEqual([day["total_tokens"] for day in detail["byDay"]], [100, 50])
+        self.assertEqual([day["total_tokens"] for day in detail["byDay"]], [50, 100])
 
     def test_signature_watches_kiro_cli_message_and_metadata_companions(self):
         legacy = self.root / "s.json"

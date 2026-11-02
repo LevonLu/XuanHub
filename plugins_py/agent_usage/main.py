@@ -9,7 +9,7 @@ import sys
 import threading
 import time
 
-from model import compose, period_bounds, detail_query, default_detail_dates, POPUP_AGENT_KEYS
+from model import compose, period_bounds, detail_query, default_detail_dates, POPUP_AGENT_KEYS, BAR_QUOTA_NAMES, BAR_QUOTA_MODES
 from process_job import Job
 
 _service = None
@@ -29,9 +29,12 @@ def normalize_config(config):
     selection = {"popupAgent_" + key: config.get("popupAgent_" + key, False) for key in POPUP_AGENT_KEYS}
     if any(not isinstance(value, bool) for value in selection.values()):
         raise ValueError("invalid_popup_agent_selection")
+    bar_quota = {"barQuota_" + key: config.get("barQuota_" + key, "none") for key in BAR_QUOTA_NAMES}
+    if any(not isinstance(value, str) or value not in BAR_QUOTA_MODES for value in bar_quota.values()):
+        raise ValueError("invalid_bar_quota_mode")
     return {"period": period, "showAll": bool(config.get("showAll", False)),
             "barPrefix": " ".join(bar_prefix.splitlines()).strip(),
-            "popupAgentMode": popup_mode, **selection,
+            "popupAgentMode": popup_mode, **selection, **bar_quota,
             "includeAccount": bool(config.get("includeAccount", False)),
             "devinEnabled": bool(config.get("devinEnabled", False)),
             "quotaEnabled": bool(config.get("quotaEnabled", True)),
@@ -83,6 +86,9 @@ class Monitor:
                 for agent in result["agents"]:
                     if agent["quota"].get("windows"):
                         agent["quota"]["stale"] = True
+                for entry in result["barQuotas"]:
+                    if any(w["used"] is not None for w in entry["windows"]):
+                        entry["stale"] = True
             return result
 
     def configure(self, config):

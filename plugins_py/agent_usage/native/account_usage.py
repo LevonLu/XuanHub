@@ -78,7 +78,7 @@ def cursor_auth(home, env=None):
 def parse_cursor_csv(payload):
     text = payload.decode("utf-8-sig") if isinstance(payload, bytes) else payload.lstrip("\ufeff")
     reader = csv.DictReader(io.StringIO(text))
-    required = {"Date", "Model", "Input (w/ Cache Write)", "Input (w/o Cache Write)", "Cache Read", "Output Tokens", "Total Tokens", "Cost"}
+    required = {"Date", "Model", "Input (w/ Cache Write)", "Input (w/o Cache Write)", "Cache Read", "Output Tokens", "Total Tokens"}
     if not reader.fieldnames or not required.issubset(reader.fieldnames):
         raise RequestError("invalid_response")
     # 同一时间模型允许出现完全相同的多次请求；序号保留重数，重复整份导出仍幂等。

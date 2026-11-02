@@ -209,6 +209,8 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(rows, accounts.parse_cursor_csv(header + line + line))
         self.assertEqual([rows[0][k] for k in ("input_tokens", "cache_creation_input_tokens", "cached_input_tokens", "output_tokens", "total_tokens")], [100, 50, 20, 30, 200])
         self.assertEqual(rows[0]["source_scope"], "account")
+        without_cost = header.replace(",Cost", "") + line.replace(",$0.1", "") * 2
+        self.assertEqual(accounts.parse_cursor_csv(without_cost), rows)
         with self.assertRaises(RequestError):
             accounts.parse_cursor_csv("unexpected,response\n1,2")
 

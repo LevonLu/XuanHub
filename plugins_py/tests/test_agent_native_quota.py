@@ -232,7 +232,9 @@ class QuotaTests(unittest.TestCase):
 
     def test_opencode_go_api_modern_and_legacy(self):
         q = self.q({"https://opencode.ai/zen/go/v1/usage": {"usage": {"rolling": {"percent": 20, "resetInSec": 3600}}, "weeklyUsage": {"usagePercent": 40, "resetInSec": 6000}, "monthly": {"percent": 10}}}, {"OPENCODE_GO_API_KEY": "fixture"})
-        self.assertEqual([w["used"] for w in products.opencode_go(q)["windows"]], [20, 40, 10])
+        windows = products.opencode_go(q)["windows"]
+        self.assertEqual([w["used"] for w in windows], [20, 40, 10])
+        self.assertEqual([w["seconds"] for w in windows], [0, 604800, 0])
 
     def test_opencode_go_dashboard_slots(self):
         html = '<div data-slot="usage-item"><span data-slot="usage-label">Rolling</span><span data-slot="usage-value">35%</span><span data-slot="reset-time">Resets in 2h 30m</span></div>'
@@ -280,8 +282,13 @@ class QuotaTests(unittest.TestCase):
         items = [{"product": p, "tier": "pro", "periods": [{"label": "session", "percent": 25}, {"label": "weekly", "used": 1, "total": 2}, {"label": "daily", "percent": 99}]} for p in ("coding-plan", "agent-plan")]
         with patch.object(products, "command", return_value=(json.dumps({"items": items}), 0)) as run:
             for product in ("coding-plan", "agent-plan"):
-                self.assertEqual([w["used"] for w in products.ark(q, product)["windows"]], [25, 50])
+                windows = products.ark(q, product)["windows"]
+                self.assertEqual([w["used"] for w in windows], [25, 50])
+                self.assertEqual([w["seconds"] for w in windows], [0, 604800])
             self.assertEqual(Path(run.call_args[0][0][0]), binary)
+            items[0]["periods"][0]["label"] = "5h"
+            run.return_value = (json.dumps({"items": items}), 0)
+            self.assertEqual(products.ark(q, "coding-plan")["windows"][0]["seconds"], 18000)
 
     def test_ark_node_shim_without_binary_is_cli_missing(self):
         self.write("npm/arkcli.cmd", "node fixture.js")

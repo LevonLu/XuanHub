@@ -1,5 +1,6 @@
 # model.py — 汇总 Agent 列表、统计周期与套餐窗口，区分未知值与零用量
 from datetime import datetime, timedelta
+import math
 import re
 
 NAMES = {
@@ -26,6 +27,41 @@ QUOTA_SOURCES = {"claude", "codex", "cursor", "kimi", "gemini", "kiro", "antigra
                  "coding-plan", "agent-plan", "workbuddy"}
 # 原生日志将 Kimi Code 归并到 Kimi；设置中只提供一个对应开关。
 POPUP_AGENT_KEYS = tuple(key for key in NAMES if key != "kimi-code") + ("other",)
+BAR_QUOTA_NAMES = dict(sorted({**{key: NAMES[key] for key in QUOTA_SOURCES},
+                              "codex-spark": "Codex Spark"}.items(), key=lambda item: item[1].casefold()))
+BAR_QUOTA_MODES = {"none": (), "5h": ("5h",), "7d": ("7d",), "both": ("5h", "7d")}
+
+
+def bar_quotas(providers, config):
+    entries = []
+    for key, name in BAR_QUOTA_NAMES.items():
+        periods = BAR_QUOTA_MODES[config.get("barQuota_" + key, "none")]
+        if not periods:
+            continue
+        source, prefix = ("codex", "spark_") if key == "codex-spark" else (key, "")
+        quota = providers.get(source) or {}
+        enabled = config.get("quotaEnabled", True)
+        windows = []
+        for period in periods:
+            seconds = 18000 if period == "5h" else 604800
+            # 主、次窗口的周期因提供方而异；只认明确时长，并隔离 Spark 子额度。
+            candidates = [w for w in quota.get("windows", []) if w.get("seconds") == seconds
+                          and str(w.get("id", "")).startswith("spark_") == bool(prefix)]
+            preferred = prefix + ("primary_window" if period == "5h" else "secondary_window")
+            overall_ids = {prefix + slot + "_window" for slot in ("primary", "secondary", "tertiary", "quaternary")}
+            selected = next((w for w in candidates if w.get("id") == preferred), None)
+            selected = selected or next((w for w in candidates if w.get("id") in overall_ids), None)
+            # 模型子额度不能代替整体额度，避免把 Opus 的周额度标为 Claude 总额度。
+            used = selected.get("used") if selected and enabled and (quota.get("status") == "ok" or quota.get("stale")) else None
+            try:
+                used = float(used) if used is not None and not isinstance(used, bool) else None
+                used = min(100, max(0, used)) if used is not None and math.isfinite(used) else None
+            except (ValueError, TypeError, OverflowError):
+                used = None
+            windows.append({"period": period, "used": used})
+        entries.append({"id": key, "name": name, "windows": windows,
+                        "stale": bool(enabled and quota.get("stale"))})
+    return entries
 
 
 def popup_agent_visible(source_id, config, stats=None):
@@ -102,10 +138,9 @@ def compose(usage, quota, config):
     selected = [s for s in sources.values() if config.get("includeAccount") or s.get("scope") != "account"]
     # 列表选择仅控制展示，隐藏工具仍继续采集并计入原有总量口径。
     popup_mode = config.get("popupAgentMode", "all")
-    return {"agents": agents, "barPrefix": config.get("barPrefix", ""),
+    return {"agents": agents, "barPrefix": config.get("barPrefix", ""), "barQuotas": bar_quotas(providers, config),
             "popupAgentMode": popup_mode, "popupFiltered": popup_mode != "all",
             "hiddenAgentIds": sorted(hidden), "totalTokens": sum(s.get("total_tokens", 0) for s in selected),
-            "totalCost": sum(s.get("cost", 0) for s in selected),
-            "unpriced": any(s.get("unpriced") for s in selected), "period": config.get("period", "today"),
+            "period": config.get("period", "today"),
             "includeAccount": config.get("includeAccount", False), "agentCount": len(sources),
             "malformed": usage.get("malformed", 0), "sourceErrorCount": len(usage.get("sourceErrors", {}))}

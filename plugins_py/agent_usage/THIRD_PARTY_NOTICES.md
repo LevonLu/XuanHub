@@ -1,6 +1,6 @@
 # 第三方许可
 
-`native/` 中的独立 Python 采集、Token 规范化和计价实现参考并移植了 TokenTracker 的相关算法；`native/prices/` 保留其价格快照和人工修正数据。运行时不执行或导入 TokenTracker 的 JavaScript 实现。以下许可适用于这些衍生实现与数据。
+`native/` 中的独立 Python 采集和 Token 规范化实现参考并移植了 TokenTracker 的相关算法。运行时不执行或导入 TokenTracker 的 JavaScript 实现。以下许可适用于这些衍生实现。
 
 来源：https://github.com/xiufengsun/TokenTracker
 

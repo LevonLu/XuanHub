@@ -32,7 +32,6 @@ Item {
 
     function tr(s) { return translate ? translate(s) : qsTranslate("plugin.py_agent_usage.main", s) }
     function number(n) { return TokenFormat.compact(n) }
-    function cost(row) { return "$" + Number(row.cost || 0).toFixed(2) + (row.unpriced ? " + ?" : "") }
     function dateText(date) { return Qt.formatDate(date, "yyyy-MM-dd") }
     function validDate(s) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false
@@ -111,11 +110,11 @@ Item {
     }
 
     ColumnLayout {
-        anchors.fill: parent; anchors.margins: 18; spacing: 10
+        anchors.fill: parent; anchors.margins: 16; spacing: 10
         RowLayout {
             Layout.fillWidth: true; spacing: 10
             Action { objectName: "detailBack"; label: "‹ " + detail.tr("工具列表"); onTriggered: detail.backRequested() }
-            Text { Layout.fillWidth: true; text: detail.agent ? detail.agent.name : ""; textFormat: Text.PlainText; elide: Text.ElideRight; color: detail.colors.fg; font.pixelSize: 19; font.bold: true }
+            Text { Layout.fillWidth: true; text: detail.agent ? detail.agent.name : ""; textFormat: Text.PlainText; elide: Text.ElideRight; color: detail.colors.fg; font.pixelSize: 17; font.bold: true }
         }
         Text { text: detail.tr("选择时间段（本地日期，含起止两天）"); Layout.fillWidth: true; wrapMode: Text.Wrap; color: detail.colors.muted; font.pixelSize: 12 }
         RowLayout {
@@ -149,16 +148,8 @@ Item {
             Layout.fillWidth: true; implicitHeight: summary.implicitHeight + 24; radius: 8; color: detail.colors.panel
             ColumnLayout {
                 id: summary; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 12; spacing: 6
-                RowLayout {
-                    Layout.fillWidth: true
-                    Text { objectName: "detailTotal"; text: detail.detailData ? detail.number(detail.detailData.totals.total_tokens) : "—"; color: detail.colors.fg; font.pixelSize: 23; font.bold: true; Layout.fillWidth: true }
-                    Text { text: detail.detailData ? detail.cost(detail.detailData.totals) : "—"; color: detail.colors.accent; font.pixelSize: 21 }
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    Text { text: detail.tr("区间 Token 总量"); color: detail.colors.muted; font.pixelSize: 11; Layout.fillWidth: true }
-                    Text { text: detail.tr("费用估算 · USD"); color: detail.colors.muted; font.pixelSize: 11 }
-                }
+                Text { objectName: "detailTotal"; text: detail.detailData ? detail.number(detail.detailData.totals.total_tokens) : "—"; color: detail.colors.fg; font.pixelSize: 28; font.bold: true; Layout.fillWidth: true }
+                Text { text: detail.tr("区间 Token 总量"); color: detail.colors.muted; font.pixelSize: 11; Layout.fillWidth: true }
                 Text {
                     Layout.fillWidth: true; wrapMode: Text.Wrap; color: detail.colors.muted; font.pixelSize: 11; visible: !!detail.detailData
                     text: detail.detailData ? detail.tr("输入 %1 · 输出 %2 · 缓存读取 %3 · 缓存写入 %4").arg(detail.number(detail.detailData.totals.input_tokens)).arg(detail.number(detail.detailData.totals.output_tokens)).arg(detail.number(detail.detailData.totals.cached_input_tokens)).arg(detail.number(detail.detailData.totals.cache_creation_input_tokens)) : ""
@@ -184,7 +175,7 @@ Item {
             }
             delegate: Rectangle {
                 required property var modelData
-                width: breakdown.width - 8; height: 67; radius: 6; color: detail.colors.panel
+                width: breakdown.width - 8; height: 50; radius: 6; color: detail.colors.panel
                 ColumnLayout {
                     anchors.fill: parent; anchors.margins: 10; spacing: 5
                     RowLayout {
@@ -196,7 +187,6 @@ Item {
                         Layout.fillWidth: true; height: 3; radius: 2; color: detail.colors.border
                         Rectangle { height: 3; width: parent.width * modelData.total_tokens / detail.maximum; radius: 2; color: detail.colors.accent }
                     }
-                    Text { text: detail.tr("估算 %1").arg(detail.cost(modelData)); color: detail.colors.muted; font.pixelSize: 10 }
                 }
             }
         }

@@ -27,6 +27,486 @@
       ]
     },
     {
+      "group": "状态栏套餐额度",
+      "fields": [
+        {
+          "key": "barQuota_antigravity",
+          "type": "enum",
+          "label": "Antigravity",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_agent-plan",
+          "type": "enum",
+          "label": "Ark Agent Plan",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_coding-plan",
+          "type": "enum",
+          "label": "Ark Coding Plan",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_claude",
+          "type": "enum",
+          "label": "Claude Code",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_codex",
+          "type": "enum",
+          "label": "Codex",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_codex-spark",
+          "type": "enum",
+          "label": "Codex Spark",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_command-code",
+          "type": "enum",
+          "label": "Command Code",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_cursor",
+          "type": "enum",
+          "label": "Cursor",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_devin",
+          "type": "enum",
+          "label": "Devin CLI",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_gemini",
+          "type": "enum",
+          "label": "Gemini CLI",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_copilot",
+          "type": "enum",
+          "label": "GitHub Copilot",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_grok",
+          "type": "enum",
+          "label": "Grok Build",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_kimi",
+          "type": "enum",
+          "label": "Kimi",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_kiro",
+          "type": "enum",
+          "label": "Kiro",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_opencode-go",
+          "type": "enum",
+          "label": "OpenCode Go",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_qoder",
+          "type": "enum",
+          "label": "Qoder",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_qoder-cn",
+          "type": "enum",
+          "label": "Qoder CN",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_workbuddy",
+          "type": "enum",
+          "label": "WorkBuddy",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        },
+        {
+          "key": "barQuota_zcode",
+          "type": "enum",
+          "label": "ZCode",
+          "description": "显示已用百分比；— 表示未返回对应窗口，* 表示上次缓存。与弹窗筛选独立。",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "不显示"
+            },
+            {
+              "value": "5h",
+              "label": "仅 5h"
+            },
+            {
+              "value": "7d",
+              "label": "仅 7d"
+            },
+            {
+              "value": "both",
+              "label": "5h 和 7d"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "group": "监控",
       "fields": [
         {

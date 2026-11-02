@@ -8,7 +8,7 @@ Item {
     id: root
     property var plugin
     property var pluginContext
-    width: Math.max(40, Math.min(240, label.implicitWidth + 28))
+    width: Math.max(40, summary.implicitWidth + 28)
     height: 40
 
     readonly property var values: plugin && plugin.values ? plugin.values : ({})
@@ -26,19 +26,16 @@ Item {
         color: root.values.usageStatus === "ok" ? root.colors.success : root.colors.warning
     }
 
-    Text {
-        id: label
-        objectName: "agentUsageLabel"
-        anchors.fill: parent; anchors.leftMargin: 20; anchors.rightMargin: 8
-        verticalAlignment: Text.AlignVCenter
-        elide: Text.ElideRight
-        color: root.colors.fg
-        font.pixelSize: 12
+    BarQuotaSummary {
+        id: summary
+        anchors.left: parent.left; anchors.leftMargin: 20
+        anchors.verticalCenter: parent.verticalCenter
         // 用户前缀按纯文本显示，支持 emoji，也避免被 Text.AutoText 当作富文本解析。
-        textFormat: Text.PlainText
-        text: (root.values.barPrefix ? root.values.barPrefix + " " : "")
+        usageText: (root.values.barPrefix ? root.values.barPrefix + " " : "")
             + (root.values.usageUpdated ? root.compact(root.values.totalTokens)
                : root.values.usageStatus === "loading" ? root.tr("采集中") : root.tr("待连接"))
+        entries: root.values.barQuotas || []
+        colors: root.colors
     }
     MouseArea {
         id: mouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
@@ -52,9 +49,11 @@ Item {
     }
     PluginPopup {
         id: popup; anchorItem: root; pluginContext: root.pluginContext
-        width: Math.min(620, root.pluginContext && root.pluginContext.screenGeometry ? root.pluginContext.screenGeometry.width - 20 : 620)
-        height: Math.min(660, root.pluginContext && root.pluginContext.screenGeometry ? root.pluginContext.screenGeometry.height - 70 : 660)
+        width: Math.min(420, root.pluginContext && root.pluginContext.screenGeometry ? root.pluginContext.screenGeometry.width - 20 : 420)
+        height: Math.min(popupPanel.implicitHeight, 620,
+            root.pluginContext && root.pluginContext.screenGeometry ? root.pluginContext.screenGeometry.height - 40 : 620)
         UsagePanel {
+            id: popupPanel
             anchors.fill: parent
             plugin: root.plugin; pluginContext: root.pluginContext
             values: root.values; colors: root.colors

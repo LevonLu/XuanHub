@@ -10,8 +10,6 @@ import time
 from . import account_usage
 from .common import identity
 from .discovery import discover
-from .network import Http
-from .pricing import Pricing
 from .store import Store
 
 VERSION = "native-0.2.0"
@@ -71,11 +69,10 @@ def error_code(error):
     return str(error) if isinstance(error, (RuntimeError, ValueError)) and str(error) in known else "parse_failed"
 
 
-def collect(request, *, home=None, env=None, accounts=True, fetch_prices=True):
+def collect(request, *, home=None, env=None, accounts=True):
     cache = Path(request["cacheDir"]) / "native-v2"
     home = Path.home() if home is None else Path(home)
     env = dict(os.environ if env is None else env)
-    prices = Pricing(cache / "prices.json", Http(8) if fetch_prices and request["lane"] == "usage" else None)
     store = Store(cache / "usage.sqlite3", readonly=request["lane"] == "detail")
     try:
         if request["lane"] == "usage":
@@ -121,6 +118,6 @@ def collect(request, *, home=None, env=None, accounts=True, fetch_prices=True):
             store.set_metadata("sourceErrors", errors)
             store.set_metadata("capturedAt", time.time())
             store.commit()
-        return {**store.query(request, prices), "version": VERSION}
+        return {**store.query(request), "version": VERSION}
     finally:
         store.close()

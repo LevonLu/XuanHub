@@ -25,6 +25,7 @@ TestCase {
         id: panelComponent
         Usage.UsagePanel { plugin: fake; values: fake.values }
     }
+    SignalSpy { id: refreshSpy; target: tests.panel || null; signalName: "refreshRequested" }
     function init() {
         fake.calls = []
         fake.values = { defaultRange: {from:"2026-10-23",to:"2026-10-29"}, usageStatus:"ok", quotaStatus:"ok",
@@ -48,6 +49,29 @@ TestCase {
         fake.values = Object.assign({}, fake.values, {detail:{requestId:args[3],sourceId:args[0],fromDate:args[1],toDate:args[2],
             status:"ok",data:{hasRecords:count > 0,totals:{total_tokens:count,cost:0.25},
                 byDay:[{day:args[1],total_tokens:count,cost:0.25}],byModel:[{model:"test-model",total_tokens:count,cost:0.25}]}}})
+    }
+    function verifyNoMoney(item) {
+        if (typeof item.text === "string")
+            verify(!/\$|USD|费用|缺少价格/.test(item.text), "意外显示金额：" + item.text)
+        for (var i = 0; i < item.children.length; ++i)
+            verifyNoMoney(item.children[i])
+    }
+    function test_legacy_costs_are_not_displayed() {
+        fake.values = Object.assign({}, fake.values, {usageUpdated:"2026-11-02 10:00",totalTokens:123,
+            totalCost:99,unpriced:true,agents:[{id:"codex",name:"Codex",scope:"local",
+                stats:{total_tokens:123,cost:99,unpriced:true},quota:{status:"pending",windows:[]}}]})
+        verify(waitForRendering(panel))
+        verifyNoMoney(panel)
+        var detail = openDetail()
+        respond(fake.calls[0], 123)
+        tryCompare(detail,"status","ok")
+        compare(findChild(detail,"detailTotal").text,"123")
+        verify(waitForRendering(detail))
+        verifyNoMoney(panel)
+        mouseClick(findChild(detail,"detailModels"),10,10)
+        compare(detail.rows[0].model,"test-model")
+        verify(waitForRendering(detail))
+        verifyNoMoney(panel)
     }
     function test_click_query_and_back() {
         var detail = openDetail()
@@ -108,7 +132,7 @@ TestCase {
         var empty = findChild(panel,"agentEmptyState")
         verify(empty.visible)
         verify(empty.text.indexOf("插件设置") >= 0)
-        verify(findChild(panel,"agentFilterHint").visible)
+        verify(findChild(panel,"agentFilterHint") === null)
         compare(fake.calls.length,1)
     }
     function test_selection_update_retains_visible_detail() {
@@ -128,6 +152,31 @@ TestCase {
         var empty = findChild(panel,"agentEmptyState")
         verify(empty.visible)
         compare(empty.text,"本统计周期尚无 Token 消耗记录。")
-        verify(findChild(panel,"agentFilterHint").visible)
+        verify(findChild(panel,"agentFilterHint") === null)
+    }
+    function test_compact_popup_tracks_content_and_scrolls() {
+        compare(panel.width,420)
+        verify(panel.height < 400)
+        verify(findChild(panel,"agentOverviewTotal") !== null)
+        var initialHeight = panel.height
+        var many = []
+        for (var i = 0; i < 18; ++i)
+            many.push({id:"tool-"+i,name:"Agent "+i,scope:"local",stats:{total_tokens:100},quota:{status:"pending",windows:[]}})
+        fake.values = Object.assign({}, fake.values, {agents:many})
+        tryVerify(function() { return panel.height > initialHeight })
+        compare(panel.height,620)
+        var list = findChild(panel,"agentListViewport")
+        verify(list.contentHeight > list.height)
+        list.contentY = list.contentHeight - list.height
+        verify(list.contentY > 0)
+        fake.values = Object.assign({}, fake.values, {agents:[]})
+        tryVerify(function() { return panel.height < 400 })
+    }
+    function test_refresh_remains_available() {
+        refreshSpy.clear()
+        var button = findChild(panel,"agentRefreshButton")
+        verify(button !== null)
+        mouseClick(button,10,10)
+        compare(refreshSpy.count,1)
     }
 }

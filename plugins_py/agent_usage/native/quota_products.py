@@ -166,7 +166,8 @@ def go_windows(payload):
         seconds = first(raw, "resetInSec", "reset_in_sec")
         if seconds is not None:
             reset = time.time() + number(seconds)
-        values.append(window(SLOTS[index], percent, reset))
+        # weekly 明确是七天；rolling 与剩余重置时间不能证明是五小时窗口。
+        values.append(window(SLOTS[index], percent, reset, 604800 if key == "weekly" else 0))
     if not any(values):
         raise RequestError("invalid_response")
     return result(values, "OpenCode Go")
@@ -278,7 +279,8 @@ def ark(q, product):
             used = period.get("percent")
             if used is None and number(period.get("total")):
                 used = number(period.get("used")) / number(period["total"]) * 100
-            windows.append(window(key, used, period.get("reset_at")))
+            seconds = {"5h": 18000, "five_hour": 18000, "weekly": 604800}.get(period.get("label"), 0)
+            windows.append(window(key, used, period.get("reset_at"), seconds))
     if not any(windows):
         raise RequestError("invalid_response")
     return result(windows, str(item.get("tier") or ""))

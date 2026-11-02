@@ -468,7 +468,10 @@ private Q_SLOTS:
         QVERIFY(popup);
         QTRY_COMPARE(popup->opacity(), 1.0);
         QVERIFY(popup->isVisible());
-        QCOMPARE(popup->size(), QSize(620, 650));
+        QCOMPARE(popup->width(), 420);
+        auto* panel = popup->findChild<QQuickItem*>(QStringLiteral("agentUsagePanel"));
+        QVERIFY(panel);
+        QTRY_COMPARE(popup->height(), qRound(qMin(panel->implicitHeight(), qreal(620))));
         QVERIFY(QRect(0, 0, 1280, 720).contains(popup->geometry()));
         clickBar();
         QTRY_VERIFY(!popup->isVisible());

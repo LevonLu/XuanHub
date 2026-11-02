@@ -1,4 +1,4 @@
-// UsagePanel.qml — 可滚动 Agent 用量面板，统一显示统计口径、未知值和额度时效
+// UsagePanel.qml — 紧凑用量总览、套餐额度和按内容收缩的弹窗面板
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -6,24 +6,32 @@ import "TokenFormat.js" as TokenFormat
 
 Rectangle {
     id: panel
+    objectName: "agentUsagePanel"
     property var plugin
     property var pluginContext
     property var values: ({})
     property var colors: ({"bg": "#1e1e2e", "panel": "#313244", "fg": "#cdd6f4", "muted": "#9399b2",
         "border": "#45475a", "accent": "#89b4fa", "warning": "#f9e2af", "danger": "#f38ba8", "success": "#a6e3a1"})
-    signal refreshRequested()
     property var selectedAgent: null
+    signal refreshRequested()
     onValuesChanged: {
-        // 隐藏正在查看的工具后返回列表，避免详情继续展示已取消勾选的来源。
+        // 设置隐藏当前工具时返回总览，防止详情脱离用户的显示范围。
         if (selectedAgent && (values.hiddenAgentIds || []).indexOf(selectedAgent.id) >= 0)
             selectedAgent = null
     }
-    width: 620; height: 660
+    width: 420
+    height: Math.min(620, implicitHeight)
+    // 列表使用自然内容高度；不能从可视高度反推，避免与宿主的限高形成循环。
+    implicitHeight: selectedAgent ? 570 : overview.implicitHeight + 32
     color: colors.bg; radius: 12; border.color: colors.border
+
     function tr(s) { return qsTranslate("plugin.py_agent_usage.main", s) }
-    function openAgent(agent) { selectedAgent = ({ id: agent.id, name: agent.name, scope: agent.scope }) }
+    function openAgent(agent) { selectedAgent = ({id: agent.id, name: agent.name, scope: agent.scope}) }
     function number(n) { return TokenFormat.compact(n) }
-    function cost(n) { return "$" + Number(n || 0).toFixed(2) }
+    function shortTime(value) {
+        var match = String(value || "").match(/\d{2}:\d{2}/)
+        return match ? match[0] : "—"
+    }
     function periodName() {
         switch (values.period) {
         case "7d": return tr("近 7 天")
@@ -34,7 +42,7 @@ Rectangle {
     }
     function statusText(status) {
         switch (status) {
-        case "loading": return tr("正在采集，首次扫描可能较慢")
+        case "loading": return values.usageUpdated ? tr("正在更新…") : tr("首次采集中…")
         case "python_missing": return tr("Python 采集进程不可用，请检查插件依赖")
         case "timeout": return tr("采集超时，保留上次结果")
         case "collector_failed": return tr("采集失败，请检查插件依赖与登录状态")
@@ -61,138 +69,147 @@ Rectangle {
     function resetText(value) {
         if (!value) return tr("重置时间未知")
         var date = new Date(value)
-        if (isNaN(date.getTime())) return tr("重置时间未知")
-        return tr("重置于 %1").arg(Qt.formatDateTime(date, "MM-dd HH:mm"))
+        return isNaN(date.getTime()) ? tr("重置时间未知") : tr("重置于 %1").arg(Qt.formatDateTime(date, "MM-dd HH:mm"))
     }
 
     ColumnLayout {
+        id: overview
         visible: !panel.selectedAgent
-        anchors.fill: parent; anchors.margins: 18; spacing: 10
+        anchors.fill: parent; anchors.margins: 16; spacing: 14
         RowLayout {
             Layout.fillWidth: true
-            Text { text: panel.tr("Agent 用量"); color: panel.colors.fg; font.pixelSize: 20; font.bold: true; Layout.fillWidth: true }
+            Text { text: panel.tr("Agent 用量"); color: panel.colors.fg; font.pixelSize: 17; font.bold: true; Layout.fillWidth: true }
             Rectangle {
-                width: 92; height: 30; radius: 6; color: panel.colors.panel
-                Text { anchors.centerIn: parent; text: panel.tr("刷新"); color: panel.colors.accent; font.pixelSize: 12 }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: panel.refreshRequested() }
-            }
-        }
-        Text {
-            Layout.fillWidth: true; wrapMode: Text.Wrap
-            text: panel.periodName() + " · " + (panel.values.includeAccount ? panel.tr("含账号级来源") : panel.tr("仅本机来源汇总"))
-            color: panel.colors.muted; font.pixelSize: 12
-        }
-        Rectangle {
-            Layout.fillWidth: true; implicitHeight: 72; radius: 8; color: panel.colors.panel
-            RowLayout {
-                anchors.fill: parent; anchors.margins: 12; spacing: 12
-                ColumnLayout {
-                    Layout.fillWidth: true; spacing: 3
-                    Text { text: panel.values.usageUpdated ? panel.number(panel.values.totalTokens) : "—"; font.pixelSize: 23; font.bold: true; color: panel.colors.fg }
-                    Text { text: "Token"; font.pixelSize: 11; color: panel.colors.muted }
-                }
-                ColumnLayout {
-                    spacing: 3
-                    Text { text: panel.values.usageUpdated ? panel.cost(panel.values.totalCost) + (panel.values.unpriced ? " + ?" : "") : "—"; font.pixelSize: 21; color: panel.colors.accent }
-                    Text { text: panel.tr("费用估算 · USD"); font.pixelSize: 11; color: panel.colors.muted }
+                implicitWidth: 52; implicitHeight: 28; radius: 6; color: panel.colors.panel
+                Text { anchors.centerIn: parent; text: panel.tr("刷新"); color: panel.colors.accent; font.pixelSize: 11 }
+                MouseArea {
+                    objectName: "agentRefreshButton"
+                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                    onClicked: panel.refreshRequested()
                 }
             }
         }
+        RowLayout {
+            Layout.fillWidth: true; spacing: 12
+            ColumnLayout {
+                spacing: 2
+                Text {
+                    objectName: "agentOverviewTotal"
+                    text: panel.values.usageUpdated ? panel.number(panel.values.totalTokens) : "—"
+                    color: panel.colors.fg; font.pixelSize: 30; font.bold: true
+                }
+                Text { text: panel.tr("Token 总用量"); color: panel.colors.muted; font.pixelSize: 10 }
+            }
+            Item { Layout.fillWidth: true }
+            ColumnLayout {
+                Layout.alignment: Qt.AlignRight | Qt.AlignVCenter; spacing: 5
+                Text { Layout.alignment: Qt.AlignRight; text: panel.periodName(); color: panel.colors.fg; font.pixelSize: 12 }
+                Text {
+                    Layout.alignment: Qt.AlignRight
+                    text: panel.values.includeAccount ? panel.tr("含账号级来源") : panel.tr("仅本机来源汇总")
+                    color: panel.colors.muted; font.pixelSize: 10
+                }
+            }
+        }
         Text {
-            Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: 11; color: panel.colors.warning
-            visible: text.length > 0
-            text: [panel.statusText(panel.values.usageStatus), panel.statusText(panel.values.quotaStatus), panel.values.sourceErrorCount > 0 ? panel.tr("部分来源采集失败，保留上次记录") : ""].filter(function(s, i, a) { return s && a.indexOf(s) === i }).join(" · ")
+            objectName: "agentCollectionStatus"
+            Layout.fillWidth: true; wrapMode: Text.Wrap; visible: text.length > 0
+            font.pixelSize: 11; color: panel.colors.warning
+            text: [panel.statusText(panel.values.usageStatus), panel.statusText(panel.values.quotaStatus),
+                panel.values.sourceErrorCount > 0 ? panel.tr("部分来源采集失败，保留上次记录") : ""]
+                .filter(function(s, i, a) { return s && a.indexOf(s) === i }).join(" · ")
         }
-        TextField {
-            id: search; Layout.fillWidth: true; implicitHeight: 32
-            placeholderText: panel.tr("筛选 Agent…"); font.pixelSize: 12
-            color: panel.colors.fg; placeholderTextColor: panel.colors.muted; selectionColor: panel.colors.accent
-            background: Rectangle { color: panel.colors.panel; radius: 6; border.color: panel.colors.border }
-        }
-        Text {
-            objectName: "agentFilterHint"
-            Layout.fillWidth: true; wrapMode: Text.Wrap; visible: !!panel.values.popupFiltered
-            text: panel.tr("列表已按设置筛选；上方总量仍按全部来源汇总。")
-            font.pixelSize: 11; color: panel.colors.muted
-        }
-        ScrollView {
-            Layout.fillWidth: true; Layout.fillHeight: true; clip: true
-            contentWidth: availableWidth
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        Flickable {
+            id: agentsView
+            objectName: "agentListViewport"
+            Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: 0
+            implicitHeight: cards.implicitHeight
+            contentWidth: width; contentHeight: cards.implicitHeight
+            clip: true; boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar {
-                width: 6; policy: ScrollBar.AsNeeded
-                contentItem: Rectangle { implicitWidth: 6; radius: 3; color: panel.colors.muted; opacity: 0.6 }
+                width: 4; policy: ScrollBar.AsNeeded
+                contentItem: Rectangle { implicitWidth: 4; radius: 2; color: panel.colors.muted; opacity: 0.5 }
                 background: Item {}
             }
             Column {
-                width: parent.width; spacing: 8
+                id: cards
+                width: agentsView.width - 8; spacing: 8
                 Repeater {
                     model: panel.values.agents || []
                     delegate: Rectangle {
                         id: card
                         required property var modelData
                         readonly property var stats: modelData.stats
-                        readonly property var quota: modelData.quota
-                        width: parent.width
-                        visible: modelData.name.toLowerCase().indexOf(search.text.toLowerCase()) >= 0
-                        height: visible ? details.implicitHeight + 22 : 0
+                        readonly property var quota: modelData.quota || ({status:"pending",windows:[]})
+                        width: cards.width; height: details.implicitHeight + 24
                         radius: 8; color: panel.colors.panel
                         border.color: cardMouse.containsMouse ? panel.colors.accent : "transparent"
                         ColumnLayout {
-                            id: details; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
-                            anchors.margins: 11; spacing: 5
+                            id: details
+                            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                            anchors.margins: 12; spacing: 9
                             RowLayout {
-                                Layout.fillWidth: true
-                                Text { text: card.modelData.name; Layout.fillWidth: true; elide: Text.ElideRight; font.bold: true; font.pixelSize: 14; color: panel.colors.fg }
-                                Text { text: card.stats ? panel.number(card.stats.total_tokens) + " tokens" : panel.tr("本周期无记录"); font.pixelSize: 12; color: panel.colors.fg }
-                                Text { text: "›"; font.pixelSize: 18; color: panel.colors.accent }
-                            }
-                            Text {
-                                Layout.fillWidth: true; wrapMode: Text.Wrap; visible: !!card.stats; color: panel.colors.muted; font.pixelSize: 11
-                                text: card.stats ? panel.tr("输入 %1 · 输出 %2 · 缓存读取 %3 · 缓存写入 %4").arg(panel.number(card.stats.input_tokens)).arg(panel.number(card.stats.output_tokens)).arg(panel.number(card.stats.cached_input_tokens)).arg(panel.number(card.stats.cache_creation_input_tokens)) : ""
-                            }
-                            Text {
-                                Layout.fillWidth: true; wrapMode: Text.Wrap; visible: !!card.stats; color: panel.colors.muted; font.pixelSize: 11
-                                text: card.stats ? panel.tr("估算 %1").arg(panel.cost(card.stats.cost) + (card.stats.unpriced ? " + ?" : "")) + " · " + (card.modelData.scope === "account" ? panel.tr("账号级数据，可能包含其他设备") : panel.tr("本机记录")) : ""
-                            }
-                            Text {
-                                Layout.fillWidth: true; wrapMode: Text.Wrap; visible: !!card.modelData.sourceError || !!(card.stats && card.stats.estimated)
-                                text: card.modelData.sourceError ? panel.tr("此来源暂时无法读取，显示已有记录") : panel.tr("部分 Token 根据工具日志估算")
-                                color: panel.colors.warning; font.pixelSize: 11
-                            }
-                            Text { Layout.fillWidth: true; elide: Text.ElideRight; visible: !!card.quota.plan; text: card.quota.plan || ""; color: panel.colors.accent; font.pixelSize: 11 }
-                            Text {
-                                Layout.fillWidth: true; wrapMode: Text.Wrap; visible: text.length > 0; color: panel.colors.muted; font.pixelSize: 11
-                                text: panel.values.quotaStatus === "disabled" ? panel.statusText("disabled") : panel.statusText(card.quota.status)
-                            }
-                            Text {
-                                Layout.fillWidth: true; wrapMode: Text.Wrap; visible: !!card.quota.stale; color: panel.colors.warning; font.pixelSize: 11
-                                text: panel.tr("上次额度缓存 · %1").arg(card.quota.capturedAt ? Qt.formatDateTime(new Date(card.quota.capturedAt), "MM-dd HH:mm") : "—")
+                                Layout.fillWidth: true; spacing: 6
+                                ColumnLayout {
+                                    Layout.fillWidth: true; spacing: 3
+                                    Text {
+                                        Layout.fillWidth: true; text: card.modelData.name; textFormat: Text.PlainText
+                                        elide: Text.ElideRight; color: panel.colors.fg; font.bold: true; font.pixelSize: 14
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true; visible: text.length > 0; elide: Text.ElideRight
+                                        text: [card.quota.plan || "", card.modelData.scope === "account" ? panel.tr("账号级数据") : ""].filter(function(s) { return s }).join(" · ")
+                                        textFormat: Text.PlainText; color: panel.colors.muted; font.pixelSize: 10
+                                    }
+                                }
+                                Text {
+                                    text: card.stats ? panel.number(card.stats.total_tokens) : "—"
+                                    color: panel.colors.fg; font.pixelSize: 18; font.bold: true
+                                }
+                                Text { text: "›"; color: panel.colors.muted; font.pixelSize: 19 }
                             }
                             Repeater {
                                 model: panel.values.quotaStatus === "disabled" ? [] : (card.quota.windows || [])
                                 delegate: ColumnLayout {
                                     required property var modelData
-                                    Layout.fillWidth: true; spacing: 3
+                                    Layout.fillWidth: true; spacing: 5
                                     RowLayout {
                                         Layout.fillWidth: true
                                         Text { text: panel.windowName(modelData); color: panel.colors.fg; font.pixelSize: 11; Layout.fillWidth: true }
-                                        Text { text: panel.tr("已用 %1%").arg(Number(modelData.used).toFixed(1)); color: modelData.used >= 90 ? panel.colors.danger : panel.colors.fg; font.pixelSize: 11 }
+                                        Text { text: Number(modelData.used).toFixed(1) + "%"; color: modelData.used >= 90 ? panel.colors.danger : panel.colors.accent; font.pixelSize: 12; font.bold: true }
                                     }
                                     Rectangle {
                                         Layout.fillWidth: true; height: 4; radius: 2; color: panel.colors.border
-                                        Rectangle { height: parent.height; radius: 2; width: parent.width * Math.min(100, modelData.used) / 100; color: modelData.used >= 90 ? panel.colors.danger : panel.colors.accent }
+                                        Rectangle {
+                                            height: parent.height; radius: 2; width: parent.width * Math.max(0, Math.min(100, modelData.used)) / 100
+                                            color: modelData.used >= 90 ? panel.colors.danger : panel.colors.accent
+                                        }
                                     }
                                     Text { text: panel.resetText(modelData.resetAt); color: panel.colors.muted; font.pixelSize: 10 }
                                 }
+                            }
+                            Text {
+                                Layout.fillWidth: true; wrapMode: Text.Wrap
+                                visible: panel.values.quotaStatus !== "disabled" && text.length > 0
+                                text: panel.statusText(card.quota.status)
+                                color: panel.colors.muted; font.pixelSize: 11
+                            }
+                            Text {
+                                Layout.fillWidth: true; wrapMode: Text.Wrap; visible: !!card.quota.stale
+                                text: panel.tr("上次额度缓存 · %1").arg(panel.shortTime(card.quota.capturedAt))
+                                color: panel.colors.warning; font.pixelSize: 10
+                            }
+                            Text {
+                                Layout.fillWidth: true; wrapMode: Text.Wrap
+                                visible: !!card.modelData.sourceError || !!(card.stats && card.stats.estimated)
+                                text: card.modelData.sourceError ? panel.tr("此来源暂时无法读取，显示已有记录") : panel.tr("部分 Token 根据工具日志估算")
+                                color: panel.colors.warning; font.pixelSize: 10
                             }
                         }
                         MouseArea {
                             id: cardMouse; objectName: "agentCard_" + card.modelData.id
                             anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                             onClicked: panel.openAgent(card.modelData)
-                            ToolTip.visible: containsMouse
-                            ToolTip.text: panel.tr("点击查看指定时间段的用量明细")
                         }
                     }
                 }
@@ -205,17 +222,16 @@ Rectangle {
                         : panel.values.popupFiltered
                         ? panel.tr("所选工具暂无可显示的统计。请在插件设置中调整选择，或启用「列出无记录的工具」。")
                         : panel.tr("尚无可显示的用量。采集完成后会自动列出有记录或已登录的工具。")
-                    font.pixelSize: 12; color: panel.colors.muted
+                    color: panel.colors.muted; font.pixelSize: 12
                 }
             }
         }
         Text {
-            Layout.fillWidth: true; wrapMode: Text.Wrap; color: panel.colors.muted; font.pixelSize: 10
-            text: panel.tr("Token 更新：%1 · 额度更新：%2").arg(panel.values.usageUpdated || "—").arg(panel.values.quotaUpdated || "—")
-        }
-        Text {
-            Layout.fillWidth: true; wrapMode: Text.Wrap; color: panel.colors.muted; font.pixelSize: 10
-            text: panel.tr("费用是按模型价格计算的估算值，不代表订阅账单；? 表示部分模型缺少价格。")
+            objectName: "agentUpdateTimes"
+            Layout.fillWidth: true; wrapMode: Text.Wrap
+            visible: !!panel.values.usageUpdated || !!panel.values.quotaUpdated
+            text: panel.tr("Token 更新：%1 · 额度更新：%2").arg(panel.shortTime(panel.values.usageUpdated)).arg(panel.shortTime(panel.values.quotaUpdated))
+            color: panel.colors.muted; font.pixelSize: 10
         }
     }
     Loader {

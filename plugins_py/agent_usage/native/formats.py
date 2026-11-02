@@ -223,7 +223,7 @@ def cline(path, source="cline"):
                        read, write, raw.get("reasoningTokenCount"), reasoning_in_output=True)
         provider = re.sub(r"[^a-z0-9._-]", "", str(obj(message.get("modelInfo")).get("provider") or "").strip().lower())
         model = obj(message.get("modelInfo")).get("id") or meta.get("model") or ("provider:" + provider if provider else "unknown")
-        yield event(source, model, message.get("ts"), usage, (path.parent.name, path.name, message.get("id") or (message.get("ts"), index)), total_cost_usd=number(raw.get("cost")))
+        yield event(source, model, message.get("ts"), usage, (path.parent.name, path.name, message.get("id") or (message.get("ts"), index)))
 
 
 def roo(path, source="roocode"):
@@ -285,13 +285,9 @@ def grok(path, source="grok"):
             output = integer(first(usage, "outputTokens", "output_tokens"))
             normalized = totals(max(0, prompt - read - write) if "inputTokens" in usage else prompt, max(0, output - reasoning), read, write, reasoning)
             normalized["total_tokens"] = integer(first(usage, "totalTokens", "total_tokens")) or normalized["total_tokens"]
-            ticks = first(usage, "costUsdTicks", "totalCostUsdTicks", "cost_usd_ticks", "total_cost_usd_ticks")
-            cost = number(ticks) / 10_000_000_000 if ticks is not None else number(first(usage, "costUsd", "totalCostUsd", "cost_usd", "total_cost_usd"))
-            if first(usage, "costIsPartial", "cost_is_partial") or first(usage, "usageIsIncomplete", "usage_is_incomplete"):
-                cost = 0
             lower = str(selected).lower()
             selected = "grok-build-free" if "build-free" in lower or lower.endswith("-free") or "free-tier" in lower else "grok-4.5-build" if lower in {"grok-4.5-build", "grok-4-5-build"} else selected
-            item = event(source, selected, when, normalized, event_key, total_cost_usd=cost, usage_precision="reported")
+            item = event(source, selected, when, normalized, event_key, usage_precision="reported")
             if item:
                 seen.add(event_key)
                 turns.append(item)
