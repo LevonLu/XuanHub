@@ -1,11 +1,14 @@
 {
     "id": "py_countdown",
     "name": "PyCountdown",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "author": "XuanHub",
     "apiVersion": 2,
     "configVersion": 2,
-    "capabilities": ["barItem", "settings"],
+    "capabilities": [
+        "barItem",
+        "settings"
+    ],
     "permissions": [],
     "qml": "Countdown.qml",
     "settingsQml": "CountdownSettings.qml",
@@ -19,8 +22,14 @@
                     "label": "目标模式",
                     "default": "daily",
                     "options": [
-                        { "value": "daily", "label": "每日重复" },
-                        { "value": "date", "label": "指定日期" }
+                        {
+                            "value": "daily",
+                            "label": "每日重复"
+                        },
+                        {
+                            "value": "date",
+                            "label": "指定日期"
+                        }
                     ],
                     "description": "每日重复=每天到点归零；指定日期=倒数到某个一次性时刻"
                 },
@@ -70,6 +79,42 @@
                     "label": "到点颜色",
                     "default": "",
                     "description": "空 = 跟随主题成功色；非空须为 #hex 或 SVG 颜色名"
+                }
+            ]
+        },
+        {
+            "group": "悬浮提示",
+            "fields": [
+                {
+                    "key": "tooltipText",
+                    "type": "string",
+                    "multiline": true,
+                    "label": "提示文本",
+                    "default": "",
+                    "description": "留空关闭；{payday} 为下次发薪日期，{paydayDays} 为剩余天数"
+                },
+                {
+                    "key": "paydayDay",
+                    "type": "int",
+                    "label": "每月发薪日",
+                    "default": 10,
+                    "min": 1,
+                    "max": 31,
+                    "description": "遇休息日提前到最近工作日；短月取月末"
+                },
+                {
+                    "key": "paydayHolidays",
+                    "type": "string",
+                    "label": "额外休息日",
+                    "default": "",
+                    "description": "YYYY-MM-DD，多个日期用逗号分隔；覆盖国家日历"
+                },
+                {
+                    "key": "paydayWorkdays",
+                    "type": "string",
+                    "label": "额外工作日",
+                    "default": "",
+                    "description": "YYYY-MM-DD，多个日期用逗号分隔；覆盖国家日历"
                 }
             ]
         },
