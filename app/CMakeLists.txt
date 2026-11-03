@@ -128,7 +128,7 @@ qt_add_qml_module(XuanHub
         qml/PluginSlot.qml
         qml/PluginPopup.qml
         qml/SettingsWindow.qml
-        # UI 设计令牌与自绘控件库（Basic 样式 + palette 驱动，设置窗口用）
+        # FluentWinUI3 控件封装与设置卡片（保留插件共用接口）
         qml/UiMetrics.qml
         qml/UiButton.qml
         qml/UiSwitch.qml
@@ -136,6 +136,7 @@ qt_add_qml_module(XuanHub
         qml/UiSpinBox.qml
         qml/UiTextField.qml
         qml/UiCard.qml
+        qml/UiSettingRow.qml
     RESOURCES
         resources/default_config.json
         i18n/zh-CN.json

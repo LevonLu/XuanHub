@@ -16,6 +16,7 @@
 #include <QQuickItem>
 #include <QQuickView>
 #include <QQmlContext>
+#include <QScreen>
 #include <QTest>
 #include <QTimer>
 
@@ -44,7 +45,7 @@ void SettingsController::open() {
     m_vm->reloadFromConfig();
     m_vm->reloadThemePacks();
     if (!m_window) {
-        // Basic 样式已在 main() 创建任何 QML 引擎前设置；此处重复调用不仅无效，
+        // FluentWinUI3 已在 main() 创建任何 QML 引擎前设置；此处重复调用不仅无效，
         // 还会在每次首次打开设置窗口时产生“必须在加载 QML 前调用”的误导性警告。
 
         auto* w = new QQuickView();
@@ -60,10 +61,19 @@ void SettingsController::open() {
         // 代价：失去系统阴影，改由 QML DropShadow 补偿。
         w->setColor(QColor(Qt::transparent));
         w->setResizeMode(QQuickView::SizeRootObjectToView);
-        // Fluent 2 设置页的插件主从布局需要留出搜索列表、详情分组与指标编辑行。
-        // 1080px 逻辑宽度在 100%/150% DPI 都能避免 SysInfo 的操作按钮被截断；
-        // 表单在更窄空间会自动退为单列，不依赖固定像素排版。
+        // 优先保留插件主从布局的空间，小屏或高 DPI 下按工作区收缩并居中。
+        // 不依赖无边框窗口的系统默认落点，避免标题栏和底部保存按钮落到屏幕外。
         w->resize(1080, 720);
+        QScreen* screen = QGuiApplication::screenAt(QCursor::pos());
+        if (!screen) screen = QGuiApplication::primaryScreen();
+        if (screen) {
+            w->setScreen(screen);
+            const QRect available = screen->availableGeometry();
+            w->resize(qMin(1080, qMax(1, available.width() - 32)),
+                      qMin(720, qMax(1, available.height() - 32)));
+            w->setPosition(available.x() + (available.width() - w->width()) / 2,
+                           available.y() + (available.height() - w->height()) / 2);
+        }
         w->rootContext()->setContextProperty(QStringLiteral("settingsVM"), m_vm);
         w->rootContext()->setContextProperty(QStringLiteral("themeManager"), m_theme);
         w->rootContext()->setContextProperty(QStringLiteral("settingsCtl"), this);
@@ -108,7 +118,11 @@ void SettingsController::open() {
             });
         });
     }
-    m_window->show();
+    // 最小化后从托盘重开时恢复窗口，否则 show() 只会保持最小化状态。
+    if (m_window->windowState() == Qt::WindowMinimized)
+        m_window->showNormal();
+    else
+        m_window->show();
     m_window->raise();
     m_window->requestActivate();
 }

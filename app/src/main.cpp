@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFont>
 #include <QIcon>
 #include <QTextStream>
 #include <QDateTime>
@@ -11,6 +12,7 @@
 #include <QAbstractEventDispatcher>
 #include <QPointer>
 #include <QQuickStyle>
+#include <QStyleHints>
 #include <QTimer>
 #include <QMutex>
 #include <QMutexLocker>
@@ -108,10 +110,13 @@ int main(int argc, char* argv[]) {
     // 玄枢的生命周期由托盘 "退出" 显式控制，关闭这条隐式退出路径。
     app.setQuitOnLastWindowClosed(false);
 
-    // 统一 QtQuick.Controls 样式为 Basic（纯 QML 实现，最稳，与 SettingsWindow 一致）。
-    // 进程级全局设置：Bar 引擎内的插件 Window 也会走 Basic，避免走系统默认样式。
-    // 必须在任何 Controls 控件实例化之前调用——此处紧随 QApplication 构造，最早。
-    QQuickStyle::setStyle(QStringLiteral("Basic"));
+    // 进程级样式必须先于所有 QML 引擎；未实现的控件由 Qt 的 Fusion 样式回退。
+    QQuickStyle::setStyle(QStringLiteral("FluentWinUI3"));
+    // 显式提供中文回退，避免 Segoe UI 缺少汉字时退到衬线字体。
+    QFont uiFont;
+    uiFont.setFamilies({QStringLiteral("Segoe UI"), QStringLiteral("Microsoft YaHei UI")});
+    uiFont.setPointSize(10);
+    app.setFont(uiFont);
 
     const QString exeDir = QCoreApplication::applicationDirPath();
 
@@ -162,6 +167,16 @@ int main(int argc, char* argv[]) {
     registry.reload(QDir(exeDir).absoluteFilePath(QStringLiteral("themes")));
 
     ThemeManager theme(&bus, &registry, config.themeId(), config.theme());
+
+    // Fluent 的图形资源按 colorScheme 选择，只有 palette 会导致深浅背景混用。
+    // 跟随已应用主题而非设置草稿，保持“应用/保存后生效”的现有契约。
+    const auto syncColorScheme = [&theme] {
+        QGuiApplication::styleHints()->setColorScheme(
+            theme.mode() == QStringLiteral("light") ? Qt::ColorScheme::Light
+                                                     : Qt::ColorScheme::Dark);
+    };
+    syncColorScheme();
+    QObject::connect(&theme, &ThemeManager::themeChanged, &app, syncColorScheme);
 
     // 托盘（先于插件加载创建：插件加载期间可能经 EventBus "app.notify"
     // 请求气泡提示——如 pybridge 未检测到 Python 环境，订阅必须先于发布）

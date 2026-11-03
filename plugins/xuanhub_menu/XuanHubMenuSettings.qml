@@ -72,38 +72,25 @@ Item {
         id: content
         anchors.left: parent.left
         anchors.right: parent.right
-        spacing: UiMetrics.space4
+        spacing: UiMetrics.space2
 
         UiCard {
             Layout.fillWidth: true
-            title: root.trText("插件快捷操作")
-            description: root.trText("控制其他插件是否可以在玄枢菜单中加入快捷按钮")
+            compact: true
 
             RowLayout {
                 Layout.fillWidth: true
                 spacing: UiMetrics.space3
-
-                ColumnLayout {
+                Label {
                     Layout.fillWidth: true
-                    spacing: UiMetrics.space1
-                    Text {
-                        text: root.trText("显示其他插件的快捷操作")
-                        color: palette.windowText
-                        font.pixelSize: UiMetrics.fontM
-                        font.weight: Font.DemiBold
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        text: root.trText("关闭后，玄枢菜单只保留自身的设置与系统操作")
-                        color: palette.placeholderText
-                        font.pixelSize: UiMetrics.fontTiny
-                        wrapMode: Text.Wrap
-                    }
+                    text: root.trText("显示其他插件的快捷操作")
+                    font.pixelSize: UiMetrics.fontM
+                    wrapMode: Text.Wrap
                 }
-
                 UiSwitch {
+                    objectName: "menuPluginActionsToggle"
+                    Accessible.name: root.trText("显示其他插件的快捷操作")
                     checked: root.pluginActionsEnabled
-                    Layout.preferredWidth: 42
                     onToggled: {
                         root.pluginActionsEnabled = checked
                         if (root.plugin)
@@ -111,71 +98,49 @@ Item {
                     }
                 }
             }
-        }
 
-        UiCard {
-            Layout.fillWidth: true
-            title: root.trText("单独控制")
-            description: root.trText("已发现的插件动作会列在这里；新动作默认启用")
-
-            Repeater {
-                model: root.availableActions
-
-                delegate: Rectangle {
-                    required property var modelData
+            // 总开关关闭时收起明细，但保留每个动作的草稿选择。
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: root.pluginActionsEnabled
+                spacing: UiMetrics.space1
+                Rectangle {
                     Layout.fillWidth: true
-                    implicitHeight: 54
-                    radius: UiMetrics.radiusS
-                    color: Qt.rgba(palette.base.r, palette.base.g, palette.base.b, 0.72)
-                    border.width: 1
-                    border.color: Qt.rgba(palette.mid.r, palette.mid.g, palette.mid.b, 0.36)
-                    opacity: root.pluginActionsEnabled ? 1.0 : 0.55
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: UiMetrics.space3
-                        anchors.rightMargin: UiMetrics.space3
+                    implicitHeight: 1
+                    color: palette.mid
+                    opacity: 0.15
+                }
+                Repeater {
+                    model: root.availableActions
+                    delegate: RowLayout {
+                        required property var modelData
+                        Layout.fillWidth: true
                         spacing: UiMetrics.space3
-
-                        ColumnLayout {
+                        Label {
                             Layout.fillWidth: true
-                            spacing: 2
-                            Text {
-                                Layout.fillWidth: true
-                                text: modelData.label
-                                color: palette.windowText
-                                font.pixelSize: UiMetrics.fontM
-                                elide: Text.ElideRight
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: modelData.pluginId + " · " + modelData.actionId
-                                color: palette.placeholderText
-                                font.pixelSize: UiMetrics.fontTiny
-                                elide: Text.ElideRight
-                            }
+                            text: modelData.label
+                            font.pixelSize: UiMetrics.fontM
+                            elide: Text.ElideRight
+                            HoverHandler { id: actionHover }
+                            ToolTip.visible: actionHover.hovered
+                            ToolTip.text: modelData.pluginId + " · " + modelData.actionId
                         }
-
                         UiSwitch {
-                            enabled: root.pluginActionsEnabled
-                            checked: root.actionEnabled(modelData.pluginId,
-                                                        modelData.actionId)
-                            Layout.preferredWidth: 42
-                            onToggled: root.setActionEnabled(modelData.pluginId,
-                                                             modelData.actionId,
-                                                             checked)
+                            objectName: "menuAction_" + modelData.pluginId + "_" + modelData.actionId
+                            Accessible.name: modelData.label
+                            checked: root.actionEnabled(modelData.pluginId, modelData.actionId)
+                            onToggled: root.setActionEnabled(modelData.pluginId, modelData.actionId, checked)
                         }
                     }
                 }
-            }
-
-            Text {
-                visible: root.availableActions.length === 0
-                Layout.fillWidth: true
-                text: root.trText("当前没有其他插件提供快捷操作")
-                color: palette.placeholderText
-                font.pixelSize: UiMetrics.fontS
-                wrapMode: Text.Wrap
+                Label {
+                    visible: root.availableActions.length === 0
+                    Layout.fillWidth: true
+                    text: root.trText("当前没有其他插件提供快捷操作")
+                    color: palette.placeholderText
+                    font.pixelSize: UiMetrics.fontS
+                    wrapMode: Text.Wrap
+                }
             }
         }
     }

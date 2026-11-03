@@ -749,13 +749,11 @@ if (-not $NoPrune) {
         $pruned++
     }
 
-    # Unused QML Control styles (app only uses Basic)
+    # 删除未使用样式；FluentWinUI3 及其 Fusion 回退必须随包保留。
     $unusedStyles = @(
-        "Qt6QuickControls2Fusion.dll", "Qt6QuickControls2Fusion.qml",
         "Qt6QuickControls2Imagine.dll", "Qt6QuickControls2Imagine.qml",
         "Qt6QuickControls2Material.dll", "Qt6QuickControls2Material.qml",
         "Qt6QuickControls2Universal.dll", "Qt6QuickControls2Universal.qml",
-        "Qt6QuickControls2FluentWinUI3StyleImpl.dll",
         "Qt6QuickControls2WindowsStyleImpl.dll"
     )
     foreach ($style in $unusedStyles) {
@@ -767,12 +765,11 @@ if (-not $NoPrune) {
         }
     }
 
-    # Prune unused style subdirectories under qml/QtQuick/Controls/
+    # 裁剪未使用的样式目录，保留主样式、回退和共享实现。
     $qmlControlsDir = Join-Path $DistDir "qml\QtQuick\Controls"
     if (Test-Path $qmlControlsDir) {
-        # impl 不是样式，是 Basic 自身依赖的共享实现模块（ScrollView/ToolTip 等
-        # 都 import QtQuick.Controls.impl），删了 Basic 控件会集体加载失败
-        $keepStyles = @("Basic", "impl")
+        # Fluent 的未覆盖控件回退到 Fusion；Basic 与 impl 仍是共享依赖。
+        $keepStyles = @("FluentWinUI3", "Fusion", "Basic", "impl")
         Get-ChildItem $qmlControlsDir -Directory -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -notin $keepStyles } |
             ForEach-Object {

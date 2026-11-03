@@ -1,4 +1,4 @@
-// SettingsWindow.qml — Fluent 2 风格设置窗口：导航、分组表单与插件详情
+// SettingsWindow.qml — FluentWinUI3 设置窗口：侧边导航、设置卡片与插件详情
 // 后端：context property settingsVM（草稿属性 + pluginModel + apply/reloadFromConfig +
 //       themePackNames/themePackIds 主题包列表）、themeManager（colors 色板驱动 palette）。
 // 保存成功或取消后由 SettingsController 延迟释放视图，后台回执继续由 ViewModel 接收。
@@ -47,6 +47,7 @@ Pane {
         palette.text: root.c.fg
         palette.button: root.c.panel
         palette.buttonText: root.c.fg
+        palette.accent: root.c.accent
         palette.highlight: root.c.accent
         palette.highlightedText: root.c.onAccent
         palette.mid: root.c.muted
@@ -125,6 +126,7 @@ Pane {
         palette.text: root.c.fg
         palette.button: root.c.panel
         palette.buttonText: root.c.fg
+        palette.accent: root.c.accent
         palette.highlight: root.c.accent
         palette.highlightedText: root.c.onAccent
         palette.mid: root.c.muted
@@ -264,6 +266,7 @@ Pane {
         palette.text: root.c.fg
         palette.button: root.c.panel
         palette.buttonText: root.c.fg
+        palette.accent: root.c.accent
         palette.highlight: root.c.accent
         palette.highlightedText: root.c.onAccent
         palette.mid: root.c.muted
@@ -369,6 +372,7 @@ Pane {
         palette.text: root.c.fg
         palette.button: root.c.panel
         palette.buttonText: root.c.fg
+        palette.accent: root.c.accent
         palette.highlight: root.c.accent
         palette.highlightedText: root.c.onAccent
         palette.mid: root.c.muted
@@ -467,6 +471,7 @@ Pane {
         palette.text: root.c.fg
         palette.button: root.c.panel
         palette.buttonText: root.c.fg
+        palette.accent: root.c.accent
         palette.highlight: root.c.accent
         palette.highlightedText: root.c.onAccent
         palette.mid: root.c.muted
@@ -591,9 +596,8 @@ Pane {
         }
     }
 
-    // 色板别名：统一从 themeManager.colors 取（M9 数据驱动主题）。Basic 样式经
-    // palette 继承传给所有子控件，故把 colors 灌进 palette.* 让 QtQuick.Controls
-    // 的表单控件也跟随主题。自绘控件（Ui*.qml）内部只引用 palette。
+    // 色板来自 ThemeManager；Fluent 的资源明暗由 main 同步 colorScheme，
+    // palette 继续传递主题文字和强调色，插件自绘页也使用同一份色板。
     readonly property var c: themeManager ? themeManager.colors : ({
         "bg": "#1e1e2e", "panel": "#313244", "fg": "#cdd6f4", "muted": "#7f849c",
         "accent": "#89b4fa", "danger": "#f38ba8", "success": "#a6e3a1", "warning": "#f9e2af",
@@ -619,7 +623,7 @@ Pane {
         qsTranslate("xuanhub.settings", "插件"),
         qsTranslate("xuanhub.settings", "通用")
     ]
-    readonly property var pageIcons: ["◐", "⌘", "⚙"]
+    readonly property var pageIcons: ["\uE790", "\uEA86", "\uE713"]
     function positionLabel(position) {
         if (position === "left") return trText("左侧区域")
         if (position === "center") return trText("中间区域")
@@ -711,6 +715,7 @@ Pane {
     palette.text: root.c.fg
     palette.button: root.c.panel
     palette.buttonText: root.c.fg
+    palette.accent: root.c.accent
     palette.highlight: root.c.accent
     palette.highlightedText: root.c.onAccent
     palette.placeholderText: root.c.muted
@@ -722,108 +727,61 @@ Pane {
         anchors.fill: parent
         spacing: 0
 
-        // ── 自绘标题栏（无边框窗口）：产品识别 + 当前页 + 保存提示 ──
-        Rectangle {
+        // 标题区只保留应用识别与窗口操作，页面标题放在内容区。
+        Item {
             Layout.fillWidth: true
-            Layout.preferredHeight: 56
-            color: "transparent"
+            Layout.preferredHeight: 48
 
-            RowLayout {
+            MouseArea {
                 anchors.fill: parent
-                anchors.leftMargin: UiMetrics.space5
-                anchors.rightMargin: UiMetrics.space3
-                spacing: UiMetrics.space3
-
+                anchors.rightMargin: 96
+                onPressed: Window.window.startSystemMove()
+            }
+            RowLayout {
+                anchors.left: parent.left
+                anchors.leftMargin: UiMetrics.space4
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: UiMetrics.space2
                 Image {
-                    Layout.preferredWidth: 32
-                    Layout.preferredHeight: 32
+                    Layout.preferredWidth: 20
+                    Layout.preferredHeight: 20
                     source: "qrc:/qt/qml/XuanHub/resources/xuanhub-icon-256.png"
-                    sourceSize: Qt.size(64, 64)
+                    sourceSize: Qt.size(40, 40)
                     fillMode: Image.PreserveAspectFit
-                    smooth: true
                     mipmap: true
                 }
                 Text {
                     text: root.trText("玄枢设置 XuanHub Settings")
                     color: root.c.fg
-                    font.pixelSize: UiMetrics.fontL
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    visible: Qt.application.version.length > 0
-                    text: "v" + Qt.application.version
-                    color: root.c.muted
                     font.pixelSize: UiMetrics.fontS
                 }
-                Rectangle {
-                    radius: 10
-                    color: root.translucent(root.accentColor, 0.12)
-                    implicitWidth: pageName.implicitWidth + 16
-                    implicitHeight: 24
-                    Text {
-                        id: pageName
-                        anchors.centerIn: parent
-                        text: root.pageNames[pageStack.currentIndex]
-                        color: root.c.accent
-                        font.pixelSize: UiMetrics.fontS
-                        font.weight: Font.DemiBold
-                    }
-                }
-                Item { Layout.fillWidth: true }
-                Text {
-                    text: root.invalidFields > 0 ? root.trText("请修正输入错误")
-                                                 : root.trText("更改将在保存后生效")
-                    color: root.invalidFields > 0 ? root.c.danger : root.c.muted
-                    font.pixelSize: UiMetrics.fontS
-                }
-
-                Item {
-                    id: closeBtn
-                    Layout.preferredWidth: 40
-                    Layout.preferredHeight: 40
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: UiMetrics.radiusS
-                        color: closeMa.containsMouse
-                               ? root.translucent(root.dangerColor, 0.14)
-                               : "transparent"
-                        Behavior on color { ColorAnimation { duration: UiMetrics.animFast } }
-                    }
-                    Text {
-                        anchors.centerIn: parent
-                        text: "×"
-                        color: closeMa.containsMouse ? root.c.danger : root.c.fg
-                        font.pixelSize: 20
-                    }
-                    MouseArea {
-                        id: closeMa
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: Window.window.close()   // 隐藏窗口（不销毁）
-                    }
-                }
             }
-
-            // 拖动移动窗口：标题栏空白处按下触发系统级窗口移动
-            //（右侧留出关闭按钮区域，防误触）
-            MouseArea {
-                anchors.fill: parent
-                anchors.rightMargin: 64
-                acceptedButtons: Qt.LeftButton
-                onPressed: (mouse) => {
-                    if (mouse.button === Qt.LeftButton)
-                        Window.window.startSystemMove()   // QWindow::startSystemMove（Win32 SC_MOVE）
-                }
-            }
-
-            Rectangle {
-                anchors.left: parent.left
+            Row {
                 anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                height: 1
-                readonly property color bord: root.c.border
-                color: Qt.rgba(bord.r, bord.g, bord.b, 0.5)
+                anchors.top: parent.top
+                ToolButton {
+                    width: 46; height: 40
+                    text: "\uE921"
+                    font.family: "Segoe MDL2 Assets"
+                    font.pixelSize: 10
+                    Accessible.name: root.trText("最小化")
+                    onClicked: Window.window.showMinimized()
+                }
+                ToolButton {
+                    id: closeButton
+                    width: 46; height: 40
+                    text: "\uE8BB"
+                    font.family: "Segoe MDL2 Assets"
+                    font.pixelSize: 10
+                    Accessible.name: root.trText("关闭")
+                    palette.buttonText: hovered ? "white" : root.c.fg
+                    background: Rectangle {
+                        color: closeButton.down ? "#c42b1c"
+                             : closeButton.hovered ? "#c42b1c" : "transparent"
+                        topRightRadius: root.cornerRadius
+                    }
+                    onClicked: Window.window.close()
+                }
             }
         }
 
@@ -833,96 +791,60 @@ Pane {
             Layout.fillHeight: true
             spacing: 0
 
-            // 左侧导航：大触控区、图标与文字；选中状态由每项自身绘制，避免硬编码 y。
-            Rectangle {
-                Layout.preferredWidth: 188
+            // 平级导航使用可聚焦的 ItemDelegate，键盘与鼠标共享选择路径。
+            Item {
+                Layout.preferredWidth: 196
                 Layout.fillHeight: true
-                // 使用不透明的主题面板色，既保证浅色主题的层次，也避免透明窗口
-                // 与桌面合成时污染导航颜色。
-                color: root.panelColor
-
                 ColumnLayout {
-                    id: navCol
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.margins: UiMetrics.space3
+                    anchors.fill: parent
+                    anchors.margins: UiMetrics.space2
                     spacing: UiMetrics.space1
-
                     Text {
                         text: root.trText("设置")
-                        color: root.c.muted
-                        font.pixelSize: UiMetrics.fontTiny
+                        color: root.c.fg
+                        font.pixelSize: 20
                         font.weight: Font.DemiBold
-                        Layout.leftMargin: UiMetrics.space2
-                        Layout.topMargin: UiMetrics.space1
-                        Layout.bottomMargin: UiMetrics.space1
+                        Layout.leftMargin: UiMetrics.space3
+                        Layout.topMargin: UiMetrics.space3
+                        Layout.bottomMargin: UiMetrics.space4
                     }
-
                     Repeater {
                         model: root.pageNames
-                        delegate: Rectangle {
+                        delegate: ItemDelegate {
                             id: navItem
+                            objectName: "settingsNav" + index
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 48
-                            radius: UiMetrics.radiusS
-                            property bool selected: pageStack.currentIndex === index
-                            readonly property color acc: root.c.accent
-                            readonly property color fg: root.c.fg
-                            color: selected ? Qt.rgba(acc.r, acc.g, acc.b, 0.14)
-                                 : navMa.containsMouse ? Qt.rgba(fg.r, fg.g, fg.b, 0.06)
-                                 : "transparent"
-                            Behavior on color { ColorAnimation { duration: UiMetrics.animFast } }
-
-                            Rectangle {
-                                visible: navItem.selected
-                                anchors.left: parent.left
-                                anchors.leftMargin: 0
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 3
-                                height: 24
-                                radius: 1.5
-                                color: navItem.acc
-                            }
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: UiMetrics.space3
-                                anchors.rightMargin: UiMetrics.space3
-                                spacing: UiMetrics.space2
+                            implicitHeight: 40
+                            highlighted: pageStack.currentIndex === index
+                            Accessible.name: modelData
+                            contentItem: RowLayout {
+                                spacing: UiMetrics.space3
                                 Text {
                                     text: root.pageIcons[index]
-                                    color: navItem.selected ? navItem.acc : root.c.muted
-                                    font.pixelSize: 20
+                                    color: root.c.fg
+                                    font.family: "Segoe MDL2 Assets"
+                                    font.pixelSize: 18
                                     Layout.preferredWidth: 24
                                     horizontalAlignment: Text.AlignHCenter
                                 }
                                 Text {
                                     text: modelData
-                                    color: navItem.fg
+                                    color: root.c.fg
                                     font.pixelSize: UiMetrics.fontM
-                                    font.weight: navItem.selected ? Font.DemiBold : Font.Normal
                                     Layout.fillWidth: true
                                 }
                             }
-                            MouseArea {
-                                id: navMa
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: pageStack.currentIndex = index
-                            }
+                            onClicked: pageStack.currentIndex = index
                         }
                     }
-                }
-
-                // 右侧分隔线
-                Rectangle {
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    width: 1
-                    readonly property color bord: root.c.border
-                    color: Qt.rgba(bord.r, bord.g, bord.b, 0.5)
+                    Item { Layout.fillHeight: true }
+                    Text {
+                        text: "XuanHub" + (Qt.application.version ? "  " + Qt.application.version : "")
+                        color: root.c.muted
+                        font.pixelSize: UiMetrics.fontTiny
+                        Layout.leftMargin: UiMetrics.space3
+                        Layout.bottomMargin: UiMetrics.space4
+                    }
                 }
             }
 
@@ -966,9 +888,9 @@ Pane {
                             clip: true
 
                             ColumnLayout {
-                                x: UiMetrics.space5
+                                x: UiMetrics.space6
                                 y: UiMetrics.space5
-                                width: appearanceScroll.availableWidth - UiMetrics.space5 * 2
+                                width: appearanceScroll.availableWidth - UiMetrics.space6 * 2
                                 spacing: UiMetrics.space4
 
                                 ColumnLayout {
@@ -987,153 +909,122 @@ Pane {
                                     }
                                 }
 
-                                UiCard {
-                                    Layout.fillWidth: true
-                                    title: root.trText("主题")
-                                    description: root.trText("选择主题包和明暗模式；保存后立即热重载")
-
-                                    GridLayout {
-                                        Layout.fillWidth: true
-                                        columns: appearanceScroll.availableWidth > 680 ? 2 : 1
-                                        columnSpacing: UiMetrics.space4
-                                        rowSpacing: UiMetrics.space3
-
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            spacing: UiMetrics.space1
-                                            Text {
-                                                text: root.trText("主题包")
-                                                color: root.c.fg
-                                                font.pixelSize: UiMetrics.fontS
-                                                font.weight: Font.DemiBold
-                                            }
-                                            Text {
-                                                text: root.trText("决定色板与整体视觉风格")
-                                                color: root.c.muted
-                                                font.pixelSize: UiMetrics.fontTiny
-                                            }
-                                            UiComboBox {
-                                                model: settingsVM.themePackNames
-                                                currentIndex: {
-                                                    const ids = settingsVM.themePackIds
-                                                    const i = ids.indexOf(settingsVM.themeId)
-                                                    return i >= 0 ? i : 0
-                                                }
-                                                onActivated: {
-                                                    const ids = settingsVM.themePackIds
-                                                    if (index >= 0 && index < ids.length)
-                                                        settingsVM.themeId = ids[index]
-                                                }
-                                            }
-                                        }
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            spacing: UiMetrics.space1
-                                            Text {
-                                                text: root.trText("模式")
-                                                color: root.c.fg
-                                                font.pixelSize: UiMetrics.fontS
-                                                font.weight: Font.DemiBold
-                                            }
-                                            Text {
-                                                text: root.trText("浅色和深色模式均可跟随主题包")
-                                                color: root.c.muted
-                                                font.pixelSize: UiMetrics.fontTiny
-                                            }
-                                            UiComboBox {
-                                                model: [
-                                                    { value: "dark", label: root.trText("深色") },
-                                                    { value: "light", label: root.trText("浅色") }
-                                                ]
-                                                textRole: "label"
-                                                valueRole: "value"
-                                                currentIndex: settingsVM.theme === "light" ? 1 : 0
-                                                onActivated: settingsVM.theme = currentValue
-                                            }
-                                        }
-                                    }
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        visible: {
-                                            const ids = settingsVM.themePackIds
-                                            const flags = settingsVM.themePackExtensionFlags
-                                            const index = ids.indexOf(settingsVM.themeId)
-                                            return index >= 0 && index < flags.length && flags[index]
-                                        }
-                                        text: root.trText("此主题包含可执行的 Bar 外壳扩展，请仅使用可信来源")
-                                        color: root.c.warning
-                                        font.pixelSize: UiMetrics.fontTiny
-                                        wrapMode: Text.WordWrap
-                                    }
+                                Label {
+                                    text: root.trText("主题")
+                                    font.pixelSize: UiMetrics.fontL
+                                    font.weight: Font.DemiBold
+                                    Layout.topMargin: UiMetrics.space2
                                 }
-
-                                UiCard {
+                                ColumnLayout {
                                     Layout.fillWidth: true
-                                    title: root.trText("状态栏")
-                                    description: root.trText("尺寸、停靠边缘与系统集成方式")
-
-                                    GridLayout {
+                                    spacing: UiMetrics.space1
+                                    UiSettingRow {
                                         Layout.fillWidth: true
-                                        columns: appearanceScroll.availableWidth > 680 ? 2 : 1
-                                        columnSpacing: UiMetrics.space4
-                                        rowSpacing: UiMetrics.space3
-
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            spacing: UiMetrics.space1
-                                            Text { text: root.trText("高度（像素）"); color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
-                                            Text { text: root.trText("状态栏的可视高度"); color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
-                                            UiSpinBox { from: 24; to: 200; value: settingsVM.barHeight; onValueModified: settingsVM.barHeight = value }
+                                        glyph: "\uE790"
+                                        title: root.trText("主题包")
+                                        description: root.trText("决定色板与整体视觉风格")
+                                        UiComboBox {
+                                            objectName: "settingsThemePack"
+                                            model: settingsVM.themePackNames
+                                            currentIndex: Math.max(0, settingsVM.themePackIds.indexOf(settingsVM.themeId))
+                                            onActivated: settingsVM.themeId = settingsVM.themePackIds[index]
                                         }
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            spacing: UiMetrics.space1
-                                            Text { text: root.trText("停靠边缘"); color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
-                                            Text { text: root.trText("选择显示在屏幕顶部或底部"); color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
-                                            UiComboBox {
-                                                model: [
-                                                    { value: "top", label: root.trText("顶部") },
-                                                    { value: "bottom", label: root.trText("底部") }
-                                                ]
-                                                textRole: "label"; valueRole: "value"
-                                                currentIndex: settingsVM.barEdge === "bottom" ? 1 : 0
-                                                onActivated: settingsVM.barEdge = currentValue
-                                            }
-                                        }
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            spacing: UiMetrics.space1
-                                            Text { text: root.trText("工作模式"); color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
-                                            Text { text: root.trText("appbar 占用工作区；taskbar 嵌入任务栏"); color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
-                                            UiComboBox {
-                                                model: [
-                                                    { value: "appbar", label: "AppBar" },
-                                                    { value: "taskbar", label: root.trText("任务栏") }
-                                                ]
-                                                textRole: "label"
-                                                valueRole: "value"
-                                                currentIndex: settingsVM.barMode === "taskbar" ? 1 : 0
-                                                onActivated: settingsVM.barMode = currentValue
-                                            }
-                                        }
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            spacing: UiMetrics.space1
-                                            Text { text: root.trText("透明度 (%)"); color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
-                                            Text { text: root.trText("最低 20%，避免状态栏不可见"); color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
-                                            UiSpinBox {
-                                                from: 20; to: 100; stepSize: 5
-                                                value: settingsVM.barOpacity
-                                                onValueModified: settingsVM.barOpacity = value
-                                            }
+                                    }
+                                    UiSettingRow {
+                                        Layout.fillWidth: true
+                                        glyph: "\uE706"
+                                        title: root.trText("模式")
+                                        description: root.trText("浅色和深色模式均可跟随主题包")
+                                        UiComboBox {
+                                            objectName: "settingsThemeMode"
+                                            model: [
+                                                { value: "dark", label: root.trText("深色") },
+                                                { value: "light", label: root.trText("浅色") }
+                                            ]
+                                            textRole: "label"; valueRole: "value"
+                                            currentIndex: settingsVM.theme === "light" ? 1 : 0
+                                            onActivated: settingsVM.theme = currentValue
                                         }
                                     }
                                 }
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: {
+                                        const index = settingsVM.themePackIds.indexOf(settingsVM.themeId)
+                                        return index >= 0 && settingsVM.themePackExtensionFlags[index] === true
+                                    }
+                                    text: root.trText("此主题包含可执行的 Bar 外壳扩展，请仅使用可信来源")
+                                    color: root.c.warning
+                                    font.pixelSize: UiMetrics.fontS
+                                    wrapMode: Text.Wrap
+                                }
+                                Label {
+                                    text: root.trText("状态栏")
+                                    font.pixelSize: UiMetrics.fontL
+                                    font.weight: Font.DemiBold
+                                    Layout.topMargin: UiMetrics.space2
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: UiMetrics.space1
+                                    UiSettingRow {
+                                        Layout.fillWidth: true
+                                        glyph: "\uE740"
+                                        title: root.trText("高度（像素）")
+                                        description: root.trText("状态栏的可视高度")
+                                        UiSpinBox {
+                                            objectName: "settingsBarHeight"
+                                            from: 24; to: 200
+                                            value: settingsVM.barHeight
+                                            onValueModified: settingsVM.barHeight = value
+                                        }
+                                    }
+                                    UiSettingRow {
+                                        Layout.fillWidth: true
+                                        glyph: "\uE745"
+                                        title: root.trText("停靠边缘")
+                                        description: root.trText("选择显示在屏幕顶部或底部")
+                                        UiComboBox {
+                                            model: [
+                                                { value: "top", label: root.trText("顶部") },
+                                                { value: "bottom", label: root.trText("底部") }
+                                            ]
+                                            textRole: "label"; valueRole: "value"
+                                            currentIndex: settingsVM.barEdge === "bottom" ? 1 : 0
+                                            onActivated: settingsVM.barEdge = currentValue
+                                        }
+                                    }
+                                    UiSettingRow {
+                                        Layout.fillWidth: true
+                                        glyph: "\uE737"
+                                        title: root.trText("工作模式")
+                                        description: root.trText("appbar 占用工作区；taskbar 嵌入任务栏")
+                                        UiComboBox {
+                                            model: [
+                                                { value: "appbar", label: "AppBar" },
+                                                { value: "taskbar", label: root.trText("任务栏") }
+                                            ]
+                                            textRole: "label"; valueRole: "value"
+                                            currentIndex: settingsVM.barMode === "taskbar" ? 1 : 0
+                                            onActivated: settingsVM.barMode = currentValue
+                                        }
+                                    }
+                                    UiSettingRow {
+                                        Layout.fillWidth: true
+                                        glyph: "\uE7A6"
+                                        title: root.trText("透明度 (%)")
+                                        description: root.trText("最低 20%，避免状态栏不可见")
+                                        UiSpinBox {
+                                            from: 20; to: 100; stepSize: 5
+                                            value: settingsVM.barOpacity
+                                            onValueModified: settingsVM.barOpacity = value
+                                        }
+                                    }
+                                }
+                                Item { Layout.preferredHeight: UiMetrics.space5 }
                             }
                         }
                     }
-
                 }
                 // ════════ 插件页 ════════
                 // master-detail：左 = 排序插件列表（启用在前），右 = 选中插件的设置。
@@ -1179,7 +1070,7 @@ Pane {
                                             Layout.fillWidth: true
                                         }
                                         Text {
-                                            text: settingsVM.pluginModel.count + " " + root.trText("个插件")
+                                            text: pluginList.count + " " + root.trText("个插件")
                                             color: root.c.muted
                                             font.pixelSize: UiMetrics.fontTiny
                                         }
@@ -1320,7 +1211,7 @@ Pane {
                                         property bool selected: pluginList.currentId === model.id
                                         readonly property color acc: root.c.accent
                                         readonly property color fg: root.c.fg
-                                        color: selected ? Qt.rgba(acc.r, acc.g, acc.b, 0.14)
+                                        color: selected ? Qt.rgba(fg.r, fg.g, fg.b, 0.07)
                                              : rowMa.containsMouse ? Qt.rgba(fg.r, fg.g, fg.b, 0.06)
                                              : "transparent"
                                         Behavior on color { ColorAnimation { duration: UiMetrics.animFast } }
@@ -1394,6 +1285,16 @@ Pane {
                                 // 重取；面板控件只绑这份快照，避免与 C++ 直读打架
                                 property int currentRow: -1
                                 property var rowData: ({})
+                                property string presentedPluginId: ""
+                                readonly property bool healthProblem: {
+                                    const health = rowData.health || ({})
+                                    return ["failed", "circuitOpen", "degraded", "restarting"].indexOf(String(health.state || "")) >= 0
+                                        || String(health.lastError || "").length > 0
+                                        || (rowData.dependencyPlan || {}).available === true
+                                }
+                                onHealthProblemChanged: {
+                                    if (healthProblem && healthCard) healthCard.expanded = true
+                                }
 
                                 // 重入守卫：自绘设置页注入后写默认值 → setConfigValue →
                                 // dataChanged → 本函数被重入 → rowData 重赋 → customPage.source
@@ -1435,6 +1336,14 @@ Pane {
                                             "dependencyPlan": settingsVM.pluginDependencyPlan(pluginList.currentId),
                                             "managedInfo": settingsVM.managedPluginInfo(pluginList.currentId)
                                         }
+                                    }
+                                    if (presentedPluginId !== pluginList.currentId) {
+                                        presentedPluginId = pluginList.currentId
+                                        healthCard.expanded = healthProblem
+                                        infoCard.expanded = false
+                                        packageCard.expanded = false
+                                        const flickable = detailScroll.contentItem
+                                        if (flickable && flickable.contentY !== undefined) flickable.contentY = 0
                                     }
                                     _refreshing = false
                                     if (_pendingRefresh) {
@@ -1487,6 +1396,8 @@ Pane {
 
                                 ScrollView {
                                     id: detailScroll
+                                    contentWidth: availableWidth
+                                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                                     anchors.fill: parent
                                     anchors.margins: UiMetrics.space4
                                     clip: true
@@ -1496,49 +1407,29 @@ Pane {
                                         width: detailScroll.availableWidth
                                         spacing: UiMetrics.space3
 
-                                        // 头部：名称、类型徽章与启用状态
+                                        // 常用信息只保留名称、版本与启用；技术标识放入插件信息。
                                         RowLayout {
                                             Layout.fillWidth: true
+                                            spacing: UiMetrics.space3
                                             ColumnLayout {
                                                 Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
                                                 spacing: UiMetrics.space1
                                                 Text {
+                                                    Layout.fillWidth: true
                                                     color: root.c.fg
-                                                    font.pixelSize: UiMetrics.fontXL
+                                                    font.pixelSize: 22
                                                     font.weight: Font.DemiBold
-                                                    text: {
-                                                        const n = detailPanel.rowData.name
-                                                        return (n && n.length > 0) ? n : pluginList.currentId
-                                                    }
+                                                    text: detailPanel.rowData.name || pluginList.currentId
+                                                    elide: Text.ElideRight
                                                 }
-                                                RowLayout {
-                                                    spacing: UiMetrics.space2
-                                                    Rectangle {
-                                                        radius: 10
-                                                        color: root.translucent(root.accentColor, 0.14)
-                                                        implicitWidth: typeTag.implicitWidth + 14
-                                                        implicitHeight: 22
-                                                        Text {
-                                                            id: typeTag
-                                                            anchors.centerIn: parent
-                                                            text: detailPanel.rowData.kind === "python" ? "Python" : "C++"
-                                                            color: root.c.accent
-                                                            font.pixelSize: UiMetrics.fontTiny
-                                                            font.weight: Font.DemiBold
-                                                        }
-                                                    }
-                                                    Text {
-                                                        color: root.c.muted
-                                                        font.pixelSize: UiMetrics.fontS
-                                                        text: {
-                                                            const d = detailPanel.rowData
-                                                            let s = pluginList.currentId
-                                                            if (d.version) s += " · v" + d.version
-                                                            if (d.author) s += " · " + d.author
-                                                            if (d.discovered === false) s += " · " + root.trText("磁盘缺失")
-                                                            return s
-                                                        }
-                                                    }
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: detailPanel.rowData.discovered === false
+                                                        ? root.trText("磁盘缺失") : "v" + (detailPanel.rowData.version || "—")
+                                                    color: detailPanel.rowData.discovered === false ? root.c.danger : root.c.muted
+                                                    font.pixelSize: UiMetrics.fontS
+                                                    elide: Text.ElideRight
                                                 }
                                             }
                                             UiSwitch {
@@ -1586,6 +1477,8 @@ Pane {
                                             Layout.fillWidth: true
                                             compact: true
                                             visible: (detailPanel.rowData.managedInfo || {}).managed === true
+                                            id: packageCard
+                                            collapsible: true
                                             title: root.trText("插件包管理")
                                             description: root.trText("查看已安装版本并执行安全回滚或卸载")
 
@@ -1657,158 +1550,89 @@ Pane {
                                             visible: detailPanel.rowData.enabled === true
 
                                             UiCard {
+                                                objectName: "settingsPluginLayout"
                                                 Layout.fillWidth: true
                                                 compact: true
-                                                title: root.trText("基础设置")
-                                                description: root.trText("控制插件在状态栏中的位置、显示顺序与占用宽度")
-
                                                 GridLayout {
                                                     Layout.fillWidth: true
-                                                    columns: detailScroll.availableWidth > 720 ? 2 : 1
+                                                    columns: detailScroll.availableWidth >= 480 ? 2 : 1
                                                     columnSpacing: UiMetrics.space4
-                                                    rowSpacing: UiMetrics.space3
-
-                                                    ColumnLayout {
+                                                    rowSpacing: UiMetrics.space2
+                                                    RowLayout {
                                                         Layout.fillWidth: true
-                                                        spacing: UiMetrics.space1
-                                                        Text { text: root.trText("位置"); color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
-                                                        Text { text: root.trText("显示在状态栏的哪一栏"); color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
+                                                        spacing: UiMetrics.space2
+                                                        Label { text: root.trText("位置"); Layout.preferredWidth: 40 }
                                                         UiComboBox {
+                                                            Accessible.name: root.trText("位置")
                                                             model: [
                                                                 { value: "left", label: root.trText("左侧") },
                                                                 { value: "center", label: root.trText("中间") },
                                                                 { value: "right", label: root.trText("右侧") }
                                                             ]
-                                                            textRole: "label"
-                                                            valueRole: "value"
+                                                            textRole: "label"; valueRole: "value"
                                                             currentIndex: Math.max(0, indexOfValue(detailPanel.rowData.position))
                                                             onActivated: settingsVM.pluginModel.setRoleValue(
-                                                                             detailPanel.currentRow, "position", currentValue)
+                                                                detailPanel.currentRow, "position", currentValue)
                                                         }
                                                     }
-                                                    ColumnLayout {
+                                                    RowLayout {
                                                         Layout.fillWidth: true
-                                                        spacing: UiMetrics.space1
-                                                        Text { text: root.trText("顺序"); color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
-                                                        Text { text: root.trText("仅在当前区域内调整"); color: root.c.muted; font.pixelSize: UiMetrics.fontTiny }
-                                                        RowLayout {
-                                                            Layout.fillWidth: true
-                                                            spacing: UiMetrics.space2
-                                                            UiButton {
-                                                                variant: "outline"
-                                                                text: "↑ " + root.trText("上移")
-                                                                // 82 是中文下的最小触控宽度；英文等较长翻译按
-                                                                // UiButton 的文本 + padding 自然宽度扩展，避免溢出。
-                                                                Layout.preferredWidth: Math.max(82, implicitWidth)
-                                                                enabled: settingsVM.pluginModel.canMoveUp(
-                                                                             detailPanel.currentRow)
-                                                                onClicked: settingsVM.pluginModel.moveUp(
-                                                                               detailPanel.currentRow)
-                                                            }
-                                                            UiButton {
-                                                                variant: "outline"
-                                                                text: "↓ " + root.trText("下移")
-                                                                Layout.preferredWidth: Math.max(82, implicitWidth)
-                                                                enabled: settingsVM.pluginModel.canMoveDown(
-                                                                             detailPanel.currentRow)
-                                                                onClicked: settingsVM.pluginModel.moveDown(
-                                                                               detailPanel.currentRow)
-                                                            }
+                                                        spacing: UiMetrics.space2
+                                                        Label { text: root.trText("顺序"); Layout.preferredWidth: 40 }
+                                                        UiButton {
+                                                            compact: true
+                                                            text: "↑"
+                                                            Accessible.name: root.trText("上移")
+                                                            ToolTip.visible: hovered
+                                                            ToolTip.text: root.trText("上移")
+                                                            Layout.preferredWidth: 36
+                                                            enabled: settingsVM.pluginModel.canMoveUp(detailPanel.currentRow)
+                                                            onClicked: settingsVM.pluginModel.moveUp(detailPanel.currentRow)
                                                         }
+                                                        UiButton {
+                                                            compact: true
+                                                            text: "↓"
+                                                            Accessible.name: root.trText("下移")
+                                                            ToolTip.visible: hovered
+                                                            ToolTip.text: root.trText("下移")
+                                                            Layout.preferredWidth: 36
+                                                            enabled: settingsVM.pluginModel.canMoveDown(detailPanel.currentRow)
+                                                            onClicked: settingsVM.pluginModel.moveDown(detailPanel.currentRow)
+                                                        }
+                                                        Item { Layout.fillWidth: true }
                                                     }
-                                                    ColumnLayout {
+                                                    RowLayout {
+                                                        Layout.columnSpan: detailScroll.availableWidth >= 480 ? 2 : 1
                                                         Layout.fillWidth: true
-                                                        spacing: UiMetrics.space1
-                                                        Text { text: root.trText("宽度"); color: root.c.fg; font.pixelSize: UiMetrics.fontS; font.weight: Font.DemiBold }
-                                                        Text {
-                                                            text: Number(detailPanel.rowData.width) > 0
-                                                                  ? root.trText("固定插件占用宽度")
-                                                                  : root.trText("自动跟随内容宽度")
-                                                            color: root.c.muted
-                                                            font.pixelSize: UiMetrics.fontTiny
-                                                        }
-                                                        RowLayout {
-                                                            Layout.fillWidth: true
-                                                            spacing: UiMetrics.space2
-                                                            UiComboBox {
-                                                                model: [root.trText("自适应"), root.trText("手动")]
-                                                                currentIndex: Number(detailPanel.rowData.width) > 0 ? 1 : 0
-                                                                onActivated: {
-                                                                    if (currentIndex === 0) {
-                                                                        settingsVM.pluginModel.setRoleValue(
-                                                                            detailPanel.currentRow, "width", 0)
-                                                                    } else if (!(Number(detailPanel.rowData.width) > 0)) {
-                                                                        let w = settingsVM.pluginContentWidth(pluginList.currentId)
-                                                                        if (!(w > 0)) w = 100
-                                                                        settingsVM.pluginModel.setRoleValue(
-                                                                            detailPanel.currentRow, "width", Math.min(800, w))
-                                                                    }
+                                                        spacing: UiMetrics.space2
+                                                        Label { text: root.trText("宽度"); Layout.preferredWidth: 40 }
+                                                        UiComboBox {
+                                                            Accessible.name: root.trText("宽度")
+                                                            Layout.fillWidth: false
+                                                            Layout.preferredWidth: 140
+                                                            model: [root.trText("自适应"), root.trText("手动")]
+                                                            currentIndex: Number(detailPanel.rowData.width) > 0 ? 1 : 0
+                                                            onActivated: {
+                                                                if (currentIndex === 0) {
+                                                                    settingsVM.pluginModel.setRoleValue(detailPanel.currentRow, "width", 0)
+                                                                } else if (!(Number(detailPanel.rowData.width) > 0)) {
+                                                                    let w = settingsVM.pluginContentWidth(pluginList.currentId)
+                                                                    if (!(w > 0)) w = 100
+                                                                    settingsVM.pluginModel.setRoleValue(detailPanel.currentRow, "width", Math.min(800, w))
                                                                 }
                                                             }
-                                                            UiSpinBox {
-                                                                visible: Number(detailPanel.rowData.width) > 0
-                                                                from: 1; to: 800
-                                                                value: Number(detailPanel.rowData.width) || 1
-                                                                onValueModified: settingsVM.pluginModel.setRoleValue(
-                                                                                     detailPanel.currentRow, "width", value)
-                                                            }
                                                         }
+                                                        UiSpinBox {
+                                                            visible: Number(detailPanel.rowData.width) > 0
+                                                            Accessible.name: root.trText("固定插件占用宽度")
+                                                            Layout.fillWidth: false
+                                                            Layout.preferredWidth: 112
+                                                            from: 1; to: 800
+                                                            value: Number(detailPanel.rowData.width) || 1
+                                                            onValueModified: settingsVM.pluginModel.setRoleValue(detailPanel.currentRow, "width", value)
+                                                        }
+                                                        Item { Layout.fillWidth: true }
                                                     }
-                                                    ColumnLayout {
-                                                        Layout.fillWidth: true
-                                                        visible: Object.keys(detailPanel.rowData.layoutPreference || {}).length > 0
-                                                        spacing: UiMetrics.space1
-                                                        Text {
-                                                            text: root.trText("空间不足时")
-                                                            color: root.c.fg
-                                                            font.pixelSize: UiMetrics.fontS
-                                                            font.weight: Font.DemiBold
-                                                        }
-                                                        Text {
-                                                            Layout.fillWidth: true
-                                                            text: {
-                                                                const layout = detailPanel.rowData.layoutPreference || {}
-                                                                if (String(layout.overflow) === "menu")
-                                                                    return root.trText("先收缩，仍放不下时移入更多插件")
-                                                                if (String(layout.overflow) === "hide")
-                                                                    return root.trText("先收缩，仍放不下时自动隐藏")
-                                                                return root.trText("收缩到插件允许的最小宽度后保持显示")
-                                                            }
-                                                            color: root.c.muted
-                                                            font.pixelSize: UiMetrics.fontTiny
-                                                            wrapMode: Text.Wrap
-                                                        }
-                                                        Text {
-                                                            Layout.fillWidth: true
-                                                            text: Number(detailPanel.rowData.width) > 0
-                                                                  ? root.trText("当前手动宽度会覆盖此响应式策略")
-                                                                  : root.trText("使用自适应宽度时由插件策略自动处理")
-                                                            color: root.c.accent
-                                                            font.pixelSize: UiMetrics.fontTiny
-                                                            wrapMode: Text.Wrap
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            RowLayout {
-                                                Layout.fillWidth: true
-                                                visible: (detailPanel.rowData.settingsQml !== undefined
-                                                          && String(detailPanel.rowData.settingsQml).length > 0)
-                                                         || (detailPanel.rowData.schema || []).length > 0
-                                                Text {
-                                                    text: root.trText("插件设置")
-                                                    color: root.c.fg
-                                                    font.pixelSize: UiMetrics.fontL
-                                                    font.weight: Font.DemiBold
-                                                }
-                                                Item { Layout.fillWidth: true }
-                                                Text {
-                                                    text: detailPanel.rowData.settingsQml !== undefined
-                                                          && String(detailPanel.rowData.settingsQml).length > 0
-                                                          ? root.trText("自定义设置页") : root.trText("通用设置项")
-                                                    color: root.c.muted
-                                                    font.pixelSize: UiMetrics.fontTiny
                                                 }
                                             }
 
@@ -1856,8 +1680,12 @@ Pane {
                                             compact: true
                                             visible: detailPanel.rowData.enabled === true
                                                      && Object.keys(detailPanel.rowData.health || {}).length > 0
+                                            id: healthCard
+                                            objectName: "settingsPluginHealth"
+                                            collapsible: true
                                             title: root.trText("运行状态")
-                                            description: root.trText("显示插件当前健康状态和最近一次运行错误")
+                                            summary: root.healthLabel(String((detailPanel.rowData.health || {}).state || "discovered"))
+                                            summaryColor: detailPanel.healthProblem ? root.c.warning : root.c.muted
 
                                             RowLayout {
                                                 Layout.fillWidth: true
@@ -1972,12 +1800,24 @@ Pane {
                                         UiCard {
                                             Layout.fillWidth: true
                                             compact: true
-                                            title: root.trText("权限与安全")
-                                            description: root.trText("查看插件声明、实际授权和运行隔离级别")
+                                            id: infoCard
+                                            objectName: "settingsPluginInfo"
+                                            collapsible: true
+                                            title: root.trText("插件信息")
+                                            summary: detailPanel.rowData.kind === "python" ? "Python" : "C++"
 
                                             ColumnLayout {
                                                 Layout.fillWidth: true
                                                 spacing: UiMetrics.space2
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    Layout.minimumWidth: 0
+                                                    text: pluginList.currentId + " · v" + (detailPanel.rowData.version || "—")
+                                                        + (detailPanel.rowData.author ? " · " + detailPanel.rowData.author : "")
+                                                    color: root.c.muted
+                                                    font.pixelSize: UiMetrics.fontS
+                                                    wrapMode: Text.WrapAnywhere
+                                                }
                                                 RowLayout {
                                                     Layout.fillWidth: true
                                                     spacing: UiMetrics.space2
@@ -2004,7 +1844,7 @@ Pane {
                                                         Layout.fillWidth: true
                                                         color: root.c.muted
                                                         font.pixelSize: UiMetrics.fontS
-                                                        wrapMode: Text.Wrap
+                                                        wrapMode: Text.WrapAnywhere
                                                         text: detailPanel.rowData.trustLevel === "isolated"
                                                             ? root.trText("Python 后端运行在独立进程中，HostServices 请求按声明权限强制校验。")
                                                             : root.trText("原生插件与宿主在同一进程运行，权限仅作说明，不能限制其直接访问系统资源。")
@@ -2014,7 +1854,7 @@ Pane {
                                                     Layout.fillWidth: true
                                                     color: root.c.fg
                                                     font.pixelSize: UiMetrics.fontS
-                                                    wrapMode: Text.Wrap
+                                                    wrapMode: Text.WrapAnywhere
                                                     text: root.trText("声明权限：%1").arg(
                                                         root.permissionListText(detailPanel.rowData.declaredPermissions))
                                                 }
@@ -2022,7 +1862,7 @@ Pane {
                                                     Layout.fillWidth: true
                                                     color: root.c.fg
                                                     font.pixelSize: UiMetrics.fontS
-                                                    wrapMode: Text.Wrap
+                                                    wrapMode: Text.WrapAnywhere
                                                     text: root.trText("已授予权限：%1").arg(
                                                         root.permissionListText(detailPanel.rowData.grantedPermissions))
                                                 }
@@ -2030,10 +1870,27 @@ Pane {
                                                     Layout.fillWidth: true
                                                     color: root.c.muted
                                                     font.pixelSize: UiMetrics.fontTiny
-                                                    wrapMode: Text.Wrap
+                                                    wrapMode: Text.WrapAnywhere
                                                     text: root.trText("宿主服务：API %1 · %2").arg(
                                                         Number(detailPanel.rowData.apiVersion || 1)).arg(
                                                         root.permissionListText(detailPanel.rowData.capabilities))
+                                                }
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    visible: Object.keys(detailPanel.rowData.layoutPreference || {}).length > 0
+                                                    text: {
+                                                        const layout = detailPanel.rowData.layoutPreference || {}
+                                                        if (Number(detailPanel.rowData.width) > 0)
+                                                            return root.trText("当前手动宽度会覆盖此响应式策略")
+                                                        if (String(layout.overflow) === "menu")
+                                                            return root.trText("先收缩，仍放不下时移入更多插件")
+                                                        if (String(layout.overflow) === "hide")
+                                                            return root.trText("先收缩，仍放不下时自动隐藏")
+                                                        return root.trText("收缩到插件允许的最小宽度后保持显示")
+                                                    }
+                                                    color: root.c.muted
+                                                    font.pixelSize: UiMetrics.fontS
+                                                    wrapMode: Text.WrapAnywhere
                                                 }
                                             }
                                         }
@@ -2047,43 +1904,13 @@ Pane {
                                         id: groupRoot
                                         Layout.fillWidth: true
                                         property var groupData: modelData
-                                        property bool collapsed: false
-
-                                        Rectangle {
-                                            Layout.fillWidth: true
-                                            implicitHeight: 32
-                                            radius: UiMetrics.radiusS
-                                            color: groupMa.containsMouse
-                                                   ? root.translucent(root.fgColor, 0.06)
-                                                   : "transparent"
-                                            Behavior on color { ColorAnimation { duration: UiMetrics.animFast } }
-                                            Text {
-                                                anchors.left: parent.left
-                                                anchors.leftMargin: UiMetrics.space2
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                text: groupRoot.groupData.group || root.trText("设置")
-                                                color: root.c.fg
-                                                font.pixelSize: UiMetrics.fontL
-                                                font.weight: Font.DemiBold
-                                            }
-                                            Text {
-                                                anchors.right: parent.right
-                                                anchors.rightMargin: UiMetrics.space2
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                text: groupRoot.collapsed ? "▸" : "▾"
-                                                color: root.c.muted
-                                                font.pixelSize: UiMetrics.fontM
-                                            }
-                                            MouseArea {
-                                                id: groupMa
-                                                anchors.fill: parent
-                                                hoverEnabled: true
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: groupRoot.collapsed = !groupRoot.collapsed
-                                            }
-                                        }
+                                        compact: true
+                                        collapsible: true
+                                        expanded: true
+                                        title: groupData.group || root.trText("设置")
                                         Repeater {
-                                            model: groupRoot.collapsed ? 0 : (groupRoot.groupData.fields || [])
+                                            // 保持模型，折叠只由 UiCard 隐藏，避免销毁非法输入。
+                                            model: groupRoot.groupData.fields || []
                                             delegate: fieldDelegate
                                         }
                                     }
@@ -2421,9 +2248,9 @@ Pane {
                             clip: true
 
                             ColumnLayout {
-                                x: UiMetrics.space5
+                                x: UiMetrics.space6
                                 y: UiMetrics.space5
-                                width: generalScroll.availableWidth - UiMetrics.space5 * 2
+                                width: generalScroll.availableWidth - UiMetrics.space6 * 2
                                 spacing: UiMetrics.space4
 
                                 ColumnLayout {
@@ -2442,72 +2269,45 @@ Pane {
                                     }
                                 }
 
-                                UiCard {
+                                UiSettingRow {
                                     Layout.fillWidth: true
-                                    title: root.trText("语言")
-                                    description: root.trText("默认跟随 Windows，也可以固定使用中文或英文")
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            spacing: UiMetrics.space1
-                                            Text {
-                                                text: root.trText("界面语言")
-                                                color: root.c.fg
-                                                font.pixelSize: UiMetrics.fontM
-                                                font.weight: Font.DemiBold
-                                            }
-                                            Text {
-                                                text: root.trText("保存后立即更新所有已打开界面")
-                                                color: root.c.muted
-                                                font.pixelSize: UiMetrics.fontTiny
-                                            }
-                                        }
-                                        UiComboBox {
-                                            Layout.preferredWidth: 220
-                                            model: [
-                                                { value: "system", label: root.trText("跟随系统") },
-                                                { value: "zh-CN", label: "简体中文" },
-                                                { value: "en-US", label: "English" }
-                                            ]
-                                            textRole: "label"
-                                            valueRole: "value"
-                                            currentIndex: settingsVM.language === "zh-CN" ? 1
-                                                          : settingsVM.language === "en-US" ? 2 : 0
-                                            onActivated: settingsVM.language = currentValue
-                                        }
+                                    glyph: "\uE774"
+                                    title: root.trText("界面语言")
+                                    description: root.trText("保存后立即更新所有已打开界面")
+                                    UiComboBox {
+                                        objectName: "settingsLanguage"
+                                        model: [
+                                            { value: "system", label: root.trText("跟随系统") },
+                                            { value: "zh-CN", label: "简体中文" },
+                                            { value: "en-US", label: "English" }
+                                        ]
+                                        textRole: "label"; valueRole: "value"
+                                        currentIndex: settingsVM.language === "zh-CN" ? 1
+                                                      : settingsVM.language === "en-US" ? 2 : 0
+                                        onActivated: settingsVM.language = currentValue
                                     }
                                 }
-
+                                UiSettingRow {
+                                    Layout.fillWidth: true
+                                    glyph: "\uE7E8"
+                                    title: root.trText("开机自启")
+                                    description: root.trText("通过当前用户的 Windows 启动项运行")
+                                    Item { Layout.fillWidth: true }
+                                    UiSwitch {
+                                        objectName: "settingsAutoStart"
+                                        text: settingsVM.autoStart ? root.trText("已开启") : root.trText("已关闭")
+                                        checked: settingsVM.autoStart
+                                        onToggled: settingsVM.autoStart = checked
+                                    }
+                                }
                                 UiCard {
                                     Layout.fillWidth: true
-                                    title: root.trText("系统")
-                                    description: root.trText("登录 Windows 后自动启动玄枢状态栏")
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            spacing: UiMetrics.space1
-                                            Text {
-                                                text: root.trText("开机自启")
-                                                color: root.c.fg
-                                                font.pixelSize: UiMetrics.fontM
-                                                font.weight: Font.DemiBold
-                                            }
-                                            Text {
-                                                text: root.trText("通过当前用户的 Windows 启动项运行")
-                                                color: root.c.muted
-                                                font.pixelSize: UiMetrics.fontTiny
-                                            }
-                                        }
-                                        UiSwitch {
-                                            text: settingsVM.autoStart ? root.trText("已开启")
-                                                                               : root.trText("已关闭")
-                                            checked: settingsVM.autoStart
-                                            onToggled: settingsVM.autoStart = checked
-                                        }
+                                    title: "XuanHub"
+                                    description: "v" + Qt.application.version + " · BSD-3-Clause"
+                                    Label {
+                                        text: root.trText("玄枢设置 XuanHub Settings")
+                                        color: root.c.muted
+                                        font.pixelSize: UiMetrics.fontS
                                     }
                                 }
                             }
@@ -2526,8 +2326,8 @@ Pane {
         }
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 72
-            color: root.panelColor
+            Layout.preferredHeight: 64
+            color: root.bgColor
 
             Text {
                 id: footerError
@@ -2541,7 +2341,7 @@ Pane {
                 text: settingsVM.errorMessage.length > 0 ? settingsVM.errorMessage
                     : (root.invalidFields > 0
                        ? root.trText("存在未修正的非法输入（红框项），修正后才能保存")
-                       : settingsVM.configStatusMessage)
+                       : (settingsVM.configStatusMessage || root.trText("更改将在保存后生效")))
                 color: settingsVM.errorMessage.length > 0 || root.invalidFields > 0
                        || settingsVM.configApplyFailed ? root.c.danger : root.c.muted
                 font.pixelSize: UiMetrics.fontS

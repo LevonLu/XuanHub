@@ -2,6 +2,8 @@
   "locale": "en-US",
   "contexts": {
     "xuanhub.settings": {
+      "插件信息": "Plugin information",
+      "最小化": "Minimize",
       "外观": "Appearance",
       "插件": "Plugins",
       "通用": "General",

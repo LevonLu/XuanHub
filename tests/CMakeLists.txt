@@ -598,6 +598,12 @@ if(Python_Interpreter_FOUND)
     add_test(NAME xuanhub_plugin_cli_tests
         COMMAND "${Python_EXECUTABLE}" -B -m unittest discover
             -s tests -p test_xuanhub_plugin_cli.py -v)
+    add_test(NAME xuanhub_settings_presentation_tests
+        COMMAND "${Python_EXECUTABLE}" -B -m unittest discover
+            -s tests -p test_settings_presentation.py -v)
+    set_tests_properties(xuanhub_settings_presentation_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        TIMEOUT 40)
     set_tests_properties(xuanhub_plugin_cli_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         ENVIRONMENT "PYTHONUTF8=1;XUANHUB_PLUGIN_CONTRACT_PROBE=$<TARGET_FILE:xuanhub_plugin_contract_probe>")
