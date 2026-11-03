@@ -3,6 +3,7 @@ import QtQuick
 import QtTest
 import XuanHub
 import "../../plugins/xuanhub_menu" as Menu
+import "../../plugins/sysinfo" as SysInfo
 
 TestCase {
     id: tests
@@ -35,6 +36,66 @@ TestCase {
     Component {
         id: menuComponent
         Menu.XuanHubMenuSettings { width: 520 }
+    }
+    Component {
+        id: sysinfoComponent
+        SysInfo.SysInfoSettings {}
+    }
+    function createSysinfoPage(width) {
+        draft.values = {itemsPerColumn: 2, items: [
+            {metric: "cpu", prefix: "CPU ", color: "#123456"},
+            {metric: "mem", prefix: "RAM ", color: ""},
+            {metric: "netDown", prefix: "下载 ", color: "#abcdef"}
+        ]}
+        const page = createTemporaryObject(sysinfoComponent, tests, {width: width})
+        verify(page !== null)
+        page.plugin = draft
+        verify(waitForRendering(page))
+        return page
+    }
+    function sysinfoControlsInside(page) {
+        for (let i = 0; i < page.items.length; ++i) {
+            const row = findChild(page, "sysinfoMetricRow_" + i)
+            if (!row) return false
+            const rowPoint = row.mapToItem(page, 0, 0)
+            if (rowPoint.x < 0 || rowPoint.x + row.width > page.width + 0.5) return false
+            for (const name of ["Metric", "Prefix", "Color", "Swatch", "Up", "Down", "Delete"]) {
+                const item = findChild(page, "sysinfo" + name + "_" + i)
+                if (!item) return false
+                const point = item.mapToItem(row, 0, 0)
+                if (point.x < 7.5 || point.y < 7.5 || point.x + item.width > row.width - 7.5
+                        || point.y + item.height > row.height - 7.5) return false
+            }
+        }
+        return true
+    }
+    function test_sysinfo_actions_stay_inside_when_resizing() {
+        const page = createSysinfoPage(520)
+        for (const width of [520, 360, 440, 620, 360]) {
+            page.width = width
+            tryVerify(function() { return sysinfoControlsInside(page) }, 1000,
+                      "所有输入框与操作按钮必须位于行卡片内，页面宽度=" + width)
+        }
+    }
+    function test_sysinfo_reorder_and_delete_keep_item_fields() {
+        const page = createSysinfoPage(520)
+        compare(findChild(page, "sysinfoUp_0").enabled, false)
+        compare(findChild(page, "sysinfoDown_2").enabled, false)
+        let button = findChild(page, "sysinfoDown_0")
+        mouseClick(button, button.width / 2, button.height / 2)
+        compare(draft.value("items")[1].metric, "cpu")
+        compare(draft.value("items")[1].prefix, "CPU ")
+        compare(draft.value("items")[1].color, "#123456")
+        verify(waitForRendering(page))
+        button = findChild(page, "sysinfoUp_1")
+        mouseClick(button, button.width / 2, button.height / 2)
+        compare(draft.value("items")[0].metric, "cpu")
+        verify(waitForRendering(page))
+        button = findChild(page, "sysinfoDelete_1")
+        mouseClick(button, button.width / 2, button.height / 2)
+        compare(draft.value("items").length, 2)
+        compare(draft.value("items")[1].metric, "netDown")
+        compare(draft.value("items")[1].color, "#abcdef")
     }
     function test_collapsing_preserves_invalid_input_and_keyboard_access() {
         const card = createTemporaryObject(cardComponent, tests)

@@ -1,8 +1,8 @@
 // SysInfoSettings.qml — sysinfo 插件自绘设置页（M10 settingsQml）
 // 契约：根 Item 声明 property var plugin（设置窗口注入 SettingsPluginProxy）；
-// plugin.value("columns"/"items") 读草稿、plugin.setValue(...) 整体写回。
+// plugin.value("itemsPerColumn"/"items") 读草稿、plugin.setValue(...) 整体写回。
 // 语义铁律：只读写草稿——应用/保存由设置窗口统一落盘，取消丢弃，热重载后生效。
-// 控件配色经 palette 继承自设置窗口（Basic 样式），无需自取 themeManager。
+// 控件配色经 palette 继承自设置窗口（FluentWinUI3 样式），无需自取 themeManager。
 //
 // 布局：列数 SpinBox + 指标项列表（每行：metric 下拉 + 前缀 + 颜色 + ↑↓✕）+ 添加按钮。
 // items 工作副本范式：文本编辑原地改（不重建保焦点），增删移才整体替换数组触发 Repeater 重建。
@@ -120,92 +120,127 @@ Item {
         UiCard {
             Layout.fillWidth: true
             title: root.trText("显示项")
-            description: root.trText("拖动手柄表示顺序；也可以用上下按钮微调。留空颜色将跟随主题。")
+            description: root.trText("用上下按钮调整顺序；颜色留空时跟随主题。")
 
             Repeater {
                 model: root.items
 
                 delegate: Rectangle {
+                    id: metricRow
+                    objectName: "sysinfoMetricRow_" + index
+                    readonly property int rowIndex: index
+                    readonly property bool inlineActions: width >= 440
                     Layout.fillWidth: true
-                    implicitHeight: 56
+                    implicitHeight: rowGrid.implicitHeight + UiMetrics.space4
                     radius: UiMetrics.radiusS
                     color: Qt.rgba(palette.base.r, palette.base.g, palette.base.b, 0.72)
                     border.width: 1
                     border.color: Qt.rgba(palette.mid.r, palette.mid.g, palette.mid.b, 0.36)
 
-                    RowLayout {
-                        anchors.fill: parent
+                    // 操作区保留固定预算，字段消化剩余宽度；窄行把操作放到第二行。
+                    // 不靠裁剪掩盖越界，删除按钮始终留在卡片内部并可点击。
+                    GridLayout {
+                        id: rowGrid
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.topMargin: UiMetrics.space2
                         anchors.leftMargin: UiMetrics.space2
                         anchors.rightMargin: UiMetrics.space2
-                        spacing: UiMetrics.space2
+                        columns: metricRow.inlineActions ? 2 : 1
+                        columnSpacing: UiMetrics.space2
+                        rowSpacing: UiMetrics.space1
 
-                        Text {
-                            text: "⠿"
-                            color: palette.placeholderText
-                            font.pixelSize: 18
-                            Layout.preferredWidth: 18
-                            horizontalAlignment: Text.AlignHCenter
-                        }
-                        // value 一次性设：Repeater 的 modelData 是瞬态引用，原地改
-                        // items[i] 后不能再将显示值绑定回旧引用。
-                        UiComboBox {
-                            Layout.fillWidth: false
-                            Layout.preferredWidth: 110
-                            model: root.metricLabels
-                            Component.onCompleted: {
-                                const mi = root.metricOptions.indexOf(modelData.metric)
-                                currentIndex = mi >= 0 ? mi : 0
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: UiMetrics.space2
+                            // value 一次性设：文本编辑期间不重建列表，保留输入焦点。
+                            UiComboBox {
+                                objectName: "sysinfoMetric_" + metricRow.rowIndex
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 96
+                                Layout.preferredWidth: 108
+                                model: root.metricLabels
+                                Component.onCompleted: {
+                                    const mi = root.metricOptions.indexOf(modelData.metric)
+                                    currentIndex = mi >= 0 ? mi : 0
+                                }
+                                onActivated: activatedIndex => root.updateRow(metricRow.rowIndex, "metric",
+                                                                              root.metricOptions[activatedIndex])
                             }
-                            readonly property int rowIndex: index
-                            onActivated: activatedIndex => root.updateRow(rowIndex, "metric",
-                                                                          root.metricOptions[activatedIndex])
+                            UiTextField {
+                                objectName: "sysinfoPrefix_" + metricRow.rowIndex
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 56
+                                Layout.preferredWidth: 78
+                                text: modelData.prefix
+                                placeholderText: root.trText("前缀")
+                                onTextChanged: root.updateRow(metricRow.rowIndex, "prefix", text)
+                            }
+                            UiTextField {
+                                objectName: "sysinfoColor_" + metricRow.rowIndex
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 80
+                                Layout.preferredWidth: 112
+                                text: modelData.color
+                                placeholderText: root.trText("颜色")
+                                onTextChanged: root.updateRow(metricRow.rowIndex, "color", text)
+                            }
+                            Rectangle {
+                                objectName: "sysinfoSwatch_" + metricRow.rowIndex
+                                Layout.minimumWidth: 22
+                                Layout.maximumWidth: 22
+                                Layout.preferredHeight: 22
+                                radius: 5
+                                border.width: 1
+                                border.color: palette.mid
+                                color: /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/
+                                       .test(modelData.color) ? modelData.color : "transparent"
+                            }
                         }
-                        UiTextField {
-                            Layout.fillWidth: false
-                            Layout.preferredWidth: 78
-                            text: modelData.prefix
-                            placeholderText: root.trText("前缀")
-                            onTextChanged: root.updateRow(index, "prefix", text)
-                        }
-                        UiTextField {
-                            Layout.fillWidth: false
-                            Layout.preferredWidth: 116
-                            text: modelData.color
-                            placeholderText: root.trText("颜色")
-                            onTextChanged: root.updateRow(index, "color", text)
-                        }
-                        Rectangle {
-                            Layout.preferredWidth: 22
-                            Layout.preferredHeight: 22
-                            radius: 5
-                            border.width: 1
-                            border.color: palette.mid
-                            color: /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/
-                                   .test(modelData.color) ? modelData.color : "transparent"
-                        }
-                        Item { Layout.fillWidth: true }
-                        UiButton {
-                            variant: "ghost"
-                            text: "↑"
-                            enabled: index > 0
-                            Layout.preferredWidth: 36
-                            leftPadding: 0; rightPadding: 0
-                            onClicked: root.moveRow(index, -1)
-                        }
-                        UiButton {
-                            variant: "ghost"
-                            text: "↓"
-                            enabled: index < root.items.length - 1
-                            Layout.preferredWidth: 36
-                            leftPadding: 0; rightPadding: 0
-                            onClicked: root.moveRow(index, 1)
-                        }
-                        UiButton {
-                            variant: "ghost"
-                            text: "×"
-                            Layout.preferredWidth: 36
-                            leftPadding: 0; rightPadding: 0
-                            onClicked: root.removeRow(index)
+                        RowLayout {
+                            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                            Layout.minimumWidth: 104
+                            Layout.maximumWidth: 104
+                            spacing: UiMetrics.space1
+                            UiButton {
+                                objectName: "sysinfoUp_" + metricRow.rowIndex
+                                variant: "ghost"
+                                text: "↑"
+                                Accessible.name: root.trText("上移")
+                                ToolTip.visible: hovered
+                                ToolTip.text: root.trText("上移")
+                                enabled: metricRow.rowIndex > 0
+                                Layout.minimumWidth: 32
+                                Layout.maximumWidth: 32
+                                leftPadding: 0; rightPadding: 0
+                                onClicked: root.moveRow(metricRow.rowIndex, -1)
+                            }
+                            UiButton {
+                                objectName: "sysinfoDown_" + metricRow.rowIndex
+                                variant: "ghost"
+                                text: "↓"
+                                Accessible.name: root.trText("下移")
+                                ToolTip.visible: hovered
+                                ToolTip.text: root.trText("下移")
+                                enabled: metricRow.rowIndex < root.items.length - 1
+                                Layout.minimumWidth: 32
+                                Layout.maximumWidth: 32
+                                leftPadding: 0; rightPadding: 0
+                                onClicked: root.moveRow(metricRow.rowIndex, 1)
+                            }
+                            UiButton {
+                                objectName: "sysinfoDelete_" + metricRow.rowIndex
+                                variant: "ghost"
+                                text: "×"
+                                Accessible.name: root.trText("删除")
+                                ToolTip.visible: hovered
+                                ToolTip.text: root.trText("删除")
+                                Layout.minimumWidth: 32
+                                Layout.maximumWidth: 32
+                                leftPadding: 0; rightPadding: 0
+                                onClicked: root.removeRow(metricRow.rowIndex)
+                            }
                         }
                     }
                 }
