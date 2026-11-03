@@ -26,7 +26,7 @@ public:
 
 public slots:
     void reload();        // watcher/防抖路径：plugins 段未变则跳过插件全量重载
-    void forceReload();   // 托盘手动路径：无条件全量重载（插件 DLL 更新后用它）
+    void forceReload();   // 托盘手动路径：全量重建实例；同路径原生 DLL 更新须重启宿主
 
 private:
     void reloadImpl(bool force);

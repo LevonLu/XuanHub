@@ -93,9 +93,10 @@ PluginCatalog::Result PluginCatalog::scan(
             discoveredIds.insert(manifestId);
             // metaData() 读取 Qt 插件节，不调用 instance()，可安全参与预加载依赖规划。
             auto probe = std::make_unique<QPluginLoader>();
-            // probe 与正式 loader 共享 Qt 的库缓存；若保留默认 PreventUnloadHint，
-            // 即使正式实例 shutdown/unload 成功，Windows 仍会占用 DLL，导致包升级无法切换。
-            probe->setLoadHints(QLibrary::ResolveAllSymbolsHint);
+            // probe 与正式 loader 共享 Qt 的库缓存。QObject 已销毁时，Qt 仍可能
+            // 缓存此 DLL 的元类型/元对象；物理卸载会让排队参数和 QML 缓存悬空。
+            // 保留 Qt 的驻留保护，unload 仍销毁根实例；同路径 DLL 替换须退出宿主。
+            probe->setLoadHints(QLibrary::ResolveAllSymbolsHint | QLibrary::PreventUnloadHint);
             probe->setFileName(path);
             const QString iid = probe->metaData().value(QStringLiteral("IID")).toString();
             if (iid != QStringLiteral("xuanhub.BarPlugin/1.0")

@@ -204,7 +204,7 @@ int main(int argc, char* argv[]) {
     window.show();
 
     // 配置热重载（M7）：文件监听自动触发（plugins 段未变则跳过插件重载），
-    // 托盘 "重新加载配置" 手动触发走 forceReload（无条件全量，插件 DLL 更新后用）
+    // 托盘 "重新加载配置" 手动触发走 forceReload（全量重建实例，同路径 DLL 更新须重启）
     ConfigHotReloader reloader(&config, &theme, &registry, &pm, &model, &window,
                                &locale, exeDir, configDir);
     QObject::connect(&tray, &TrayIcon::reloadRequested,

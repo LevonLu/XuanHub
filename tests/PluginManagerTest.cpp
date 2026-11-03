@@ -14,6 +14,8 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
+#include <QProcessEnvironment>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -63,6 +65,33 @@ class PluginManagerTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void nativeMetaTypesSurviveInstanceReload() {
+        xuanhub::EventBus bus;
+        PluginManager manager(&bus, QDir::tempPath());
+        const auto sysinfo = entry(QStringLiteral("sysinfo"),
+                                   {{QStringLiteral("intervalMs"), 200}});
+        for (int cycle = 0; cycle < 3; ++cycle) {
+            manager.loadFrom(qEnvironmentVariable("XUANHUB_TEST_PLUGINS"), {sysinfo});
+            const auto* loaded = manager.loadedPlugin(sysinfo.id);
+            QVERIFY2(loaded, qPrintable(manager.loadError(sysinfo.id)));
+            QPointer<QObject> oldVm(loaded->viewModel);
+            QSignalSpy metrics(oldVm, SIGNAL(detailsChanged()));
+            QVERIFY(metrics.isValid());
+            QTRY_VERIFY_WITH_TIMEOUT(metrics.count() > 0, 5000);
+
+            // Qt 的连接和 QML 引擎可以比插件实例活得更久。保留一个真实的
+            // 元类型句柄，模拟实例销毁后 Qt 再次复制/释放排队参数的时机。
+            const QMetaType snapshot = QMetaType::fromName("SysInfoSnapshot");
+            QVERIFY(snapshot.isValid());
+            manager.shutdownAll();
+            QVERIFY(oldVm.isNull());
+            QVERIFY(manager.loaded().isEmpty());
+            void* value = snapshot.create();
+            QVERIFY(value);
+            snapshot.destroy(value);
+        }
+    }
+
     void builtInDllsExposeOnlyV2AndMatchTheirManifests() {
         const QDir root(qEnvironmentVariable("XUANHUB_TEST_PLUGINS"));
         auto environment = PluginValidationEnvironment::current();
@@ -75,7 +104,7 @@ private Q_SLOTS:
             QVERIFY2(manifest.ok, qPrintable(id + QStringLiteral(": ") + manifest.error));
             QCOMPARE(manifest.descriptor.apiVersion, 2);
             QPluginLoader loader(QDir(directory).filePath(id + QStringLiteral(".dll")));
-            loader.setLoadHints(QLibrary::LoadHints{});
+            loader.setLoadHints(QLibrary::ResolveAllSymbolsHint | QLibrary::PreventUnloadHint);
             const QString iid = loader.metaData().value(QStringLiteral("IID")).toString();
             QCOMPARE(iid, QStringLiteral("xuanhub.BarPlugin/2.0"));
             QObject* instance = loader.instance();
@@ -245,6 +274,26 @@ private Q_SLOTS:
 
     void managedNativeVersionShadowsBuiltInPlugin() {
         const QString sourceRoot = qEnvironmentVariable("XUANHUB_TEST_PLUGINS");
+        const QString childConfig = qEnvironmentVariable("XUANHUB_TEST_MANAGED_CONFIG");
+        if (!childConfig.isEmpty()) {
+            const QString payload = QDir(childConfig).filePath(
+                QStringLiteral("plugin-store/clock/versions/0.1.0/payload"));
+            xuanhub::EventBus bus;
+            PluginManager manager(&bus, childConfig);
+            for (int cycle = 0; cycle < 2; ++cycle) {
+                manager.loadFrom(sourceRoot, {entry(QStringLiteral("clock"))});
+                const auto* loaded = manager.loadedPlugin(QStringLiteral("clock"));
+                QVERIFY2(loaded, qPrintable(manager.loadError(QStringLiteral("clock"))));
+                QVERIFY(QFileInfo(loaded->qmlUrl.toLocalFile()).absoluteFilePath()
+                            .startsWith(QFileInfo(payload).absoluteFilePath(),
+                                        Qt::CaseInsensitive));
+                QPointer<QObject> vm(loaded->viewModel);
+                manager.shutdownAll();
+                QVERIFY(vm.isNull());
+                QVERIFY(manager.loaded().isEmpty());
+            }
+            return;
+        }
         const QString builtIn = QDir(sourceRoot).filePath(QStringLiteral("clock"));
         QTemporaryDir config;
         QVERIFY(config.isValid());
@@ -261,25 +310,22 @@ private Q_SLOTS:
                 target, QFileDevice::ReadOwner | QFileDevice::WriteOwner));
         }
 
-        xuanhub::EventBus bus;
-        PluginManager manager(&bus, config.path());
-        manager.loadFrom(sourceRoot, {entry(QStringLiteral("clock"))});
-        const auto* loaded = manager.loadedPlugin(QStringLiteral("clock"));
-        QVERIFY2(loaded, qPrintable(manager.loadError(QStringLiteral("clock"))));
-        QVERIFY(QFileInfo(loaded->qmlUrl.toLocalFile()).absoluteFilePath()
-                    .startsWith(QFileInfo(payload).absoluteFilePath(),
-                                Qt::CaseInsensitive));
-        manager.shutdownAll();
-        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        // 代码映像驻留到进程结束。子进程核对受管版本与实例重建，父进程核对
+        // 退出后的文件解锁，避免把实例释放误当成 Windows 已经卸载 DLL。
+        QProcess child;
+        auto environment = QProcessEnvironment::systemEnvironment();
+        environment.insert(QStringLiteral("XUANHUB_TEST_MANAGED_CONFIG"), config.path());
+        child.setProcessEnvironment(environment);
+        child.start(QCoreApplication::applicationFilePath(),
+                    {QStringLiteral("managedNativeVersionShadowsBuiltInPlugin"),
+                     QStringLiteral("-o"), QStringLiteral("-,txt")});
+        QVERIFY(child.waitForStarted(3000));
+        QVERIFY(child.waitForFinished(15000));
+        QCOMPARE(child.exitStatus(), QProcess::NormalExit);
+        QVERIFY2(child.exitCode() == 0, child.readAllStandardOutput().constData());
         const QString managedLibrary =
             QDir(payload).filePath(QStringLiteral("clock.dll"));
-        bool removed = false;
-        for (int attempt = 0; attempt < 20 && !removed; ++attempt) {
-            QTest::qWait(50);
-            removed = QFile::remove(managedLibrary);
-        }
-        QVERIFY2(removed,
-                 "受管插件 DLL 在 shutdownAll 后仍被进程占用");
+        QVERIFY2(QFile::remove(managedLibrary), "受管 DLL 应在子进程退出后解除占用");
     }
 
     void managedPythonVersionShadowsBuiltInPlugin() {

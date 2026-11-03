@@ -13,6 +13,7 @@ Python worker 的 stdout 未被消费，第三方插件持续输出时存在宿�
 设置页首次访问时实例化，本次编辑期间保留非法输入和选中项；关闭窗口统一释放。
 设置页的视觉与控件采用[FluentWinUI3](../../implemented/feature/2026-11-03-fluent-settings.md)，本篇的草稿与资源生命周期约束继续成立。
 Token Usage 弹窗及其当前页面按需创建。保留共享 PluginPopup 的定位、互斥和关闭规则。
+原生实例释放与代码映像驻留的区别见[重载模块生命周期](../../implemented/bug-fix/2026-11-03-safe-native-module-lifetime.md)，视图释放不代表 Qt 元类型缓存已不再引用 DLL。
 worker stdout 重定向到空设备，并验证无控制台进程的启动方式；保持 stderr 诊断和独立进程隔离。
 优化前后在相同隔离便携配置下统计宿主和整个进程树的私有工作集及提交量。
 

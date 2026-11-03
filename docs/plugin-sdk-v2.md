@@ -361,7 +361,10 @@ void configApplied(const QString& id, const QVariantMap& config,
 host 子实例，再停止提供方。`PluginManager::pluginsAboutToStop(ids)` 是同步解除
 QML 引用的边界，渲染层移除模型项并处理 `DeferredDelete` 后，管理器才执行
 `shutdown/unload`。`PluginRuntime::shutdown()` 幂等，停止后不能重新初始化同一适配器。
-DLL 拒绝卸载时保留 loader 到进程退出，并禁止本进程再次初始化该插件，设置页提示重启。
+`unload()` 释放插件根实例，但保留 Qt 默认 `PreventUnloadHint`：DLL 映像驻留到进程结束，
+使 Qt 缓存的元类型与元对象实现保持有效。配置重载仍重新创建实例、线程和 worker；
+同路径原生 DLL 文件替换须退出宿主，新版本目录的发现规则不变。
+`unload()` 拒绝释放实例时保留 loader 到进程退出，并禁止本进程再次初始化该插件，设置页提示重启。
 
 宿主内部职责分配：`PluginCatalog` 处理目录发现、受管版本覆盖及清单/IID 校验；
 `PluginDependencyGraph` 计算加载/停止顺序；`PluginRuntime` 适配接口；`PluginManager`
