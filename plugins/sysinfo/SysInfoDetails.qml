@@ -12,9 +12,9 @@ Item {
     function colors() {
         if (pluginContext && pluginContext.colors) return pluginContext.colors
         return {
-            bg: "#1e1e2e", panel: "#313244", fg: "#cdd6f4", muted: "#7f849c",
-            accent: "#89b4fa", success: "#a6e3a1", warning: "#f9e2af",
-            danger: "#f38ba8", hover: "#45475a", border: "#45475a"
+            bg: "#202020", panel: "#2b2b2b", fg: "#ffffff", muted: "#cecece",
+            accent: "#60cdff", success: "#6ccb5f", warning: "#fce100",
+            danger: "#ff99a4", hover: "#383838", border: "#484848"
         }
     }
 

@@ -63,8 +63,8 @@ Item {
 
     readonly property var hostColors: pluginContext ? pluginContext.colors
                                                     : (typeof themeManager !== "undefined" ? themeManager.colors : ({}))
-    readonly property color cFg:      hostColors.fg || "#cdd6f4"
-    readonly property color cSuccess: hostColors.success || "#a6e3a1"
+    readonly property color cFg:      hostColors.fg || "#ffffff"
+    readonly property color cSuccess: hostColors.success || "#6ccb5f"
 
     // 到点 → 自定义色（非空）或主题成功色；未到点 → 前景色
     readonly property color displayColor: {
@@ -137,8 +137,8 @@ Item {
             anchors.fill: parent
             clip: true
             radius: 6
-            color: root.hostColors.panel || "#313244"
-            border.color: root.hostColors.border || "#45475a"
+            color: root.hostColors.panel || "#2b2b2b"
+            border.color: root.hostColors.border || "#484848"
             border.width: 1
             Text {
                 id: tipLabel

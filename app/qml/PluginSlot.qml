@@ -140,9 +140,9 @@ Item {
         anchors.fill: parent
         visible: wrapper.itemDecorated
         property color normalColor: wrapper.paletteColor(
-            wrapper.itemStyle.background || "panel", "#313244")
+            wrapper.itemStyle.background || "panel", "#2b2b2b")
         property color hoverColor: wrapper.paletteColor(
-            wrapper.itemStyle.hoverBackground || "hover", "#45475a")
+            wrapper.itemStyle.hoverBackground || "hover", "#383838")
         color: wrapper.withOpacity(slotHover.hovered ? hoverColor : normalColor,
                                    Number(wrapper.itemStyle.opacity !== undefined
                                           ? wrapper.itemStyle.opacity : 1))
@@ -150,7 +150,7 @@ Item {
                 ? height / 2 : Number(wrapper.itemStyle.radius || 0)
         border.width: Number(wrapper.itemStyle.borderWidth || 0)
         border.color: wrapper.paletteColor(
-            wrapper.itemStyle.borderColor || "border", "#45475a")
+            wrapper.itemStyle.borderColor || "border", "#484848")
 
         Behavior on color {
             ColorAnimation {
@@ -215,7 +215,7 @@ Item {
         // colors 里的值是字符串：先经 color 属性隐式转换再拆通道（字符串无 .r/.g/.b）
         // themeManager/colors.danger 缺失时给 fallback（参照 main.qml 的空值防御）
         property color dangerColor: (themeManager && themeManager.colors.danger !== undefined)
-                                    ? themeManager.colors.danger : "#f38ba8"
+                                    ? themeManager.colors.danger : "#ff99a4"
         // danger 配 25% alpha 当底色（淡红告警感，不打扰）
         color: Qt.rgba(dangerColor.r, dangerColor.g, dangerColor.b, 0.25)
         radius: UiMetrics.radiusS

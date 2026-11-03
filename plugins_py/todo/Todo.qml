@@ -22,15 +22,15 @@ Item {
     // 色板兜底
     readonly property var hostColors: pluginContext ? pluginContext.colors
                                                     : (themeManager ? themeManager.colors : ({}))
-    readonly property color cFg:      hostColors.fg || "#cdd6f4"
-    readonly property color cMuted:   hostColors.muted || "#7f849c"
-    readonly property color cSuccess: hostColors.success || "#a6e3a1"
-    readonly property color cDanger:  hostColors.danger || "#f38ba8"
-    readonly property color cPanel:   hostColors.panel || "#313244"
-    readonly property color cBorder:  hostColors.border || "#45475a"
-    readonly property color cBg:      hostColors.bg || "#1e1e2e"
-    readonly property color cAccent:  hostColors.accent || "#89b4fa"
-    property color cHover: hostColors.hover || "#45475a"
+    readonly property color cFg:      hostColors.fg || "#ffffff"
+    readonly property color cMuted:   hostColors.muted || "#cecece"
+    readonly property color cSuccess: hostColors.success || "#6ccb5f"
+    readonly property color cDanger:  hostColors.danger || "#ff99a4"
+    readonly property color cPanel:   hostColors.panel || "#2b2b2b"
+    readonly property color cBorder:  hostColors.border || "#484848"
+    readonly property color cBg:      hostColors.bg || "#202020"
+    readonly property color cAccent:  hostColors.accent || "#60cdff"
+    property color cHover: hostColors.hover || "#383838"
 
     // 辅助：从 plugin.values 读取
     function vv(key) {

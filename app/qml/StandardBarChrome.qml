@@ -71,14 +71,14 @@ Item {
         radius: Number(chrome.barStyle.radius || 0)
         property color surfaceColor: chrome.paletteColor(
             chrome.compact ? "transparent" : (chrome.barStyle.background || "bg"),
-            "#1e1e2e")
+            "#202020")
         color: chrome.withOpacity(surfaceColor,
             chrome.compact ? 0 : Number(chrome.barStyle.opacity !== undefined
                                         ? chrome.barStyle.opacity : 1)
                 * Number(chrome.hostBarConfig && chrome.hostBarConfig.barOpacity !== undefined
                          ? chrome.hostBarConfig.barOpacity : 1))
         border.width: chrome.compact ? 0 : Number(chrome.barStyle.borderWidth || 0)
-        border.color: chrome.paletteColor(chrome.barStyle.borderColor || "border", "#45475a")
+        border.color: chrome.paletteColor(chrome.barStyle.borderColor || "border", "#484848")
     }
 
     component RegionHost: Rectangle {
@@ -88,7 +88,7 @@ Item {
         // colors 是 QVariantMap 暴露给 QML 的字符串；先经 color 属性完成转换，
         // 再拆分 RGBA 通道。直接对字符串读 .r/.g/.b 会把胶囊背景算成透明。
         property color backgroundColor: chrome.paletteColor(
-            chrome.regionStyle.background || "panel", "#313244")
+            chrome.regionStyle.background || "panel", "#2b2b2b")
         visible: list.count > 0
         width: visible ? list.contentWidth + chrome.regionPaddingX * 2 : 0
         height: contentRow.height
@@ -101,7 +101,7 @@ Item {
                 ? height / 2 : Number(chrome.regionStyle.radius || 0)
         border.width: decorated ? Number(chrome.regionStyle.borderWidth || 0) : 0
         border.color: chrome.paletteColor(
-            chrome.regionStyle.borderColor || "border", "#45475a")
+            chrome.regionStyle.borderColor || "border", "#484848")
 
         ListView {
             id: list
@@ -172,12 +172,12 @@ Item {
                 anchors.margins: 3
                 radius: 6
                 color: overflowArea.containsMouse
-                       ? chrome.paletteColor("hover", "#45475a") : "transparent"
+                       ? chrome.paletteColor("hover", "#383838") : "transparent"
             }
             Text {
                 anchors.centerIn: parent
                 text: "⋯"
-                color: chrome.paletteColor("fg", "#cdd6f4")
+                color: chrome.paletteColor("fg", "#ffffff")
                 font.pixelSize: Number((chrome.appearance.typography || {}).fontSize || 12) + 8
                 font.bold: true
             }
@@ -200,9 +200,9 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: 10
-            color: chrome.paletteColor("bg", "#1e1e2e")
+            color: chrome.paletteColor("bg", "#202020")
             border.width: 1
-            border.color: chrome.paletteColor("border", "#45475a")
+            border.color: chrome.paletteColor("border", "#484848")
 
             Flickable {
                 anchors.fill: parent
@@ -216,7 +216,7 @@ Item {
                     spacing: 6
                     Text {
                         text: qsTranslate("xuanhub.bar", "更多插件")
-                        color: chrome.paletteColor("fg", "#cdd6f4")
+                        color: chrome.paletteColor("fg", "#ffffff")
                         font.pixelSize: 14
                         font.bold: true
                     }

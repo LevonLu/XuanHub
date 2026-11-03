@@ -185,9 +185,9 @@ void TrayIcon::refreshIcon() {
     // 资源异常时保留原有动态绘制作为兜底，避免托盘入口完全不可见。
     // 从当前主题色板取色绘制托盘图标（底色=bg，边框=accent，文字=fg）
     // 主题不存在或缺字段时给深色兜底
-    QColor bg     = QColor(QStringLiteral("#1e1e2e"));
-    QColor accent = QColor(QStringLiteral("#89b4fa"));
-    QColor fg     = QColor(QStringLiteral("#cdd6f4"));
+    QColor bg     = QColor(QStringLiteral("#202020"));
+    QColor accent = QColor(QStringLiteral("#60cdff"));
+    QColor fg     = QColor(QStringLiteral("#ffffff"));
     if (m_theme) {
         const QVariantMap c = m_theme->colors();
         if (c.contains(QStringLiteral("bg")))     bg     = c.value(QStringLiteral("bg")).value<QColor>();

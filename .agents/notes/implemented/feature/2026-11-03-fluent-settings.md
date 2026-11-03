@@ -14,6 +14,8 @@ Status: implemented
 应用明暗模式同步到 Qt colorScheme，完整传递 palette（含 accent）到弹层。
 保留草稿、应用、保存、懒加载与关闭释放机制；便携包保留 FluentWinUI3、Fusion、Basic 和共享实现。
 
+内置配色集合与兼容边界见[三套 WinUI 配色](../../implemented/simplification/2026-11-03-winui-theme-selection.md)，本篇的控件与窗口契约继续有效。
+
 插件详情只在顶部保留名称、版本和启用状态，位置、排序、宽度合并为紧凑表单；移除重复的插件设置标题和实现类型提示。
 正常运行状态、包管理与插件信息默认折叠，运行异常、依赖安装和迁移继续直接提示。
 权限、服务和响应式布局说明归入插件信息，长标识换行，详情仅沿纵向滚动。

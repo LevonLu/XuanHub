@@ -8,21 +8,24 @@
 
 ```
 themes/
-├── xuanhub-default/theme.json   # 内置默认主题（兜底，勿删）
-├── floating-capsules/theme.json # 纯声明式区域胶囊示例
-├── glass-panel/                 # 带可信 Bar 外壳扩展的示例
-│   ├── theme.json
-│   └── GlassPanelChrome.qml
-├── catppuccin/theme.json        # Catppuccin：Latte / Mocha
-├── github/theme.json             # GitHub Primer：Light / Dark
-├── one/theme.json                # Atom One：Light / Dark
-├── solarized/theme.json          # Solarized：Light / Dark
-├── tokyo-night/theme.json        # Tokyo Night：Day / Night
+├── xuanhub-default/theme.json   # WinUI 蓝（内置默认，兜底，勿删）
+├── fluent-teal/theme.json       # WinUI 青绿
+├── fluent-violet/theme.json     # WinUI 鸢尾紫
 └── <your-theme>/theme.json      # 你的主题：一个目录 + 一个 theme.json
 ```
 
 - 安装 = 把目录拷进 `themes/`；卸载 = 删目录。
 - 目录名建议等于 `theme.json` 里的 `id`（不强制，但便于辨认）。
+
+内置三套配色均提供深浅模式，共用中性灰背景、面板、文字与状态色，只改变强调色，适配设置窗口的 FluentWinUI3 控件与插件弹窗。
+
+| 主题 | 深色强调色 | 浅色强调色 |
+|---|---|---|
+| WinUI 蓝（默认） | `#60cdff` | `#005fb8` |
+| WinUI 青绿 | `#4cc2b0` | `#00756b` |
+| WinUI 鸢尾紫 | `#c3b1ff` | `#744da9` |
+
+原有编辑器配色、`floating-capsules` 和 `glass-panel` 不再内置。旧配置引用已移除主题时，沿用默认主题回退，可在设置中重新选择；第三方主题和下文的外壳扩展契约仍受支持。
 
 ## 2. theme.json 结构
 
@@ -32,8 +35,8 @@ themes/
   "name": "My Theme",
   "version": "0.1.0",
   "author": "your-name",
-  "dark":  { "bg": "#1e1e2e", "fg": "#cdd6f4", "accent": "#89b4fa", ... },
-  "light": { "bg": "#ececec", "fg": "#313244", "accent": "#89b4fa", ... }
+  "dark":  { "bg": "#202020", "fg": "#ffffff", "accent": "#60cdff", ... },
+  "light": { "bg": "#f3f3f3", "fg": "#1a1a1a", "accent": "#005fb8", ... }
 }
 ```
 
@@ -147,7 +150,7 @@ Item { property real gap: themeManager.appearance.items.spacing }
 `themeManager.colors` 在主题/模式切换时自动刷新所有绑定，无需手动监听。防御写法（防 themeManager 尚未注入）：
 
 ```qml
-color: themeManager ? themeManager.colors.accent : "#89b4fa"
+color: themeManager ? themeManager.colors.accent : "#60cdff"
 ```
 
 **换肤覆盖范围**：bar、全部插件部件与弹窗、设置窗口（含按钮/开关/输入框等自绘控件）均只吃这 11 个字段——设置窗口自绘控件经 `palette` 继承色板（`highlight=accent`、`button=panel` 等），hover/焦点等派生态用 `Qt.lighter/Qt.rgba` 从色板色推算，无任何硬编码色。也就是说一套 theme.json 即可给整个程序完整换肤；写新 QML 时请遵守同一规矩（派生态从色板推算，不要写死颜色）。

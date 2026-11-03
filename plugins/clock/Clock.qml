@@ -33,9 +33,9 @@ Item {
     // 所有宿主服务只依赖带版本的作用域上下文。
     readonly property var colors: pluginContext ? pluginContext.colors
                                                 : ({
-        "bg": "#1e1e2e", "panel": "#313244", "fg": "#cdd6f4", "muted": "#7f849c",
-        "accent": "#89b4fa", "danger": "#f38ba8", "success": "#a6e3a1", "warning": "#f9e2af",
-        "hover": "#45475a", "border": "#45475a", "onAccent": "#1e1e2e"
+        "bg": "#202020", "panel": "#2b2b2b", "fg": "#ffffff", "muted": "#cecece",
+        "accent": "#60cdff", "danger": "#ff99a4", "success": "#6ccb5f", "warning": "#fce100",
+        "hover": "#383838", "border": "#484848", "onAccent": "#202020"
     })
 
     // bar hover 反馈（提示可点击弹日历）；barMa 在下方声明，运行时解析无碍

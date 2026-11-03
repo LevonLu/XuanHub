@@ -1,0 +1,32 @@
+{
+  "id": "fluent-teal",
+  "name": "WinUI 青绿 / Teal",
+  "version": "0.1.0",
+  "author": "XuanHub",
+  "dark": {
+    "bg":      "#202020",
+    "panel":   "#2b2b2b",
+    "fg":      "#ffffff",
+    "muted":   "#cecece",
+    "accent":  "#4cc2b0",
+    "danger":  "#ff99a4",
+    "success": "#6ccb5f",
+    "warning": "#fce100",
+    "hover":   "#383838",
+    "border":  "#484848",
+    "onAccent":"#202020"
+  },
+  "light": {
+    "bg":      "#f3f3f3",
+    "panel":   "#ffffff",
+    "fg":      "#1a1a1a",
+    "muted":   "#5f5f5f",
+    "accent":  "#00756b",
+    "danger":  "#c42b1c",
+    "success": "#0f7b0f",
+    "warning": "#8a6000",
+    "hover":   "#eaeaea",
+    "border":  "#d1d1d1",
+    "onAccent":"#ffffff"
+  }
+}

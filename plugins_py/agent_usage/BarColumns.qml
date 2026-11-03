@@ -5,7 +5,7 @@ import "BlockFormat.js" as Format
 Row {
     id: root
     property var columns: []
-    property var colors: ({fg: "#cdd6f4", warning: "#f9e2af", danger: "#f38ba8"})
+    property var colors: ({fg: "#ffffff", warning: "#fce100", danger: "#ff99a4"})
     property double now: Date.now()
     spacing: 12
     Timer { interval: 1000; running: true; repeat: true; onTriggered: root.now = Date.now() }

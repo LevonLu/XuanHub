@@ -599,10 +599,10 @@ Pane {
     // 色板来自 ThemeManager；Fluent 的资源明暗由 main 同步 colorScheme，
     // palette 继续传递主题文字和强调色，插件自绘页也使用同一份色板。
     readonly property var c: themeManager ? themeManager.colors : ({
-        "bg": "#1e1e2e", "panel": "#313244", "fg": "#cdd6f4", "muted": "#7f849c",
-        "accent": "#89b4fa", "danger": "#f38ba8", "success": "#a6e3a1", "warning": "#f9e2af",
-        "hover": "#45475a", "border": "#45475a", "onAccent": "#1e1e2e",
-        "placeholderText": "#7f849c", "mid": "#7f849c", "dark": "#313244", "light": "#313244"
+        "bg": "#202020", "panel": "#2b2b2b", "fg": "#ffffff", "muted": "#cecece",
+        "accent": "#60cdff", "danger": "#ff99a4", "success": "#6ccb5f", "warning": "#fce100",
+        "hover": "#383838", "border": "#484848", "onAccent": "#202020",
+        "placeholderText": "#cecece", "mid": "#cecece", "dark": "#2b2b2b", "light": "#2b2b2b"
     })
 
     // ThemeManager 的色板经 QVariantMap 传入时是颜色字符串。赋给 color 属性后才会

@@ -284,33 +284,33 @@ ThemeRegistry::ThemeRegistry(QObject* parent) : QObject(parent) {
     // 内置硬编码默认主题（与 themes/xuanhub-default/theme.json 内容一致）。
     // 作用：themes/ 目录被误删 / themeId 指向的包都不存在时，保证还有一套能用。
     m_builtinDefault.id = QStringLiteral("xuanhub-default");
-    m_builtinDefault.name = QStringLiteral("XuanHub Default");
-    m_builtinDefault.version = QStringLiteral("0.1.0");
+    m_builtinDefault.name = QStringLiteral("WinUI 蓝 / Blue");
+    m_builtinDefault.version = QStringLiteral("0.2.0");
     m_builtinDefault.author = QStringLiteral("XuanHub");
     m_builtinDefault.dark = QVariantMap{
-        {QStringLiteral("bg"),      QStringLiteral("#1e1e2e")},
-        {QStringLiteral("panel"),   QStringLiteral("#313244")},
-        {QStringLiteral("fg"),      QStringLiteral("#cdd6f4")},
-        {QStringLiteral("muted"),   QStringLiteral("#7f849c")},
-        {QStringLiteral("accent"),  QStringLiteral("#89b4fa")},
-        {QStringLiteral("danger"),  QStringLiteral("#f38ba8")},
-        {QStringLiteral("success"), QStringLiteral("#a6e3a1")},
-        {QStringLiteral("warning"), QStringLiteral("#f9e2af")},
-        {QStringLiteral("hover"),   QStringLiteral("#45475a")},
-        {QStringLiteral("border"),  QStringLiteral("#45475a")},
-        {QStringLiteral("onAccent"),QStringLiteral("#1e1e2e")},
+        {QStringLiteral("bg"),      QStringLiteral("#202020")},
+        {QStringLiteral("panel"),   QStringLiteral("#2b2b2b")},
+        {QStringLiteral("fg"),      QStringLiteral("#ffffff")},
+        {QStringLiteral("muted"),   QStringLiteral("#cecece")},
+        {QStringLiteral("accent"),  QStringLiteral("#60cdff")},
+        {QStringLiteral("danger"),  QStringLiteral("#ff99a4")},
+        {QStringLiteral("success"), QStringLiteral("#6ccb5f")},
+        {QStringLiteral("warning"), QStringLiteral("#fce100")},
+        {QStringLiteral("hover"),   QStringLiteral("#383838")},
+        {QStringLiteral("border"),  QStringLiteral("#484848")},
+        {QStringLiteral("onAccent"),QStringLiteral("#202020")},
     };
     m_builtinDefault.light = QVariantMap{
-        {QStringLiteral("bg"),      QStringLiteral("#ececec")},
-        {QStringLiteral("panel"),   QStringLiteral("#e6e6e6")},
-        {QStringLiteral("fg"),      QStringLiteral("#313244")},
-        {QStringLiteral("muted"),   QStringLiteral("#6c7086")},
-        {QStringLiteral("accent"),  QStringLiteral("#2456d6")},
-        {QStringLiteral("danger"),  QStringLiteral("#c1122f")},
-        {QStringLiteral("success"), QStringLiteral("#348a33")},
-        {QStringLiteral("warning"), QStringLiteral("#b5710f")},
-        {QStringLiteral("hover"),   QStringLiteral("#dce0e8")},
-        {QStringLiteral("border"),  QStringLiteral("#ccd0da")},
+        {QStringLiteral("bg"),      QStringLiteral("#f3f3f3")},
+        {QStringLiteral("panel"),   QStringLiteral("#ffffff")},
+        {QStringLiteral("fg"),      QStringLiteral("#1a1a1a")},
+        {QStringLiteral("muted"),   QStringLiteral("#5f5f5f")},
+        {QStringLiteral("accent"),  QStringLiteral("#005fb8")},
+        {QStringLiteral("danger"),  QStringLiteral("#c42b1c")},
+        {QStringLiteral("success"), QStringLiteral("#0f7b0f")},
+        {QStringLiteral("warning"), QStringLiteral("#8a6000")},
+        {QStringLiteral("hover"),   QStringLiteral("#eaeaea")},
+        {QStringLiteral("border"),  QStringLiteral("#d1d1d1")},
         {QStringLiteral("onAccent"),QStringLiteral("#ffffff")},
     };
     m_builtinDefault.appearance = builtinAppearance();

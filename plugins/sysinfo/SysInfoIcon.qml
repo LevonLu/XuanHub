@@ -4,7 +4,7 @@ import QtQuick
 Canvas {
     id: root
     property string metric: "cpu"
-    property color iconColor: "#89b4fa"
+    property color iconColor: "#60cdff"
 
     antialiasing: true
     onMetricChanged: requestPaint()

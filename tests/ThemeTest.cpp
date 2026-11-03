@@ -37,17 +37,21 @@ private Q_SLOTS:
         ThemeRegistry registry;
         registry.reload(QDir(QStringLiteral(XUANHUB_SOURCE_DIR))
                             .filePath(QStringLiteral("themes")));
-        const ThemeRegistry::ThemePack* capsules =
-            registry.find(QStringLiteral("floating-capsules"));
-        QVERIFY(capsules != nullptr);
-        QCOMPARE(capsules->appearance.value(QStringLiteral("regions")).toMap()
-                     .value(QStringLiteral("decoration")).toString(), QStringLiteral("pill"));
+        QCOMPARE(registry.packs().size(), 3);
+        const QStringList ids{QStringLiteral("xuanhub-default"),
+                              QStringLiteral("fluent-teal"), QStringLiteral("fluent-violet")};
+        for (const QString& id : ids) {
+            const auto* pack = registry.find(id);
+            QVERIFY2(pack != nullptr, qPrintable(id));
+            QCOMPARE(pack->dark.size(), 11);
+            QCOMPARE(pack->light.size(), 11);
+            QVERIFY(pack->chromeUrl.isEmpty());
+        }
 
-        const ThemeRegistry::ThemePack* glass = registry.find(QStringLiteral("glass-panel"));
-        QVERIFY(glass != nullptr);
-        QVERIFY(glass->chromeUrl.isLocalFile());
-        QCOMPARE(glass->chromeModes,
-                 QStringList({QStringLiteral("appbar"), QStringLiteral("taskbar")}));
+        // 磁盘色板与缺包时的内置兜底保持一致，避免默认主题在两种入口下变色。
+        const auto* defaults = registry.find(QStringLiteral("xuanhub-default"));
+        QCOMPARE(defaults->dark, registry.defaultPack().dark);
+        QCOMPARE(defaults->light, registry.defaultPack().light);
     }
 
     void loadsAppearanceAndTrustedChrome() {

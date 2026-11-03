@@ -13,9 +13,9 @@ Item {
 
     readonly property var values: plugin && plugin.values ? plugin.values : ({})
     readonly property var colors: pluginContext && pluginContext.colors ? pluginContext.colors : ({
-        "fg": "#cdd6f4", "accent": "#89b4fa", "bg": "#1e1e2e", "panel": "#313244",
-        "muted": "#7f849c", "border": "#45475a", "hover": "#45475a",
-        "warning": "#f9e2af", "danger": "#f38ba8", "success": "#a6e3a1"
+        "fg": "#ffffff", "accent": "#60cdff", "bg": "#202020", "panel": "#2b2b2b",
+        "muted": "#cecece", "border": "#484848", "hover": "#383838",
+        "warning": "#fce100", "danger": "#ff99a4", "success": "#6ccb5f"
     })
     function tr(s) { return qsTranslate("plugin.py_agent_usage.main", s) }
     function compact(n) { return TokenFormat.compact(n) }

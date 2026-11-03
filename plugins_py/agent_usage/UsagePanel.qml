@@ -10,8 +10,8 @@ Rectangle {
     property var plugin
     property var pluginContext
     property var values: ({})
-    property var colors: ({"bg": "#1e1e2e", "panel": "#313244", "fg": "#cdd6f4", "muted": "#9399b2",
-        "border": "#45475a", "accent": "#89b4fa", "warning": "#f9e2af", "danger": "#f38ba8", "success": "#a6e3a1"})
+    property var colors: ({"bg": "#202020", "panel": "#2b2b2b", "fg": "#ffffff", "muted": "#cecece",
+        "border": "#484848", "accent": "#60cdff", "warning": "#fce100", "danger": "#ff99a4", "success": "#6ccb5f"})
     property var selectedAgent: null
     property bool showHeader: true
     property bool framed: true

@@ -19,13 +19,13 @@ Item {
     // 色板（跟随主题，浅色/深色自动适配）
     readonly property var hostColors: pluginContext ? pluginContext.colors
                                                     : (themeManager ? themeManager.colors : ({}))
-    readonly property color cFg:      hostColors.fg || "#cdd6f4"
-    readonly property color cMuted:   hostColors.muted || "#7f849c"
-    readonly property color cSuccess: hostColors.success || "#a6e3a1"
-    readonly property color cDanger:  hostColors.danger || "#f38ba8"
-    readonly property color cPanel:   hostColors.panel || "#313244"
-    readonly property color cBg:      hostColors.bg || "#1e1e2e"
-    readonly property color cAccent:  hostColors.accent || "#89b4fa"
+    readonly property color cFg:      hostColors.fg || "#ffffff"
+    readonly property color cMuted:   hostColors.muted || "#cecece"
+    readonly property color cSuccess: hostColors.success || "#6ccb5f"
+    readonly property color cDanger:  hostColors.danger || "#ff99a4"
+    readonly property color cPanel:   hostColors.panel || "#2b2b2b"
+    readonly property color cBg:      hostColors.bg || "#202020"
+    readonly property color cAccent:  hostColors.accent || "#60cdff"
 
     // 进度条样式："none"（不显示）| "bar"（水平）| "ring"（环形），由设置页 progressStyle 控制
     readonly property string progressStyle: (plugin && plugin.values && plugin.values.progressStyle) || "none"

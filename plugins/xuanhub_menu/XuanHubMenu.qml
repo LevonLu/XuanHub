@@ -13,15 +13,15 @@ Item {
     height: 40
 
     readonly property var colors: pluginContext ? pluginContext.colors : ({
-            "bg": "#1e1e2e",
-            "panel": "#313244",
-            "fg": "#cdd6f4",
-            "muted": "#7f849c",
-            "accent": "#89b4fa",
-            "danger": "#f38ba8",
-            "hover": "#45475a",
-            "border": "#45475a",
-            "onAccent": "#1e1e2e"
+            "bg": "#202020",
+            "panel": "#2b2b2b",
+            "fg": "#ffffff",
+            "muted": "#cecece",
+            "accent": "#60cdff",
+            "danger": "#ff99a4",
+            "hover": "#383838",
+            "border": "#484848",
+            "onAccent": "#202020"
         })
     readonly property var actionService: pluginContext ? pluginContext.actions : null
     readonly property var declaredActions: {
@@ -133,7 +133,6 @@ Item {
         property string title
         property string subtitle: ""
         property string glyph: ""
-        property bool showChevron: false
         property bool showSwitch: false
         property bool valueChecked: false
         property bool dangerous: false
@@ -189,12 +188,6 @@ Item {
                 Accessible.ignored: true
                 onClicked: row.triggered()
             }
-            MenuGlyph {
-                visible: row.showChevron
-                text: "\ue76c"
-                font.pixelSize: 12
-                color: root.colors.muted
-            }
         }
     }
 
@@ -224,7 +217,7 @@ Item {
         anchorItem: root
         pluginContext: root.pluginContext
         gap: 7
-        width: 280
+        width: 248
         // 首次布局与动作列表更新都会改变高度，由宿主按最终尺寸重定位后显现。
         height: Math.min(520, menuColumn.implicitHeight + menuSurface.topPadding + menuSurface.bottomPadding + 2)
 
@@ -271,7 +264,6 @@ Item {
                         title: qsTranslate("plugin.xuanhub_menu.main", "设置")
                         subtitle: qsTranslate("plugin.xuanhub_menu.main", "管理主题、布局与插件")
                         glyph: "\ue713"
-                        showChevron: true
                         onTriggered: {
                             menuWin.hide();
                             if (root.plugin)

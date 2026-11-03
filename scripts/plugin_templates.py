@@ -52,7 +52,7 @@ Item {
     height: 40
 
     readonly property var colors: pluginContext ? pluginContext.colors : ({
-        "fg": "#cdd6f4", "accent": "#89b4fa"
+        "fg": "#ffffff", "accent": "#60cdff"
     })
 
     Text {

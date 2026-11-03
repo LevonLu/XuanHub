@@ -3,7 +3,7 @@ import QtQuick
 
 Item {
     id: root
-    property color glyphColor: "#cdd6f4"
+    property color glyphColor: "#ffffff"
 
     Canvas {
         id: canvas

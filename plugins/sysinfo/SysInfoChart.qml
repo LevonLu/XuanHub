@@ -5,9 +5,9 @@ Canvas {
     id: root
     property var primarySeries: []
     property var secondarySeries: []
-    property color primaryColor: "#89b4fa"
-    property color secondaryColor: "#f38ba8"
-    property color gridColor: "#45475a"
+    property color primaryColor: "#60cdff"
+    property color secondaryColor: "#ff99a4"
+    property color gridColor: "#484848"
     property real maximum: 100
     property bool fillPrimary: true
 
