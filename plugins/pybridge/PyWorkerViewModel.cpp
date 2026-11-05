@@ -886,6 +886,52 @@ void PyWorkerViewModel::handleHostServiceRequest(const QJsonObject& message) {
         respond(m_hostServices->notifications()->show(title, text));
         return;
     }
+    if (service == QLatin1String("secrets")
+        && (method == QLatin1String("read") || method == QLatin1String("write")
+            || method == QLatin1String("remove"))) {
+        if (!m_hostServices->hasPermission(QStringLiteral("secrets.own"))) {
+            respond(xuanhub::HostServiceResult::failed(
+                QStringLiteral("permission_denied"),
+                QStringLiteral("permission not granted: secrets.own")));
+            return;
+        }
+        const bool writing = method == QLatin1String("write");
+        // 不把 null/数字转换成空串：空值写入会触发宿主的删除语义。
+        // 参数只接受本插件的键和值，身份始终来自已绑定的服务对象。
+        if (!message.value(QStringLiteral("args")).isObject()
+            || !args.value(QStringLiteral("key")).isString()
+            || args.size() != (writing ? 2 : 1)
+            || (writing && !args.value(QStringLiteral("value")).isString())) {
+            respond(xuanhub::HostServiceResult::failed(
+                QStringLiteral("invalid_argument"),
+                QStringLiteral("secret operation requires a string key and, for write, a string value")));
+            return;
+        }
+        // 会话凭据应远小于单帧上限；读也限长，兼容其他入口保存的大值。
+        constexpr qsizetype maxSecretBytes = 64 * 1024;
+        const QString key = args.value(QStringLiteral("key")).toString();
+        if (writing) {
+            const QString value = args.value(QStringLiteral("value")).toString();
+            if (value.toUtf8().size() > maxSecretBytes) {
+                respond(xuanhub::HostServiceResult::failed(
+                    QStringLiteral("value_too_large"),
+                    QStringLiteral("secret value exceeds 64 KiB UTF-8 limit")));
+                return;
+            }
+            respond(m_hostServices->secrets()->writeSecret(key, value));
+        } else if (method == QLatin1String("remove")) {
+            respond(m_hostServices->secrets()->removeSecret(key));
+        } else {
+            auto result = m_hostServices->secrets()->readSecret(key);
+            if (result.success && result.value.toString().toUtf8().size() > maxSecretBytes) {
+                result = xuanhub::HostServiceResult::failed(
+                    QStringLiteral("value_too_large"),
+                    QStringLiteral("secret value exceeds 64 KiB UTF-8 limit"));
+            }
+            respond(result);
+        }
+        return;
+    }
     respond(xuanhub::HostServiceResult::failed(
         QStringLiteral("unsupported_service"),
         QStringLiteral("unsupported host service operation: %1.%2")

@@ -311,8 +311,8 @@ Python 与原生插件使用同一份 Manifest 布局契约：
 ### HostServices 与权限
 
 `permissions` 使用稳定字符串声明需要的宿主能力；当前支持 `notifications`、
-`storage.private`、`secrets.own`、`shell.openUrl` 和 `shell.openFile`。首批 Python RPC
-开放日志和通知，其他服务会按路线图逐步接入。未声明通知权限时调用会返回
+`storage.private`、`secrets.own`、`shell.openUrl` 和 `shell.openFile`。Python RPC
+已开放日志、通知及本插件密钥读写，其他服务会按路线图逐步接入。未声明或未授予所需权限时返回
 `{"success": false, "errorCode": "permission_denied", ...}`。
 
 ```python
@@ -328,6 +328,74 @@ def init(config):
 def set_host_services(services):
     pass
 ```
+
+#### 运行期登录凭据
+
+扫码登录或 OAuth 等运行期产生的会话可通过以下 API 保存；插件 Manifest 必须声明
+`"permissions": ["secrets.own"]`。函数既可从 `xuanhub_host` 直接导入，也可通过
+`xuanhub_host.services` 或 `set_host_services(services)` 注入的同名方法调用。
+
+| Python API | 行为 |
+|---|---|
+| `read_secret(key: str)` | 读取本插件的字符串密钥，成功结果的 `value` 为明文字符串 |
+| `write_secret(key: str, value: str)` | 立即保存或覆盖，空字符串等同删除 |
+| `remove_secret(key: str)` | 立即删除，键不存在也成功 |
+
+三者均返回 `{"success": bool, "value": ..., "errorCode": str, "errorMessage": str}`。
+写入和删除成功时 `value` 为 `None`；失败时也为 `None`。读取不存在的键返回 `not_found`。
+键沿用宿主单路径段规则，不接受空键、路径分隔符、`..` 或绝对路径；不得传其他插件 ID。
+值为字符串，单值读写上限为 **UTF-8 64 KiB**；结构化会话自行用 JSON 编解码。
+非字符串参数在 Python 侧抛出 `TypeError`，绕过代理的非法 RPC 参数由宿主返回
+`invalid_argument`；非法键为 `invalid_key`，超限为 `value_too_large`。
+其他失败包括 `permission_denied`、`service_unavailable`、`io_error`。
+
+```python
+import json
+from xuanhub_host import read_secret, write_secret, remove_secret
+
+_session = None
+
+def init(config):
+    global _session
+    result = read_secret("login_session")
+    if result["success"]:
+        _session = json.loads(result["value"])
+    elif result["errorCode"] != "not_found":
+        # 向界面报告稳定状态码即可，不记录 result 或会话明文。
+        raise RuntimeError("session storage unavailable")
+
+def save_session(session):
+    # 由 update/invoke 等主线程回调调用；网络线程先把结果放入插件私有队列。
+    return write_secret("login_session", json.dumps(session, ensure_ascii=False))
+
+def invoke(name, args):
+    global _session
+    if name == "sign_out":
+        result = remove_secret("login_session")
+        if result["success"]:
+            _session = None
+        return {"success": result["success"], "errorCode": result["errorCode"]}
+
+def update():
+    return {"signedIn": _session is not None}  # 不把会话放入 values 或动作返回值。
+```
+
+这些密钥使用宿主 DPAPI 存储，按插件 ID 自动隔离，且与设置 schema 的 `secret: true`
+字段分属不同键空间。它们不经过设置草稿，不修改 `config.json`；每次写入立即生效，
+多键操作不提供组合事务。请把需要一起更新的会话编码为一个字符串值。
+
+所有同步 HostServices（含日志、通知）只允许在 Worker 主线程处理宿主请求的回调中使用，
+例如 `init/update/invoke/set_config/set_locale`。后台线程直接调用会在发送前抛出
+`RuntimeError`；后台 IO 仍通过私有队列交接，`emit_values/emit_event` 保持可从后台调用。
+事件回调、退出后的 `stop()` 不保证有活动宿主请求，不应依赖同步密钥操作；配置迁移和校验
+仍须遵守无写入副作用的约定。启用 `PUSH_VALUES` 后没有周期 `update()`，应由插件安排
+后续主线程调用处理待保存会话。
+
+协议沿用 `host_service` / `host_service_response`，服务名 `secrets`，方法名
+`read/write/remove`，参数仅含 `key`（写入另含 `value`），无需提升协议版本。
+新 Worker 连接尚未支持此服务的宿主时返回 `unsupported_service`；正常部署应同时更新
+pybridge DLL 与 `bridge_worker.py`。服务边界会检查实际授予权限，但 Python 独立进程
+不等同于操作系统沙箱，不能阻止插件自行调用同用户权限下的系统 API。
 
 Worker 请求中没有可填写的插件 ID，来源由宿主按子插件实例绑定。单包上限 4 MiB，调用在
 该插件现有 IPC 队列中串行并受请求超时约束。原生 DLL 是进程内受信任插件；Python 后端是

@@ -155,8 +155,12 @@ class HostServices:
     def __init__(self, sock: socket.socket) -> None:
         self._sock = sock
         self._next_id = 1
+        self._owner_thread = threading.current_thread()
 
     def _call(self, service: str, method: str, args: dict[str, Any]) -> dict[str, Any]:
+        # 同步请求与主循环共用 socket；后台线程读取会抢走其他调用的响应。
+        if threading.current_thread() is not self._owner_thread:
+            raise RuntimeError("host services must be called from the worker main thread")
         request_id = "host-" + str(self._next_id)
         self._next_id += 1
         _send(self._sock, {
@@ -185,6 +189,24 @@ class HostServices:
         return self._call("notifications", "show", {
             "title": str(title), "message": str(message),
         })
+
+    def read_secret(self, key: str) -> dict[str, Any]:
+        """读取本插件密钥；不存在时返回 not_found，不返回配置字段的密钥。"""
+        if not isinstance(key, str):
+            raise TypeError("secret key must be a string")
+        return self._call("secrets", "read", {"key": key})
+
+    def write_secret(self, key: str, value: str) -> dict[str, Any]:
+        """保存本插件密钥；空字符串沿用宿主的删除语义。"""
+        if not isinstance(key, str) or not isinstance(value, str):
+            raise TypeError("secret key and value must be strings")
+        return self._call("secrets", "write", {"key": key, "value": value})
+
+    def remove_secret(self, key: str) -> dict[str, Any]:
+        """删除本插件密钥；重复删除仍返回成功。"""
+        if not isinstance(key, str):
+            raise TypeError("secret key must be a string")
+        return self._call("secrets", "remove", {"key": key})
 
 
 class EventBusServices:
@@ -264,6 +286,9 @@ def _install_host_module(services: HostServices, events: EventBusServices,
     module.services = services
     module.log = services.log
     module.notify = services.notify
+    module.read_secret = services.read_secret
+    module.write_secret = services.write_secret
+    module.remove_secret = services.remove_secret
     module.events = events
     module.CallError = CallError
     module.report_progress = calls.progress

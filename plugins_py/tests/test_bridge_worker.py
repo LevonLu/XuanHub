@@ -8,10 +8,12 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
-from plugins_py.bridge_worker import MAX_QUEUED_PLUGIN_EVENTS, PushRuntime
+from plugins_py.bridge_worker import HostServices, MAX_QUEUED_PLUGIN_EVENTS, PushRuntime
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +38,71 @@ def recv_exact(sock: socket.socket, size: int) -> bytes:
 def recv_frame(sock: socket.socket) -> dict:
     size = struct.unpack("!I", recv_exact(sock, 4))[0]
     return json.loads(recv_exact(sock, size).decode("utf-8"))
+
+
+class HostServicesTests(unittest.TestCase):
+    def test_secret_type_errors_do_not_send_or_delete(self) -> None:
+        sock = Mock()
+        services = HostServices(sock)
+        for method, args in (
+            (services.read_secret, (None,)),
+            (services.remove_secret, (7,)),
+            (services.write_secret, ("session", None)),
+            (services.write_secret, ("session", {"token": "test-only"})),
+            (services.write_secret, (False, "test-only")),
+        ):
+            with self.subTest(method=method.__name__, args=args):
+                with self.assertRaises(TypeError):
+                    method(*args)
+        sock.sendall.assert_not_called()
+        sock.recv.assert_not_called()
+
+    def test_background_thread_cannot_consume_worker_socket(self) -> None:
+        sock = Mock()
+        services = HostServices(sock)
+        errors: list[Exception] = []
+
+        def call_from_background() -> None:
+            for method, args in (
+                (services.read_secret, ("session",)),
+                (services.write_secret, ("session", "test-only")),
+                (services.remove_secret, ("session",)),
+                (services.log, ("info", "test-only")),
+                (services.notify, ("test-only", "test-only")),
+            ):
+                try:
+                    method(*args)
+                except Exception as error:
+                    errors.append(error)
+
+        thread = threading.Thread(target=call_from_background)
+        thread.start()
+        thread.join(timeout=2)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(len(errors), 5)
+        self.assertTrue(all(isinstance(error, RuntimeError) for error in errors))
+        sock.sendall.assert_not_called()
+        sock.recv.assert_not_called()
+
+    def test_old_host_error_is_preserved(self) -> None:
+        # 提前放入旧宿主的拒绝回执，验证新 API 不把失败误报成空密钥。
+        worker_sock, host_sock = socket.socketpair()
+        with worker_sock, host_sock:
+            worker_sock.settimeout(2)
+            host_sock.settimeout(2)
+            send_frame(host_sock, {
+                "type": "host_service_response", "id": "host-1", "ok": False,
+                "errorCode": "unsupported_service", "error": "unsupported operation",
+            })
+            result = HostServices(worker_sock).read_secret("session")
+            self.assertEqual(result, {
+                "success": False, "value": None,
+                "errorCode": "unsupported_service", "errorMessage": "unsupported operation",
+            })
+            self.assertEqual(recv_frame(host_sock), {
+                "type": "host_service", "id": "host-1", "service": "secrets",
+                "method": "read", "args": {"key": "session"},
+            })
 
 
 class PushRuntimeTests(unittest.TestCase):

@@ -34,7 +34,210 @@ private:
 class PyWorkerViewModelTest final : public QObject {
     Q_OBJECT
 
+    static bool writeSecretPlugin(const QString& directory) {
+        QFile file(QDir(directory).filePath(QStringLiteral("main.py")));
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+        return file.write(R"PY(
+import sys
+from xuanhub_host import read_secret, write_secret, remove_secret, services
+PUSH_VALUES = True
+state = {}
+def init(config):
+    state["initial"] = read_secret("session")
+def update():
+    return state
+def invoke(name, args):
+    if name == "read": return read_secret(*args)
+    if name == "write": return write_secret(*args)
+    if name == "remove": return remove_secret(*args)
+    if name == "raw": return services._call("secrets", args[0], args[1])
+    if name == "spoof":
+        worker = sys.modules["__main__"]
+        worker._send(services._sock, {
+            "type": "host_service", "id": "spoof", "pluginId": "py_other",
+            "service": "secrets", "method": "read", "args": {"key": "session"},
+        })
+        response = worker._recv(services._sock)
+        return {"success": response["ok"], "errorCode": response.get("errorCode", "")}
+)PY") > 0;
+    }
+
+    static QVariantMap secretCall(PyWorkerViewModel& vm, const QString& operation,
+                                  const QVariantList& args) {
+        QSignalSpy finished(&vm, &PyWorkerViewModel::callFinished);
+        if (!vm.call(operation, args).toMap().value(QStringLiteral("queued")).toBool()
+            || !QTest::qWaitFor([&finished] { return !finished.isEmpty(); }, 5000)
+            || !finished.first().at(1).toBool()) return {};
+        return finished.first().at(2).toMap();
+    }
+
 private Q_SLOTS:
+    void persistsPythonSecretsInBoundNamespace() {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        QVERIFY(writeSecretPlugin(temporary.path()));
+        PluginHostServices::Environment environment;
+        environment.configDir = temporary.path();
+        const QStringList permissions{QStringLiteral("secrets.own")};
+        PluginHostServices first(QStringLiteral("py_first"),
+            xuanhub::HostPluginTrustLevel::Isolated, permissions, permissions, environment);
+        PluginHostServices second(QStringLiteral("py_second"),
+            xuanhub::HostPluginTrustLevel::Isolated, permissions, permissions, environment);
+        PyWorkerViewModel vm(QStringLiteral("py_first"), temporary.path(), {},
+            qEnvironmentVariable("XUANHUB_TEST_PYTHON"),
+            qEnvironmentVariable("XUANHUB_TEST_WORKER"), nullptr);
+        vm.setHostServices(&first);
+        QVERIFY(vm.start());
+        QTRY_COMPARE(vm.values().value(QStringLiteral("initial")).toMap()
+                         .value(QStringLiteral("errorCode")).toString(), QStringLiteral("not_found"));
+        const QString key = QStringLiteral("session");
+        const QString original = QStringLiteral("测试会话-仅回归使用-α");
+        const QString replacement = QStringLiteral("更新会话-仅回归使用-β");
+        QVERIFY(secretCall(vm, QStringLiteral("write"), {key, original})
+                    .value(QStringLiteral("success")).toBool());
+        QCOMPARE(secretCall(vm, QStringLiteral("read"), {key})
+                     .value(QStringLiteral("value")).toString(), original);
+        QVERIFY(secretCall(vm, QStringLiteral("write"), {key, replacement})
+                    .value(QStringLiteral("success")).toBool());
+
+        // 同一个配置目录、同名键仍属于两个插件；使用真实 DPAPI 与 Worker 链路。
+        PyWorkerViewModel other(QStringLiteral("py_second"), temporary.path(), {},
+            qEnvironmentVariable("XUANHUB_TEST_PYTHON"),
+            qEnvironmentVariable("XUANHUB_TEST_WORKER"), nullptr);
+        other.setHostServices(&second);
+        QVERIFY(other.start());
+        QTRY_COMPARE(other.values().value(QStringLiteral("initial")).toMap()
+                         .value(QStringLiteral("errorCode")).toString(), QStringLiteral("not_found"));
+        QVERIFY(secretCall(other, QStringLiteral("write"), {key, original})
+                    .value(QStringLiteral("success")).toBool());
+        QCOMPARE(secretCall(vm, QStringLiteral("read"), {key})
+                     .value(QStringLiteral("value")).toString(), replacement);
+        QVERIFY(vm.restart());
+        QTRY_COMPARE(vm.values().value(QStringLiteral("initial")).toMap()
+                         .value(QStringLiteral("value")).toString(), replacement);
+
+        QFile encrypted(temporary.filePath(QStringLiteral("secrets.json")));
+        QVERIFY(encrypted.open(QIODevice::ReadOnly));
+        const QByteArray bytes = encrypted.readAll();
+        QVERIFY(!bytes.isEmpty());
+        QVERIFY(!bytes.contains(original.toUtf8()));
+        QVERIFY(!bytes.contains(replacement.toUtf8()));
+        encrypted.close();
+        PluginHostServices reopened(QStringLiteral("py_first"),
+            xuanhub::HostPluginTrustLevel::Isolated, permissions, permissions, environment);
+        QCOMPARE(reopened.readSecret(key).value.toString(), replacement);
+
+        QVERIFY(secretCall(vm, QStringLiteral("write"), {key, QString{}})
+                    .value(QStringLiteral("success")).toBool());
+        QCOMPARE(secretCall(vm, QStringLiteral("read"), {key})
+                     .value(QStringLiteral("errorCode")).toString(), QStringLiteral("not_found"));
+        QVERIFY(secretCall(vm, QStringLiteral("write"), {key, replacement})
+                    .value(QStringLiteral("success")).toBool());
+        QVERIFY(secretCall(vm, QStringLiteral("remove"), {key})
+                    .value(QStringLiteral("success")).toBool());
+        QVERIFY(secretCall(vm, QStringLiteral("remove"), {key})
+                    .value(QStringLiteral("success")).toBool());
+        QCOMPARE(reopened.readSecret(key).errorCode, QStringLiteral("not_found"));
+        QCOMPARE(secretCall(other, QStringLiteral("read"), {key})
+                     .value(QStringLiteral("value")).toString(), original);
+    }
+
+    void rejectsInvalidPythonSecretRequestsWithoutChangingStoredValue() {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        QVERIFY(writeSecretPlugin(temporary.path()));
+        PluginHostServices::Environment environment;
+        environment.configDir = temporary.path();
+        const QStringList permissions{QStringLiteral("secrets.own")};
+        PluginHostServices services(QStringLiteral("py_secret_validation"),
+            xuanhub::HostPluginTrustLevel::Isolated, permissions, permissions, environment);
+        const QString key = QStringLiteral("session");
+        const QString original = QStringLiteral("保留已有会话-仅回归使用");
+        QVERIFY(services.writeSecret(key, original).success);
+        PyWorkerViewModel vm(QStringLiteral("py_secret_validation"), temporary.path(), {},
+            qEnvironmentVariable("XUANHUB_TEST_PYTHON"),
+            qEnvironmentVariable("XUANHUB_TEST_WORKER"), nullptr);
+        vm.setHostServices(&services);
+        QVERIFY(vm.start());
+        QTRY_COMPARE(vm.values().value(QStringLiteral("initial")).toMap()
+                         .value(QStringLiteral("value")).toString(), original);
+
+        const auto raw = [&vm](const QString& method, const QVariant& args) {
+            return secretCall(vm, QStringLiteral("raw"), {method, args});
+        };
+        const QVariantMap validArgs{{QStringLiteral("key"), key}};
+        for (const QVariant& invalidKey : QVariantList{QVariant{}, 42, false, QVariantList{key}}) {
+            const QVariantMap args{{QStringLiteral("key"), invalidKey}};
+            QCOMPARE(raw(QStringLiteral("read"), args).value(QStringLiteral("errorCode")).toString(),
+                     QStringLiteral("invalid_argument"));
+        }
+        for (const QVariant& invalidValue : QVariantList{QVariant{}, 42, false, QVariantMap{}}) {
+            QVariantMap args = validArgs;
+            args.insert(QStringLiteral("value"), invalidValue);
+            QCOMPARE(raw(QStringLiteral("write"), args).value(QStringLiteral("errorCode")).toString(),
+                     QStringLiteral("invalid_argument"));
+            QCOMPARE(services.readSecret(key).value.toString(), original);
+        }
+        for (const QVariant& args : QVariantList{QVariant{}, QVariantList{}, QVariantMap{}}) {
+            QCOMPARE(raw(QStringLiteral("read"), args).value(QStringLiteral("errorCode")).toString(),
+                     QStringLiteral("invalid_argument"));
+        }
+        QCOMPARE(raw(QStringLiteral("write"), validArgs).value(QStringLiteral("errorCode")).toString(),
+                 QStringLiteral("invalid_argument"));
+        QCOMPARE(raw(QStringLiteral("remove"), QVariantMap{
+            {QStringLiteral("key"), key}, {QStringLiteral("pluginId"), QStringLiteral("py_other")}})
+                     .value(QStringLiteral("errorCode")).toString(), QStringLiteral("invalid_argument"));
+        for (const QString& invalidKey : {QString{}, QStringLiteral("../session"),
+                                         QStringLiteral("py_other/session")}) {
+            QCOMPARE(secretCall(vm, QStringLiteral("read"), {invalidKey})
+                         .value(QStringLiteral("errorCode")).toString(), QStringLiteral("invalid_key"));
+        }
+        QCOMPARE(raw(QStringLiteral("list"), validArgs).value(QStringLiteral("errorCode")).toString(),
+                 QStringLiteral("unsupported_service"));
+        QCOMPARE(secretCall(vm, QStringLiteral("spoof"), {}).value(QStringLiteral("errorCode")).toString(),
+                 QStringLiteral("identity_not_allowed"));
+
+        // 声明权限不等于实际授予；三种操作都必须检查实际权限。
+        for (const QStringList& declared : {QStringList{}, permissions}) {
+            PluginHostServices denied(QStringLiteral("py_secret_validation"),
+                xuanhub::HostPluginTrustLevel::Isolated, declared, {}, environment);
+            vm.setHostServices(&denied);
+            for (const QString& method : {QStringLiteral("read"), QStringLiteral("write"),
+                                          QStringLiteral("remove")}) {
+                QVariantMap args = validArgs;
+                if (method == QLatin1String("write")) args.insert(QStringLiteral("value"), QString{});
+                QCOMPARE(raw(method, args).value(QStringLiteral("errorCode")).toString(),
+                         QStringLiteral("permission_denied"));
+            }
+            vm.setHostServices(&services);
+            QCOMPARE(services.readSecret(key).value.toString(), original);
+        }
+        vm.setHostServices(nullptr);
+        QCOMPARE(raw(QStringLiteral("read"), validArgs).value(QStringLiteral("errorCode")).toString(),
+                 QStringLiteral("service_unavailable"));
+        vm.setHostServices(&services);
+
+        // 上限按 UTF-8 字节而非字符数计算；失败不能删除原值或回收 Worker。
+        const QString oversized(21846, QChar(0x5BC6));
+        QCOMPARE(secretCall(vm, QStringLiteral("write"), {key, oversized})
+                     .value(QStringLiteral("errorCode")).toString(), QStringLiteral("value_too_large"));
+        QCOMPARE(services.readSecret(key).value.toString(), original);
+        const QString atLimit(64 * 1024, QLatin1Char('x'));
+        QVERIFY(secretCall(vm, QStringLiteral("write"), {key, atLimit})
+                    .value(QStringLiteral("success")).toBool());
+        QCOMPARE(secretCall(vm, QStringLiteral("read"), {key})
+                     .value(QStringLiteral("value")).toString(), atLimit);
+        QVERIFY(services.writeSecret(key, oversized).success);
+        QCOMPARE(secretCall(vm, QStringLiteral("read"), {key})
+                     .value(QStringLiteral("errorCode")).toString(), QStringLiteral("value_too_large"));
+        QVERIFY(secretCall(vm, QStringLiteral("remove"), {key})
+                    .value(QStringLiteral("success")).toBool());
+        QCOMPARE(secretCall(vm, QStringLiteral("read"), {key})
+                     .value(QStringLiteral("errorCode")).toString(), QStringLiteral("not_found"));
+        QVERIFY(vm.running());
+        QCOMPARE(vm.health().value(QStringLiteral("restartCount")).toInt(), 0);
+    }
+
     void discardsWorkerStdoutWithoutRetainingItInHost() {
         QTemporaryDir temporary;
         QVERIFY(temporary.isValid());
