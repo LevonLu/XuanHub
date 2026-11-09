@@ -2164,7 +2164,8 @@ Pane {
                                         textRole: "label"
                                         valueRole: "value"
                                         Component.onCompleted: init()
-                                        onFieldChanged: init()
+                                        // options 的 model 绑定更新会重置 currentIndex；待绑定稳定后再恢复草稿值。
+                                        onFieldChanged: Qt.callLater(init)
                                         function init() {
                                             if (!field.key) return
                                             const cur = String(root.draftValue(field.key,

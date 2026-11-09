@@ -29,6 +29,7 @@ add_subdirectory(lib/barplugin)
 add_subdirectory(app)
 add_subdirectory(plugins/xuanhub_menu)
 add_subdirectory(plugins/clock)
+add_subdirectory(plugins/pixel_landscape)
 add_subdirectory(plugins/sysinfo)
 
 # pybridge 不再内嵌 CPython：只需 Qt 网络组件启动独立 python.exe worker，

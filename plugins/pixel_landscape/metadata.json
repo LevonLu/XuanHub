@@ -1,0 +1,162 @@
+{
+  "id": "pixel_landscape",
+  "name": "像素小风景",
+  "version": "0.1.0",
+  "author": "XuanHub",
+  "apiVersion": 2,
+  "configVersion": 1,
+  "minHostVersion": "0.4.0",
+  "maxHostVersion": "0.x",
+  "entry": {
+    "backend": "pixel_landscape.dll",
+    "qml": "PixelLandscape.qml"
+  },
+  "capabilities": [
+    "barItem",
+    "settings",
+    "popup"
+  ],
+  "permissions": [],
+  "compatibility": {
+    "architecture": "x64",
+    "qtVersion": "6.9.3",
+    "compiler": "msvc2022",
+    "crt": "dynamic"
+  },
+  "layout": {
+    "region": "center",
+    "minWidth": 160,
+    "preferredWidth": 320,
+    "maxWidth": 320,
+    "flex": 0,
+    "priority": 10,
+    "overflow": "hide"
+  },
+  "settings": [
+    {
+      "group": "风景",
+      "fields": [
+        {
+          "key": "scene",
+          "type": "enum",
+          "label": "场景",
+          "default": "cabin",
+          "options": [
+            {
+              "value": "cabin",
+              "label": "山间小屋"
+            },
+            {
+              "value": "lighthouse",
+              "label": "海边灯塔"
+            },
+            {
+              "value": "street",
+              "label": "夜雨街角"
+            },
+            {
+              "value": "campsite",
+              "label": "湖畔营地"
+            },
+            {
+              "value": "railway",
+              "label": "田野铁道"
+            },
+            {
+              "value": "island",
+              "label": "空中浮岛"
+            }
+          ]
+        },
+        {
+          "key": "timeMode",
+          "type": "enum",
+          "label": "时段",
+          "default": "auto",
+          "options": [
+            {
+              "value": "auto",
+              "label": "跟随本地时间"
+            },
+            {
+              "value": "dawn",
+              "label": "清晨"
+            },
+            {
+              "value": "day",
+              "label": "白天"
+            },
+            {
+              "value": "dusk",
+              "label": "黄昏"
+            },
+            {
+              "value": "night",
+              "label": "夜晚"
+            }
+          ]
+        },
+        {
+          "key": "weather",
+          "type": "enum",
+          "label": "天气",
+          "default": "clear",
+          "options": [
+            {
+              "value": "clear",
+              "label": "晴天"
+            },
+            {
+              "value": "rain",
+              "label": "小雨"
+            },
+            {
+              "value": "snow",
+              "label": "飘雪"
+            }
+          ]
+        },
+        {
+          "key": "frameStyle",
+          "type": "enum",
+          "label": "画框样式",
+          "default": "wood",
+          "options": [
+            {
+              "value": "none",
+              "label": "无画框"
+            },
+            {
+              "value": "thin",
+              "label": "极简细框"
+            },
+            {
+              "value": "wood",
+              "label": "暖木框"
+            },
+            {
+              "value": "mat",
+              "label": "白色卡纸框"
+            },
+            {
+              "value": "metal",
+              "label": "像素金属框"
+            }
+          ]
+        },
+        {
+          "key": "animationsEnabled",
+          "type": "bool",
+          "label": "动态效果",
+          "default": true
+        },
+        {
+          "key": "rareEventsEnabled",
+          "type": "bool",
+          "label": "偶发流星",
+          "default": true
+        }
+      ]
+    }
+  ]
+}

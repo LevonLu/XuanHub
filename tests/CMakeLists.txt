@@ -1,4 +1,29 @@
 # tests/CMakeLists.txt — 核心配置与密钥持久化的轻量回归测试
+# 像素风景同时验证原生状态模型、实际画布和可选槽位宽度契约。
+add_executable(xuanhub_pixel_landscape_tests
+    PixelLandscapeTest.cpp
+    ${CMAKE_SOURCE_DIR}/plugins/pixel_landscape/PixelLandscapeViewModel.h
+    ${CMAKE_SOURCE_DIR}/plugins/pixel_landscape/PixelLandscapeViewModel.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/PopupService.h
+    ${CMAKE_SOURCE_DIR}/app/src/PopupService.cpp)
+set_target_properties(xuanhub_pixel_landscape_tests PROPERTIES AUTOMOC ON
+    RUNTIME_OUTPUT_DIRECTORY "${XUANHUB_BIN_DIR}")
+target_include_directories(xuanhub_pixel_landscape_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/plugins/pixel_landscape ${CMAKE_SOURCE_DIR}/app/src)
+target_compile_definitions(xuanhub_pixel_landscape_tests PRIVATE XUANHUB_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+target_link_libraries(xuanhub_pixel_landscape_tests PRIVATE barplugin Qt6::Quick Qt6::Test user32)
+add_dependencies(xuanhub_pixel_landscape_tests XuanHub pixel_landscape)
+# 主程序的 windeployqt 只部署 Windows 平台；离屏测试必须显式带上同一 Qt 的插件。
+add_custom_command(TARGET xuanhub_pixel_landscape_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:xuanhub_pixel_landscape_tests>/platforms"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::QOffscreenIntegrationPlugin>"
+        "$<TARGET_FILE_DIR:xuanhub_pixel_landscape_tests>/platforms/")
+add_test(NAME xuanhub_pixel_landscape_tests COMMAND xuanhub_pixel_landscape_tests)
+set_tests_properties(xuanhub_pixel_landscape_tests PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic;QT_QPA_FONTDIR=$ENV{WINDIR}/Fonts" TIMEOUT 30)
+
 add_executable(xuanhub_config_tests
     ConfigServiceTest.cpp
     ${CMAKE_SOURCE_DIR}/app/src/ConfigService.h
@@ -611,6 +636,7 @@ if(Python_Interpreter_FOUND)
     # 每个内置插件都通过同一公开 CLI；单独注册测试便于 CI 直接定位到具体插件。
     set(XUANHUB_BUILTIN_PLUGIN_DIRS
         plugins/clock
+        plugins/pixel_landscape
         plugins/pybridge
         plugins/sysinfo
         plugins/xuanhub_menu

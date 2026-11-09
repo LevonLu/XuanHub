@@ -1,0 +1,56 @@
+{
+  "locale": "en-US",
+  "contexts": {
+    "plugin.pixel_landscape.metadata": {
+      "像素小风景": "Pixel Landscape"
+    },
+    "plugin.pixel_landscape.settings": {
+      "风景": "Landscape",
+      "时段": "Time of day",
+      "跟随本地时间": "Follow local time",
+      "清晨": "Dawn",
+      "白天": "Day",
+      "黄昏": "Dusk",
+      "夜晚": "Night",
+      "天气": "Weather",
+      "晴天": "Clear",
+      "小雨": "Rain",
+      "飘雪": "Snow",
+      "动态效果": "Animation",
+      "偶发流星": "Occasional shooting stars",
+      "画框样式": "Frame style",
+      "无画框": "No frame",
+      "极简细框": "Minimal border",
+      "暖木框": "Warm wood",
+      "白色卡纸框": "Ivory mat",
+      "像素金属框": "Pixel metal",
+      "场景": "Scene",
+      "山间小屋": "Mountain cabin",
+      "海边灯塔": "Seaside lighthouse",
+      "夜雨街角": "Rainy street corner",
+      "湖畔营地": "Lakeside campsite",
+      "田野铁道": "Country railway",
+      "空中浮岛": "Floating island"
+    },
+    "plugin.pixel_landscape.main": {
+      "山间小屋": "Mountain cabin",
+      "清晨": "Dawn",
+      "白天": "Day",
+      "黄昏": "Dusk",
+      "夜晚": "Night",
+      "晴天": "Clear",
+      "小雨": "Rain",
+      "飘雪": "Snow",
+      "暂停": "Pause",
+      "继续": "Resume",
+      "设置": "Settings",
+      "关闭": "Close",
+      "动画已在设置中关闭": "Animation is disabled in settings",
+      "海边灯塔": "Seaside lighthouse",
+      "夜雨街角": "Rainy street corner",
+      "湖畔营地": "Lakeside campsite",
+      "田野铁道": "Country railway",
+      "空中浮岛": "Floating island"
+    }
+  }
+}

@@ -437,6 +437,11 @@ void SettingsPluginModel::mergeDiscovered(const QJsonObject& meta, const QString
     }
     Row r;   // 磁盘有、config 无：未启用，勾选即加入
     r.id = id;
+    // 新发现项采用清单的默认区域；已有配置在上方返回，用户位置不会被覆盖。
+    const QString region = layoutPreference.value(QStringLiteral("region")).toString();
+    if (region == QLatin1String("left") || region == QLatin1String("center")
+        || region == QLatin1String("right"))
+        r.position = region;
     r.kind = kind;
     r.discovered = true;
     r.name = meta.value(QStringLiteral("name")).toString();

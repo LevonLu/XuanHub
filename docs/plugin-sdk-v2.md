@@ -240,6 +240,12 @@ Q_INVOKABLE QVariant invokeAction(const QString& actionId);
 
 ### 响应式布局
 
+需要按实际槽位宽度重排内容的插件可在根 Item 声明 `property real hostContentWidth: -1`，
+以正数 `implicitWidth` 声明自然宽度，并令 `width: hostContentWidth >= 0 ? hostContentWidth : implicitWidth`。
+宿主仅对声明者注入扣除左右主题内边距后的内容宽度；0 表示没有可绘制空间，-1 表示尚未注入。
+其自然宽度统计、设置页建议和布局预算读取 `implicitWidth`，不会读取注入后的 `width`，避免反馈循环。
+未声明者继续使用原有 `width` 与裁剪语义。该可选 QML 契约不改变 C++ ABI；脱离宿主时按自然宽度显示。
+
 插件可在 `metadata.json` 声明单行状态栏中的尺寸偏好：
 
 ```json

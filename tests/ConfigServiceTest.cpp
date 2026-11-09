@@ -114,6 +114,32 @@ private Q_SLOTS:
         QVERIFY(entry.config.value(QStringLiteral("accounts")).toList().first().toMap().value(QStringLiteral("credential")).toString().isEmpty());
     }
 
+    void newlyDiscoveredPluginUsesDeclaredRegion() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString sidecar = directory.filePath(QStringLiteral("plugins/landscape/metadata.json"));
+        SettingsPluginModel model;
+        for (const QString& region : {QStringLiteral("center"), QStringLiteral("left"),
+                                      QStringLiteral("right"), QStringLiteral("invalid"), QString{}}) {
+            QVERIFY(writeJsonObject(sidecar, {
+                {QStringLiteral("id"), QStringLiteral("landscape")},
+                {QStringLiteral("layout"), QJsonObject{{QStringLiteral("region"), region}}}
+            }));
+            model.reload({}, {}, directory.path(), {});
+            QCOMPARE(model.rowCount(), 1);
+            QCOMPARE(model.data(model.index(0), SettingsPluginModel::PositionRole).toString(),
+                     region == QLatin1String("center") || region == QLatin1String("left")
+                         ? region : QStringLiteral("right"));
+            QVERIFY(!model.data(model.index(0), SettingsPluginModel::EnabledRole).toBool());
+            QVERIFY(!model.isDirty());
+            PluginConfigEntry saved;
+            saved.id = QStringLiteral("landscape");
+            saved.position = QStringLiteral("right");
+            model.reload({saved}, {}, directory.path(), {});
+            QCOMPARE(model.data(model.index(0), SettingsPluginModel::PositionRole).toString(), QStringLiteral("right"));
+        }
+    }
+
     void settingsQmlFollowsRuntimeManifestEntry_data() {
         QTest::addColumn<QString>("kind");
         QTest::addColumn<int>("apiVersion");

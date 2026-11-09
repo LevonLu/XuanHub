@@ -121,18 +121,21 @@ Item {
     // 注意：固定宽模式下 Loader 内容会被裁剪/留白，由插件 QML 自行处理对齐。
     // slot.item.width 用 Math.max(0, ...) 防御：插件忘声明 width 时为 0，
     // 负值会扰乱 ListView contentWidth（零宽不可见的情形由 onLoaded 告警提示）
+    // 可选宽度输入以 implicitWidth 为自然尺寸；实际 width 不能反向参与分配。
+    readonly property real naturalItemWidth: slot.item
+        ? (slot.item.hostContentWidth !== undefined ? slot.item.implicitWidth : slot.item.width) : 0
     readonly property real naturalSlotWidth: model.width > 0 ? model.width
-        : (slot.item ? Math.max(0, slot.item.width + itemPaddingX * 2)
+        : (slot.item ? Math.max(0, naturalItemWidth + itemPaddingX * 2)
                      : (slot.status === Loader.Error ? errorBadge.width : 0))
     width: overflowHost ? naturalSlotWidth
                         : (Number(model.effectiveWidth || 0) > 0
                            ? Number(model.effectiveWidth) : naturalSlotWidth)
 
     // 自然内容宽度上报：设置窗口「手动」宽度的初始值取它。
-    // 手动定宽时 slot.item.width 仍是内容自然宽度（Loader 不改 item 宽度），
-    // 故上报值不受定宽影响；保持声明式绑定，不做命令式赋值。
+    // 旧插件由 width、新的宽度输入插件由 implicitWidth 提供自然尺寸，
+    // 上报值都不受手动定宽影响；保持声明式绑定，不做命令式赋值。
     readonly property int contentWidth: slot.item
-                                        ? Math.ceil(slot.item.width + itemPaddingX * 2) : 0
+                                        ? Math.ceil(naturalItemWidth + itemPaddingX * 2) : 0
     onContentWidthChanged: pluginModel.reportContentWidth(model.id, contentWidth)
 
     Rectangle {
@@ -187,6 +190,10 @@ Item {
                 // 不碰未声明该属性的既有插件，保持旧插件尺寸语义。
                 if (slot.item.hostContentHeight !== undefined)
                     slot.item.hostContentHeight = Qt.binding(function() { return slot.height })
+                if (slot.item.hostContentWidth !== undefined)
+                    slot.item.hostContentWidth = Qt.binding(function() {
+                        return Math.max(0, wrapper.width - wrapper.itemPaddingX * 2)
+                    })
             }
             // 零宽/负宽告警：插件根 Item 忘声明正 width 时槽位宽 0，加载
             // 成功却完全不可见且无任何日志——此处显式提示（模型里有插件 id）
