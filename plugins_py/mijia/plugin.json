@@ -1,0 +1,32 @@
+{
+  "id": "py_mijia",
+  "name": "米家",
+  "version": "0.1.0",
+  "author": "XuanHub",
+  "apiVersion": 2,
+  "configVersion": 1,
+  "capabilities": [
+    "barItem",
+    "settings",
+    "popup"
+  ],
+  "minHostVersion": "0.4.4",
+  "permissions": ["secrets.own", "storage.private"],
+  "qml": "Mijia.qml",
+  "settings": [
+    {
+      "group": "刷新",
+      "fields": [
+        {
+          "key": "refreshSeconds",
+          "type": "int",
+          "label": "状态栏刷新间隔（秒）",
+          "description": "打开面板时每 5 秒刷新当前设备；家庭和设备目录每 5 分钟刷新。",
+          "default": 10,
+          "min": 5,
+          "max": 300
+        }
+      ]
+    }
+  ]
+}

@@ -644,6 +644,7 @@ if(Python_Interpreter_FOUND)
         plugins_py/countdown
         plugins_py/heartrate
         plugins_py/hello
+        plugins_py/mijia
         plugins_py/intime
         plugins_py/todo
         plugins_py/agent_usage
