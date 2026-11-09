@@ -18,7 +18,14 @@
 #include <QFontDatabase>
 #include <QTranslator>
 #include <memory>
+#include <QTimeZone>
+#include <QPainter>
+#include <cmath>
+#include <limits>
+#include <windows.h>
 #include "PixelLandscapeViewModel.h"
+#include "SolarCalculator.h"
+#include "barplugin/HostServices.h"
 #include "barplugin/IBarPlugin2.h"
 #include "PopupService.h"
 
@@ -31,8 +38,9 @@ class PixelContext final : public QObject {
 public:
     QObject* popups = nullptr;
     int screenWidth = 1280;
+    int screenHeight = 900;
     QVariantMap colors() const { return {{"panel", "#20252e"}, {"fg", "#eef0f4"}, {"border", "#495464"}, {"accent", "#b1c8e5"}}; }
-    QVariantMap screenGeometry() const { return {{"x", 0}, {"y", 0}, {"width", screenWidth}, {"height", 900}}; }
+    QVariantMap screenGeometry() const { return {{"x", 0}, {"y", 0}, {"width", screenWidth}, {"height", screenHeight}}; }
     QString barEdge() const { return QStringLiteral("top"); }
     Q_INVOKABLE void openSettings() { Q_EMIT settingsRequested(); }
 Q_SIGNALS:
@@ -77,9 +85,327 @@ public:
     }
 };
 
+class FakeLandscapeLocation final : public LandscapeLocation {
+public:
+    QString permission = QStringLiteral("prompt");
+    quint64 current = 0;
+    int requests = 0;
+    bool interactive = false;
+    QString access() override { return permission; }
+    void request(quint64 id, bool prompt) override { current=id; ++requests; interactive=prompt; }
+    void cancel() override {}
+    void finish(const QString& error = {}, QDateTime time = QDateTime::currentDateTimeUtc()) {
+        Q_EMIT finished(current,error,39.9,116.4,time);
+    }
+};
+
+class PixelSettingsDraft final : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(QString pluginId READ pluginId CONSTANT)
+    Q_PROPERTY(int revision READ revision NOTIFY valuesChanged)
+public:
+    QVariantMap values;
+    int count = 0;
+    QString pluginId() const { return QStringLiteral("pixel_landscape"); }
+    int revision() const { return count; }
+    Q_INVOKABLE QVariant value(const QString& key) const { return values.value(key); }
+    Q_INVOKABLE void setValue(const QString& key,const QVariant& value) { values[key]=value; ++count; Q_EMIT valuesChanged(); }
+Q_SIGNALS:
+    void valuesChanged();
+};
+
+class PixelLocationStorage final : public xuanhub::IPluginStorage {
+public:
+    QByteArray bytes;
+    bool writable = true;
+    xuanhub::HostServiceResult readBytes(const QString&) const override { return xuanhub::HostServiceResult::succeeded(bytes); }
+    xuanhub::HostServiceResult writeBytes(const QString&, const QByteArray& value) override {
+        if(!writable)return xuanhub::HostServiceResult::failed("test_error",{});
+        bytes=value; return xuanhub::HostServiceResult::succeeded();
+    }
+    xuanhub::HostServiceResult removePath(const QString&) override { bytes.clear();return xuanhub::HostServiceResult::succeeded(); }
+    xuanhub::HostServiceResult list(const QString&) const override { return xuanhub::HostServiceResult::succeeded(); }
+};
+
 class PixelLandscapeTest final : public QObject {
     Q_OBJECT
 private Q_SLOTS:
+    void citySettingsBilingualRendering() {
+        for(const QString& locale:{"zh-CN","en-US"}) {
+            PixelTranslator translator;
+            QFile file(pluginSource("i18n/"+locale+".json"));QVERIFY(file.open(QIODevice::ReadOnly));
+            translator.contexts=QJsonDocument::fromJson(file.readAll()).object()["contexts"].toObject();
+            QCoreApplication::installTranslator(&translator);
+            for(int width:{360,620}) {
+                PixelSettingsDraft draft;draft.values={{"manualLocationEnabled",true},{"latitude",39.9075},{"longitude",116.39723}};
+                QQuickView view;QSignalSpy warnings(view.engine(),&QQmlEngine::warnings);
+                view.setSource(QUrl::fromLocalFile(pluginSource("PixelLandscapeSettings.qml")));
+                QCOMPARE(view.status(),QQuickView::Ready);
+                auto* root=view.rootObject();root->setWidth(width);
+                root->setProperty("plugin",QVariant::fromValue<QObject*>(&draft));
+                QTest::qWait(30);view.resize(width,qCeil(root->implicitHeight()));view.show();QTest::qWait(50);
+                auto* city=root->findChild<QObject*>("landscapeCity");QVERIFY(city);
+                QCOMPARE(city->property("currentIndex").toInt(),1);
+                QCOMPARE(city->property("currentText").toString(),locale=="zh-CN"?QStringLiteral("北京"):QStringLiteral("Beijing"));
+                const QString output=qEnvironmentVariable("XUANHUB_PIXEL_EVIDENCE");
+                if(!output.isEmpty())QVERIFY(view.grabWindow().save(output+"/city-settings-"+locale+"-"+QString::number(width)+".png"));
+                QCOMPARE(draft.count,0);QVERIFY(warnings.isEmpty());
+            }
+            QCoreApplication::removeTranslator(&translator);
+        }
+    }
+
+    void nativeLocationLive() {
+        if(!qEnvironmentVariableIsSet("XUANHUB_LIVE_LOCATION_TEST"))QSKIP("真实位置服务由独立验收显式启用");
+        WindowsLandscapeLocation location;
+        if(location.access()!=QStringLiteral("allowed"))QSKIP("未授予定位权限，不在测试中触发授权");
+        QSignalSpy replies(&location,&LandscapeLocation::finished);
+        location.request(1,false);
+        QTRY_COMPARE_WITH_TIMEOUT(replies.size(),1,22000);
+        const auto reply=replies.takeFirst();
+        const QString error=reply.at(1).toString();
+        qInfo()<<"Windows live location result:"<<(error.isEmpty()?QStringLiteral("success"):error);
+        if(error.isEmpty()) {
+            QVERIFY(landscape::validCoordinates(reply.at(2).toDouble(),reply.at(3).toDouble()));
+            QVERIFY(reply.at(4).toDateTime().isValid());
+        } else QVERIFY(QStringList({"denied","timeout","unavailable","prompt"}).contains(error));
+        location.request(2,false);location.cancel();QTest::qWait(300);
+        QVERIFY(replies.isEmpty());
+    }
+
+    void nativeLocationAccessReadOnly() {
+        WindowsLandscapeLocation location;
+        const QString status=location.access();
+        QVERIFY(QStringList({"allowed","denied","prompt","unavailable"}).contains(status));
+        qInfo()<<"Windows read-only location access:"<<status;
+        location.cancel();
+    }
+
+    void solarEnglishFallbackPopup() {
+        PixelTranslator translator;
+        QFile file(pluginSource("i18n/en-US.json"));QVERIFY(file.open(QIODevice::ReadOnly));
+        translator.contexts=QJsonDocument::fromJson(file.readAll()).object()["contexts"].toObject();
+        QCoreApplication::installTranslator(&translator);
+        auto* location=new FakeLandscapeLocation;location->permission="denied";
+        PixelLandscapeViewModel vm(nullptr,location);vm.applyConfig({});vm.start();
+        PopupService popups;PixelContext context;context.popups=&popups;context.screenWidth=700;context.screenHeight=450;
+        QQuickView view;view.setSource(QUrl::fromLocalFile(pluginSource("PixelLandscape.qml")));
+        QCOMPARE(view.status(),QQuickView::Ready);QSignalSpy warnings(view.engine(),&QQmlEngine::warnings);
+        auto* root=view.rootObject();root->setProperty("pluginContext",QVariant::fromValue<QObject*>(&context));
+        root->setProperty("plugin",QVariant::fromValue<QObject*>(&vm));view.show();
+        auto* popup=root->findChild<QQuickWindow*>("landscapePopup");popup->setProperty("closeOnDeactivate",false);
+        QVERIFY(QMetaObject::invokeMethod(root,"openLandscape"));QTRY_VERIFY(popup->isVisible());QTest::qWait(60);
+        QVERIFY(popup->height()<=context.screenHeight-24);QVERIFY(popup->width()<=context.screenWidth-24);
+        auto* info=root->findChild<QQuickItem*>("landscapeLocationInfo");QVERIFY(info);
+        QVERIFY(info->y()+info->implicitHeight()<=popup->height());
+        auto* button=root->findChild<QQuickItem*>("landscapeLocateButton");QVERIFY(button);
+        QTest::mouseClick(popup,Qt::LeftButton,Qt::NoModifier,button->mapToScene(QPointF(10,15)).toPoint());
+        QCOMPARE(location->requests,1);QVERIFY(location->interactive);
+        location->finish("denied");QTest::qWait(30);
+        const auto output=qEnvironmentVariable("XUANHUB_PIXEL_EVIDENCE");
+        if(!output.isEmpty())QVERIFY(popup->grabWindow().save(output+"/solar-popup-english-fallback.png"));
+        QVERIFY(warnings.isEmpty());QCoreApplication::removeTranslator(&translator);
+    }
+
+    void solarIndependentReference() {
+        QFile file(QStringLiteral(XUANHUB_SOURCE_DIR "/tests/fixtures/pixel-solar-usno.json"));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const auto cases=QJsonDocument::fromJson(file.readAll()).array();
+        QVERIFY(cases.size()>=6);
+        int maximumError=0;
+        for(const auto item:cases) {
+            const auto row=item.toObject();
+            const auto zone=QTimeZone::fromSecondsAheadOfUtc(row["offset"].toInt()*3600);
+            const auto date=QDate::fromString(row["date"].toString(),Qt::ISODate);
+            const auto result=landscape::solarState(QDateTime(date,QTime(12,0),zone),row["latitude"].toDouble(),row["longitude"].toDouble());
+            const QMap<QString,QString> names{{"Rise","sunrise"},{"Set","sunset"},{"Upper Transit","solarNoon"},
+                {"Begin Civil Twilight","dawn"},{"End Civil Twilight","dusk"}};
+            for(const auto event:row["events"].toArray()) {
+                const auto e=event.toObject();
+                const QString key=names.value(e["phen"].toString());
+                if(key.isEmpty())continue;
+                const auto actual=result.value(key).toDateTime();
+                const auto expected=QDateTime(date,QTime::fromString(e["time"].toString(),"hh:mm"),zone);
+                QVERIFY(actual.isValid());
+                const int error=std::abs(actual.secsTo(expected));
+                maximumError=qMax(maximumError,error);
+                QVERIFY2(error<=300,qPrintable(row["name"].toString()+" "+key+" error="+QString::number(error)));
+            }
+        }
+        qInfo()<<"USNO maximum event error (seconds):"<<maximumError;
+    }
+
+    void solarPolesClockAndContinuity() {
+        const auto utc=QTimeZone::utc();
+        for(double latitude:{-90.0,-78.0,78.0,90.0})for(int month:{6,12}) {
+            const bool summer=(latitude>0)==(month==6);
+            const auto state=landscape::solarState(QDateTime(QDate(2026,month,21),QTime(12,0),utc),latitude,0);
+            QCOMPARE(state.value("dayKind").toString(),summer?QStringLiteral("polarDay"):QStringLiteral("polarNight"));
+            QVERIFY(!state.contains("sunrise"));QVERIFY(!state.contains("sunset"));
+            for(const QString& key:{"elevation","mix","sunX","sunHeight","sunOpacity"})QVERIFY(std::isfinite(state.value(key).toDouble()));
+            if(!summer)QCOMPARE(state.value("sunOpacity").toDouble(),0.0);
+        }
+        const QTimeZone newYork("America/New_York");QVERIFY(newYork.isValid());
+        for(const QDate date:{QDate(2026,3,8),QDate(2026,11,1)}) {
+            const QDateTime now(date,QTime(12,0),newYork);
+            const auto local=landscape::solarState(now,40.71,-74.01);
+            const auto universal=landscape::solarState(now.toUTC(),40.71,-74.01);
+            QCOMPARE(local.value("elevation"),universal.value("elevation"));
+            QCOMPARE(local.value("sunrise").toDateTime().date(),date);
+            QCOMPARE(local.value("sunset").toDateTime().date(),date);
+        }
+        // 跨国际日期线只改变显示日期，不改变同一瞬间的光照。
+        const QDateTime instant(QDate(2026,6,21),QTime(22,30),utc);
+        QCOMPARE(landscape::solarState(instant,0,179.9).value("elevation"),
+                 landscape::solarState(instant.toTimeZone(QTimeZone::fromSecondsAheadOfUtc(14*3600)),0,179.9).value("elevation"));
+        for(double latitude:{0.0,39.9,65.0,78.0})for(int month:{6,12}) {
+            auto previous=landscape::solarState(QDateTime(QDate(2026,month,21),QTime(0,0),utc),latitude,0);
+            for(int minute=2;minute<=1440;minute+=2) {
+                const auto next=landscape::solarState(QDateTime(QDate(2026,month,21),QTime(0,0),utc).addSecs(minute*60),latitude,0);
+                QVERIFY(std::abs(next.value("elevation").toDouble()-previous.value("elevation").toDouble())<1.1);
+                QVERIFY(std::abs(next.value("warm").toDouble()-previous.value("warm").toDouble())<0.10);
+                QVERIFY(std::abs(next.value("twilightMix").toDouble()-previous.value("twilightMix").toDouble())<0.04);
+                previous=next;
+            }
+        }
+        QVERIFY(!landscape::solarState(instant,std::numeric_limits<double>::quiet_NaN(),0).value("active").toBool());
+    }
+
+    void solarLocationLifecycle() {
+        PixelLocationStorage storage;
+        auto* location=new FakeLandscapeLocation;
+        PixelLandscapeViewModel vm(nullptr,location);
+        vm.setStorage(&storage);
+        vm.applyConfig({});vm.start();
+        QCOMPARE(location->requests,0);QCOMPARE(vm.locationState().value("source").toString(),QStringLiteral("clock"));
+        vm.requestLocation();QCOMPARE(location->requests,1);QVERIFY(location->interactive);
+        vm.requestLocation();QCOMPARE(location->requests,1);
+        location->permission="allowed";location->finish();
+        QVERIFY(vm.solarState().value("active").toBool());QVERIFY(!storage.bytes.isEmpty());
+        QCOMPARE(vm.locationState().value("source").toString(),QStringLiteral("system"));
+        vm.requestLocation();location->finish("timeout");
+        QCOMPARE(vm.locationState().value("source").toString(),QStringLiteral("cache"));
+        QCOMPARE(vm.locationState().value("error").toString(),QStringLiteral("timeout"));
+        const QVariantMap manual{{"manualLocationEnabled",true},{"latitude",-33.87},{"longitude",151.21}};
+        vm.applyConfig(manual);
+        vm.refreshAt(QDateTime::currentDateTime().addDays(2));
+        QCOMPARE(vm.locationState().value("source").toString(),QStringLiteral("manual"));
+        vm.requestLocation();const quint64 previous=location->current;
+        QVariantMap manualOnly=manual;manualOnly["locationSource"]="manual";
+        vm.applyConfig(manualOnly);
+        Q_EMIT location->finished(previous,{},20,30,QDateTime::currentDateTimeUtc());
+        QCOMPARE(vm.locationState().value("source").toString(),QStringLiteral("manual"));
+        location->permission="denied";vm.applyConfig(manual);
+        QCOMPARE(vm.locationState().value("source").toString(),QStringLiteral("manual"));
+        QVERIFY(storage.bytes.isEmpty());
+        vm.applyConfig({});QCOMPARE(vm.locationState().value("source").toString(),QStringLiteral("clock"));
+        vm.requestLocation();location->permission="allowed";location->finish();
+        vm.checkLocation(QDateTime::currentDateTime().addSecs(1801));
+        QVERIFY(!location->interactive);QVERIFY(vm.m_pending);
+        const auto before=vm.solarState();vm.stop();location->finish();QCOMPARE(vm.solarState(),before);
+        vm.requestLocation();QVERIFY(!vm.m_pending);
+        // 重新启动复用缓存；拒绝授权时不允许缓存继续伪装当前位置。
+        auto* cachedLocation=new FakeLandscapeLocation;cachedLocation->permission="allowed";
+        PixelLandscapeViewModel restored(nullptr,cachedLocation);restored.setStorage(&storage);restored.start();
+        QCOMPARE(restored.locationState().value("source").toString(),QStringLiteral("cache"));
+        cachedLocation->permission="denied";restored.resync();
+        QCOMPARE(restored.locationState().value("source").toString(),QStringLiteral("clock"));
+        QVERIFY(storage.bytes.isEmpty());
+    }
+
+    void solarNativeClockResyncWhilePaused() {
+        PixelLandscapeViewModel vm(nullptr,new FakeLandscapeLocation);
+        vm.applyConfig({{"locationSource","manual"},{"manualLocationEnabled",true},{"latitude",39.9},{"longitude",116.4},
+                        {"animationsEnabled",false}});
+        vm.start();vm.setPaused(true);
+        const auto old=QDateTime::currentDateTime().addSecs(-6*3600);
+        for(const UINT message:{UINT(WM_TIMECHANGE),UINT(WM_POWERBROADCAST)}) {
+            vm.refreshAt(old,true);QSignalSpy changes(&vm,&PixelLandscapeViewModel::solarStateChanged);
+            MSG msg{};msg.message=message;msg.wParam=PBT_APMRESUMEAUTOMATIC;
+            QVERIFY(!vm.nativeEventFilter("windows_generic_MSG",&msg,nullptr));
+            vm.nativeEventFilter("windows_generic_MSG",&msg,nullptr);
+            QCOMPARE(changes.size(),0);QTRY_COMPARE(changes.size(),1);
+            QVERIFY(std::abs(vm.m_lastCheck.secsTo(QDateTime::currentDateTime()))<2);
+        }
+        MSG msg{};msg.message=WM_TIMECHANGE;
+        vm.nativeEventFilter("windows_generic_MSG",&msg,nullptr);vm.stop();
+        QSignalSpy changes(&vm,&PixelLandscapeViewModel::solarStateChanged);QTest::qWait(20);QVERIFY(changes.isEmpty());
+    }
+
+    void solarConfigAndCacheValidation() {
+        PixelLandscapeViewModel vm;
+        const QVariantMap manual{{"locationSource","manual"},{"manualLocationEnabled",true},{"latitude",0.0},{"longitude",0.0}};
+        QVERIFY(vm.applyConfig(manual));QVERIFY(vm.solarState().value("active").toBool());
+        for(const QVariantMap& invalid:QList<QVariantMap>{
+                {{"latitude",20}},{{"latitude","20"},{"longitude",30}},{{"latitude",91.0},{"longitude",0.0}},
+                {{"latitude",0.0},{"longitude",181.0}},{{"manualLocationEnabled",true}},{{"locationSource","manual"}},
+                {{"latitude",std::numeric_limits<double>::infinity()},{"longitude",0.0}},{{"manualLocationEnabled",1}}}) {
+            QVERIFY(!vm.applyConfig(invalid));QVERIFY(vm.solarState().value("active").toBool());
+        }
+        QVERIFY(vm.applyConfig({{"latitude",0.0},{"longitude",0.0}}));QVERIFY(!vm.solarState().value("active").toBool());
+        PixelLocationStorage storage;storage.bytes="{broken";
+        auto* location=new FakeLandscapeLocation;
+        PixelLandscapeViewModel restored(nullptr,location);restored.setStorage(&storage);restored.start();
+        QVERIFY(!restored.solarState().value("active").toBool());
+        restored.requestLocation();location->finish({},QDateTime::currentDateTimeUtc().addDays(1));
+        QCOMPARE(restored.locationState().value("error").toString(),QStringLiteral("invalid_position"));
+        restored.requestLocation();storage.writable=false;location->finish();
+        QCOMPARE(restored.locationState().value("error").toString(),QStringLiteral("cache_write_failed"));
+        QVERIFY(restored.solarState().value("active").toBool());
+    }
+
+    void solarRenderingAndStaticBudget() {
+        QQuickView view;view.setResizeMode(QQuickView::SizeRootObjectToView);
+        view.setSource(QUrl::fromLocalFile(pluginSource("LandscapeScene.qml")));
+        QCOMPARE(view.status(),QQuickView::Ready);
+        QSignalSpy warnings(view.engine(),&QQmlEngine::warnings);
+        auto* root=view.rootObject();root->setProperty("expanded",true);
+        view.resize(320,180);view.show();
+        const QTimeZone zone=QTimeZone::fromSecondsAheadOfUtc(8*3600);
+        const auto day=QDate(2026,6,21);
+        auto noon=landscape::solarState(QDateTime(day,QTime(12,0),zone),39.9,116.4);
+        root->setProperty("solarState",noon);QTest::qWait(40);
+        const int paints=root->property("staticPaintCount").toInt();
+        auto* sun=root->findChild<QQuickItem*>("solarDisc");QVERIFY(sun);
+        const double x=sun->x();noon["sunX"]=0.75;root->setProperty("solarState",noon);
+        QTest::qWait(40);QVERIFY(sun->x()!=x);
+        QCOMPARE(root->property("staticPaintCount").toInt(),paints);
+        root->setProperty("solarState",landscape::solarState(QDateTime(day,QTime(13,0),zone),39.9,116.4));
+        QTest::qWait(40);QCOMPARE(root->property("staticPaintCount").toInt(),paints);
+        const QStringList scenes{"cabin","lighthouse","street","campsite","railway","island"};
+        const QList<QTime> moments{QTime(4,10),QTime(4,46),QTime(7,0),QTime(12,16),QTime(19,46),QTime(22,0)};
+        QImage gallery(6*320,6*204,QImage::Format_RGB32);gallery.fill(QColor("#182330"));QPainter painter(&gallery);
+        for(int row=0;row<scenes.size();++row)for(int col=0;col<moments.size();++col) {
+            root->setProperty("sceneType",scenes[row]);
+            root->setProperty("solarState",landscape::solarState(QDateTime(day,moments[col],zone),39.9,116.4));
+            QTest::qWait(25);const auto frame=view.grabWindow();QVERIFY(!frame.isNull());
+            painter.drawImage(QRect(col*320,row*204+24,320,180),frame);
+            painter.setPen(Qt::white);painter.drawText(col*320+8,row*204+17,scenes[row]+" "+moments[col].toString("hh:mm"));
+        }
+        painter.end();
+        const QString output=qEnvironmentVariable("XUANHUB_PIXEL_EVIDENCE");
+        if(!output.isEmpty()){QDir().mkpath(output);QVERIFY(gallery.save(output+"/solar-day-gallery.png"));}
+        // 关闭装饰动画后，现实光照仍驱动两处画面，且不推进动画时钟。
+        PixelLandscapeViewModel vm;vm.applyConfig({{"manualLocationEnabled",true},{"latitude",39.9},{"longitude",116.4},{"animationsEnabled",false}});
+        PopupService popups;PixelContext context;context.popups=&popups;
+        QQuickView plugin;plugin.setSource(QUrl::fromLocalFile(pluginSource("PixelLandscape.qml")));
+        QCOMPARE(plugin.status(),QQuickView::Ready);
+        QSignalSpy pluginWarnings(plugin.engine(),&QQmlEngine::warnings);
+        auto* body=plugin.rootObject();body->setProperty("pluginContext",QVariant::fromValue<QObject*>(&context));
+        body->setProperty("plugin",QVariant::fromValue<QObject*>(&vm));plugin.show();
+        auto* popup=body->findChild<QQuickWindow*>("landscapePopup");popup->setProperty("closeOnDeactivate",false);
+        QVERIFY(QMetaObject::invokeMethod(body,"openLandscape"));QTRY_VERIFY(popup->isVisible());
+        const auto night=QDateTime(day,QTime(22,0),zone);vm.refreshAt(night,true);QTest::qWait(40);
+        const auto* bar=body->findChild<QObject*>("barScene");const auto* expanded=body->findChild<QObject*>("expandedScene");
+        QVERIFY(expanded);QCOMPARE(bar->property("lightKey"),expanded->property("lightKey"));
+        const auto previousKey=bar->property("lightKey");
+        vm.refreshAt(QDateTime(day,QTime(12,0),zone),true);QTest::qWait(40);
+        QVERIFY(previousKey!=bar->property("lightKey"));QCOMPARE(bar->property("lightKey"),expanded->property("lightKey"));
+        QCOMPARE(body->findChild<QObject*>("landscapeController")->property("animationTime").toDouble(),0.0);
+        if(!output.isEmpty())QVERIFY(popup->grabWindow().save(output+"/solar-popup.png"));
+        QVERIFY(warnings.isEmpty());QVERIFY(pluginWarnings.isEmpty());
+    }
+
     void phasesAndClockJumps() {
         const QList<QPair<QTime, QString>> boundaries = {
             {QTime(0,0), "night"}, {QTime(4,59,59), "night"}, {QTime(5,0), "dawn"},
@@ -569,6 +895,18 @@ static int runProbe(QGuiApplication& app, const QStringList& args) {
     PixelLandscapeViewModel vm;
     vm.applyConfig({{"timeMode","night"},{"weather","rain"},
         {"scene",qEnvironmentVariable("XUANHUB_PIXEL_SCENE",QStringLiteral("cabin"))}});vm.start();
+    const bool solarProbe=qEnvironmentVariableIsSet("XUANHUB_PIXEL_SOLAR_PROBE");
+    if(solarProbe)vm.applyConfig({{"locationSource","manual"},{"manualLocationEnabled",true},
+        {"latitude",39.9},{"longitude",116.4},{"scene",vm.scene()}});
+    QTimer solarClock;
+    int solarTick=0;
+    if(solarProbe) {
+        solarClock.setInterval(1000);
+        QObject::connect(&solarClock,&QTimer::timeout,&app,[&]{
+            vm.refreshAt(QDateTime(QDate(2026,6,21),QTime(4,15),QTimeZone::fromSecondsAheadOfUtc(8*3600)).addSecs(++solarTick*120),true);
+        });
+        solarClock.start();
+    }
     PopupService popups;PixelContext context;context.popups=&popups;
     QQuickView view;
     view.setTitle(QStringLiteral("Pixel Landscape verification"));
@@ -619,6 +957,7 @@ Rectangle {
             if(popup&&popup->isVisible())popup->grabWindow().save(output+"/probe-popup-expanded.png");
             const auto* scene=view.rootObject()->findChild<QObject*>("barScene");
             QJsonObject report{{"scenario",scenario},{"scene",vm.scene()},{"seconds",seconds},{"cycles",qMin(60,cycle)/2},
+                {"solarProbe",solarProbe},{"solarUpdates",solarTick},
                 {"staticPaintCount",scene?scene->property("staticPaintCount").toInt():0},
                 {"dynamicPaintCount",scene?scene->property("dynamicPaintCount").toInt():0}};
             QFile file(output+"/probe-"+scenario+".json");file.open(QIODevice::WriteOnly);file.write(QJsonDocument(report).toJson());
@@ -636,10 +975,13 @@ int main(int argc,char** argv) {
         const QString fonts=qEnvironmentVariable("WINDIR")+QStringLiteral("/Fonts/");
         QFontDatabase::addApplicationFont(fonts+QStringLiteral("segoeui.ttf"));
         QFontDatabase::addApplicationFont(fonts+QStringLiteral("msyh.ttc"));
+        app.setFont(QFont(QStringLiteral("Segoe UI"),9));
     }
     qputenv("QT_QUICK_CONTROLS_STYLE","Basic");
     qmlRegisterType(QUrl::fromLocalFile(QStringLiteral(XUANHUB_SOURCE_DIR "/app/qml/PluginPopup.qml")),"XuanHub",1,0,"PluginPopup");
-    qmlRegisterSingletonType<PixelUiMetrics>("XuanHub",1,0,"UiMetrics",[](QQmlEngine*,QJSEngine*) -> QObject* {return new PixelUiMetrics;});
+    qmlRegisterSingletonType(QUrl::fromLocalFile(QStringLiteral(XUANHUB_SOURCE_DIR "/app/qml/UiMetrics.qml")),"XuanHub",1,0,"UiMetrics");
+    for(const QString& name:{"UiCard","UiComboBox","UiTextField"})
+        qmlRegisterType(QUrl::fromLocalFile(QStringLiteral(XUANHUB_SOURCE_DIR "/app/qml/")+name+".qml"),"XuanHub",1,0,name.toUtf8().constData());
     if(app.arguments().contains(QStringLiteral("--probe")))return runProbe(app,app.arguments());
     PixelLandscapeTest test;
     return QTest::qExec(&test,argc,argv);

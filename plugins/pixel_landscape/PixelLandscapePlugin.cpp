@@ -1,12 +1,13 @@
-// PixelLandscapePlugin.cpp — 像素小风景 生命周期实现
+// PixelLandscapePlugin.cpp — 朝暮插件生命周期实现
 #include "PixelLandscapePlugin.h"
 #include "PixelLandscapeViewModel.h"
+#include "barplugin/HostServices.h"
 
 xuanhub::PluginDescriptor PixelLandscapePlugin::descriptor() const {
     xuanhub::PluginDescriptor value;
     value.id = QStringLiteral("pixel_landscape");
-    value.displayName = QStringLiteral("像素小风景");
-    value.version = QStringLiteral("0.1.0");
+    value.displayName = QStringLiteral("朝暮");
+    value.version = QStringLiteral("0.2.0");
     value.apiVersion = 2;
     value.configVersion = 1;
     value.minHostVersion = QStringLiteral("0.4.0");
@@ -14,7 +15,9 @@ xuanhub::PluginDescriptor PixelLandscapePlugin::descriptor() const {
     value.author = QStringLiteral("XuanHub");
     value.entry.backend = QStringLiteral("pixel_landscape.dll");
     value.entry.qml = QStringLiteral("PixelLandscape.qml");
+    value.entry.settingsQml = QStringLiteral("PixelLandscapeSettings.qml");
     value.capabilities = {QStringLiteral("barItem"), QStringLiteral("settings"), QStringLiteral("popup")};
+    value.permissions = {QStringLiteral("storage.private")};
     value.layout.declared = true;
     value.layout.region = QStringLiteral("center");
     value.layout.minWidth = 160;
@@ -34,6 +37,8 @@ xuanhub::PluginInitResult PixelLandscapePlugin::initialize(const xuanhub::Plugin
     const auto validation = validateConfig(context.pluginConfig);
     if (!validation.valid) return xuanhub::PluginInitResult::failed(validation.error);
     m_viewModel = new PixelLandscapeViewModel;
+    if (context.hostServices && context.hostServices->hasPermission(QStringLiteral("storage.private")))
+        m_viewModel->setStorage(context.hostServices->storage());
     m_viewModel->applyConfig(context.pluginConfig);
     m_viewModel->start();
     return xuanhub::PluginInitResult::succeeded();

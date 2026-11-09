@@ -13,13 +13,13 @@ function tent(c,g,p,snow) {
     A.shape(c,g,p.tile,[[-33,-1],[-12,-38],[25,-35],[41,-1]])
     A.shape(c,g,p.glow,[[-33,-1],[-12,-38],[11,-1]])
     A.shape(c,g,p.wood,[[-25,-1],[-12,-28],[3,-1]])
-    A.shape(c,g,p.glow,[[-21,-1],[-12,-23],[-5,-1]])
+    A.shape(c,g,p.lamp,[[-21,-1],[-12,-23],[-5,-1]])
     A.part(c,g,p.trim,-13,-43,2,44)
     A.part(c,g,p.earth,-38,1,86,3)
     A.shape(c,g,p.cloud,[[28,-34],[29,-34],[51,2],[50,2]])
     A.part(c,g,p.trim,50,0,2,5)
     if(snow)A.shape(c,g,p.snow,[[-34,-1],[-12,-40],[29,-36],[32,-30],[-11,-36],[-29,-1]])
-    A.part(c,g,p.trim,28,-23,2,24);A.part(c,g,p.glow,25,-21,8,10)
+    A.part(c,g,p.trim,28,-23,2,24);A.part(c,g,p.lamp,25,-21,8,10)
     A.part(c,g,p.trim,25,-22,8,2);A.part(c,g,p.trim,25,-11,8,2)
     // 火盆和柴堆是静态地形；暂停时动态火焰保持最后一帧。
     A.part(c,g,p.rock,-66,5,19,3);A.part(c,g,p.wood,-63,2,14,3)
@@ -69,7 +69,7 @@ function drawDynamic(c,g,p,weather,time,meteor) {
             A.part(c,g,p.glow,-57+Math.sin(time+spark)*3,-12-age*9,1,1)
         }
     }
-    if(p.warm>0.2&&weather==="clear") {
+    if(p.warm>0&&weather==="clear") {
         for(var fly=0;fly<8;fly++) {
             c.globalAlpha=(0.2+0.6*Math.max(0,Math.sin(time*0.7+fly)))*p.warm
             A.rect(c,p.glow,g.w*(0.40+A.noise(fly+8)*0.45)+Math.sin(time*0.3+fly)*3,g.ground-2-A.noise(fly+99)*g.h*0.19+Math.cos(time*0.4+fly)*2,1,1)

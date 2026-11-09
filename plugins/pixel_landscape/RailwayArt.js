@@ -35,7 +35,7 @@ function drawStatic(c,g,p,weather) {
         var bx=g.w*0.28,by=g.ground
         A.rect(c,p.wall,bx,by-16*g.s,26*g.s,16*g.s)
         A.polygon(c,weather==="snow"?p.snow:p.roof,[[bx-3*g.s,by-16*g.s],[bx+13*g.s,by-27*g.s],[bx+30*g.s,by-16*g.s]])
-        A.rect(c,p.glow,bx+4*g.s,by-12*g.s,5*g.s,7*g.s)
+        A.rect(c,p.lamp,bx+4*g.s,by-12*g.s,5*g.s,7*g.s)
         A.rect(c,p.trim,bx+16*g.s,by-12*g.s,6*g.s,12*g.s)
     }
     A.rect(c,p.rock,0,g.rail+1,g.w,5*g.s)
@@ -68,7 +68,7 @@ function drawDynamic(c,g,p,weather,time,meteor) {
             A.rect(c,p.tile,cx+1,cy+1,38*g.s,15*g.s)
             A.rect(c,weather==="snow"?p.snow:p.cloud,cx,cy,40*g.s,3*g.s)
             A.rect(c,p.earth,cx+1,cy+11*g.s,38*g.s,2*g.s)
-            for(var win=0;win<4;win++)A.rect(c,p.warm>0.2?p.glow:p.ripple,cx+(4+win*9)*g.s,cy+5*g.s,6*g.s,5*g.s)
+            for(var win=0;win<4;win++)A.rect(c,p.window,cx+(4+win*9)*g.s,cy+5*g.s,6*g.s,5*g.s)
             A.rect(c,p.trim,cx+6*g.s,g.rail-3*g.s,5*g.s,4*g.s)
             A.rect(c,p.trim,cx+28*g.s,g.rail-3*g.s,5*g.s,4*g.s)
         }

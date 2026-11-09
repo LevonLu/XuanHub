@@ -64,20 +64,21 @@ TestCase {
  }
 }''', encoding="utf-8")
             log = Path(imports) / "settings-presentation.txt"
-            result = subprocess.run(
-                [runner, "-import", imports, "-input", str(ROOT / "tests/qml/tst_SettingsPresentation.qml"),
-                 "-o", str(log) + ",txt"],
-                env={**os.environ, "QT_QPA_PLATFORM": "offscreen", "QT_QUICK_BACKEND": "software",
-                     "QT_QPA_FONTDIR": str(Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts"),
-                     "QT_QUICK_CONTROLS_STYLE": "FluentWinUI3"},
-                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
-            output = result.stdout + result.stderr
-            if log.is_file():
-                output += log.read_text(encoding="utf-8", errors="replace")
-            self.assertEqual(result.returncode, 0, output)
-            self.assertNotIn("Binding loop", output)
-            self.assertNotIn("TypeError:", output)
-            self.assertNotIn("ReferenceError:", output)
+            for test_file in ("tst_SettingsPresentation.qml", "tst_PixelLandscapeSettings.qml"):
+                result = subprocess.run(
+                    [runner, "-import", imports, "-input", str(ROOT / "tests/qml" / test_file),
+                     "-o", str(log) + ",txt"],
+                    env={**os.environ, "QT_QPA_PLATFORM": "offscreen", "QT_QUICK_BACKEND": "software",
+                         "QT_QPA_FONTDIR": str(Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts"),
+                         "QT_QUICK_CONTROLS_STYLE": "FluentWinUI3"},
+                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
+                output = result.stdout + result.stderr
+                if log.is_file():
+                    output += log.read_text(encoding="utf-8", errors="replace")
+                self.assertEqual(result.returncode, 0, output)
+                self.assertNotIn("Binding loop", output)
+                self.assertNotIn("TypeError:", output)
+                self.assertNotIn("ReferenceError:", output)
             enum_result = subprocess.run(
                 [runner, "-import", imports, "-input", str(enum_test), "-o", str(log) + ",txt"],
                 env={**os.environ, "QT_QPA_PLATFORM": "offscreen", "QT_QUICK_BACKEND": "software",

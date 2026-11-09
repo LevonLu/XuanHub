@@ -4,6 +4,9 @@ add_executable(xuanhub_pixel_landscape_tests
     PixelLandscapeTest.cpp
     ${CMAKE_SOURCE_DIR}/plugins/pixel_landscape/PixelLandscapeViewModel.h
     ${CMAKE_SOURCE_DIR}/plugins/pixel_landscape/PixelLandscapeViewModel.cpp
+    ${CMAKE_SOURCE_DIR}/plugins/pixel_landscape/SolarCalculator.cpp
+    ${CMAKE_SOURCE_DIR}/plugins/pixel_landscape/LandscapeLocation.h
+    ${CMAKE_SOURCE_DIR}/plugins/pixel_landscape/LandscapeLocation.cpp
     ${CMAKE_SOURCE_DIR}/app/src/PopupService.h
     ${CMAKE_SOURCE_DIR}/app/src/PopupService.cpp)
 set_target_properties(xuanhub_pixel_landscape_tests PROPERTIES AUTOMOC ON
@@ -11,7 +14,7 @@ set_target_properties(xuanhub_pixel_landscape_tests PROPERTIES AUTOMOC ON
 target_include_directories(xuanhub_pixel_landscape_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/plugins/pixel_landscape ${CMAKE_SOURCE_DIR}/app/src)
 target_compile_definitions(xuanhub_pixel_landscape_tests PRIVATE XUANHUB_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-target_link_libraries(xuanhub_pixel_landscape_tests PRIVATE barplugin Qt6::Quick Qt6::Test user32)
+target_link_libraries(xuanhub_pixel_landscape_tests PRIVATE barplugin Qt6::Quick Qt6::Test user32 windowsapp)
 add_dependencies(xuanhub_pixel_landscape_tests XuanHub pixel_landscape)
 # 主程序的 windeployqt 只部署 Windows 平台；离屏测试必须显式带上同一 Qt 的插件。
 add_custom_command(TARGET xuanhub_pixel_landscape_tests POST_BUILD

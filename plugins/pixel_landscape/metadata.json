@@ -1,7 +1,7 @@
 {
   "id": "pixel_landscape",
-  "name": "像素小风景",
-  "version": "0.1.0",
+  "name": "朝暮",
+  "version": "0.2.0",
   "author": "XuanHub",
   "apiVersion": 2,
   "configVersion": 1,
@@ -9,14 +9,17 @@
   "maxHostVersion": "0.x",
   "entry": {
     "backend": "pixel_landscape.dll",
-    "qml": "PixelLandscape.qml"
+    "qml": "PixelLandscape.qml",
+    "settingsQml": "PixelLandscapeSettings.qml"
   },
   "capabilities": [
     "barItem",
     "settings",
     "popup"
   ],
-  "permissions": [],
+  "permissions": [
+    "storage.private"
+  ],
   "compatibility": {
     "architecture": "x64",
     "qtVersion": "6.9.3",
@@ -76,7 +79,7 @@
           "options": [
             {
               "value": "auto",
-              "label": "跟随本地时间"
+              "label": "跟随当地太阳"
             },
             {
               "value": "dawn",
@@ -155,6 +158,59 @@
           "type": "bool",
           "label": "偶发流星",
           "default": true
+        }
+      ]
+    },
+    {
+      "group": "地理位置",
+      "fields": [
+        {
+          "key": "locationSource",
+          "type": "enum",
+          "label": "定位方式",
+          "default": "system",
+          "options": [
+            {
+              "value": "system",
+              "label": "Windows 定位优先"
+            },
+            {
+              "value": "manual",
+              "label": "仅使用手动位置"
+            }
+          ]
+        },
+        {
+          "key": "manualLocationEnabled",
+          "type": "bool",
+          "label": "启用手动位置（系统定位失败时备用）",
+          "default": false
+        },
+        {
+          "key": "latitude",
+          "type": "double",
+          "label": "纬度（北纬为正）",
+          "default": 0,
+          "min": -90,
+          "max": 90,
+          "decimals": 5,
+          "enabledWhen": {
+            "key": "manualLocationEnabled",
+            "truthy": true
+          }
+        },
+        {
+          "key": "longitude",
+          "type": "double",
+          "label": "经度（东经为正）",
+          "default": 0,
+          "min": -180,
+          "max": 180,
+          "decimals": 5,
+          "enabledWhen": {
+            "key": "manualLocationEnabled",
+            "truthy": true
+          }
         }
       ]
     }

@@ -1,0 +1,182 @@
+[
+  {
+    "name": "Beijing summer",
+    "date": "2026-06-21",
+    "latitude": 39.9,
+    "longitude": 116.4,
+    "offset": 8,
+    "source": "https://aa.usno.navy.mil/api/rstt/oneday?date=2026-06-21&coords=39.9,116.4&tz=8",
+    "events": [
+      {
+        "phen": "Begin Civil Twilight",
+        "time": "04:13"
+      },
+      {
+        "phen": "Rise",
+        "time": "04:46"
+      },
+      {
+        "phen": "Upper Transit",
+        "time": "12:16"
+      },
+      {
+        "phen": "Set",
+        "time": "19:46"
+      },
+      {
+        "phen": "End Civil Twilight",
+        "time": "20:19"
+      }
+    ]
+  },
+  {
+    "name": "Beijing winter",
+    "date": "2026-12-21",
+    "latitude": 39.9,
+    "longitude": 116.4,
+    "offset": 8,
+    "source": "https://aa.usno.navy.mil/api/rstt/oneday?date=2026-12-21&coords=39.9,116.4&tz=8",
+    "events": [
+      {
+        "phen": "Begin Civil Twilight",
+        "time": "07:02"
+      },
+      {
+        "phen": "Rise",
+        "time": "07:32"
+      },
+      {
+        "phen": "Upper Transit",
+        "time": "12:12"
+      },
+      {
+        "phen": "Set",
+        "time": "16:52"
+      },
+      {
+        "phen": "End Civil Twilight",
+        "time": "17:23"
+      }
+    ]
+  },
+  {
+    "name": "Sydney summer",
+    "date": "2026-12-21",
+    "latitude": -33.87,
+    "longitude": 151.21,
+    "offset": 11,
+    "source": "https://aa.usno.navy.mil/api/rstt/oneday?date=2026-12-21&coords=-33.87,151.21&tz=11",
+    "events": [
+      {
+        "phen": "Begin Civil Twilight",
+        "time": "05:11"
+      },
+      {
+        "phen": "Rise",
+        "time": "05:41"
+      },
+      {
+        "phen": "Upper Transit",
+        "time": "12:53"
+      },
+      {
+        "phen": "Set",
+        "time": "20:05"
+      },
+      {
+        "phen": "End Civil Twilight",
+        "time": "20:35"
+      }
+    ]
+  },
+  {
+    "name": "New York DST",
+    "date": "2026-03-08",
+    "latitude": 40.71,
+    "longitude": -74.01,
+    "offset": -4,
+    "source": "https://aa.usno.navy.mil/api/rstt/oneday?date=2026-03-08&coords=40.71,-74.01&tz=-4",
+    "events": [
+      {
+        "phen": "Begin Civil Twilight",
+        "time": "06:52"
+      },
+      {
+        "phen": "Rise",
+        "time": "07:19"
+      },
+      {
+        "phen": "Upper Transit",
+        "time": "13:07"
+      },
+      {
+        "phen": "Set",
+        "time": "18:55"
+      },
+      {
+        "phen": "End Civil Twilight",
+        "time": "19:23"
+      }
+    ]
+  },
+  {
+    "name": "Greenwich leap",
+    "date": "2024-02-29",
+    "latitude": 51.48,
+    "longitude": 0,
+    "offset": 0,
+    "source": "https://aa.usno.navy.mil/api/rstt/oneday?date=2024-02-29&coords=51.48,0&tz=0",
+    "events": [
+      {
+        "phen": "Begin Civil Twilight",
+        "time": "06:13"
+      },
+      {
+        "phen": "Rise",
+        "time": "06:46"
+      },
+      {
+        "phen": "Upper Transit",
+        "time": "12:12"
+      },
+      {
+        "phen": "Set",
+        "time": "17:39"
+      },
+      {
+        "phen": "End Civil Twilight",
+        "time": "18:13"
+      }
+    ]
+  },
+  {
+    "name": "Quito equinox",
+    "date": "2026-09-22",
+    "latitude": -0.18,
+    "longitude": -78.47,
+    "offset": -5,
+    "source": "https://aa.usno.navy.mil/api/rstt/oneday?date=2026-09-22&coords=-0.18,-78.47&tz=-5",
+    "events": [
+      {
+        "phen": "Begin Civil Twilight",
+        "time": "05:43"
+      },
+      {
+        "phen": "Rise",
+        "time": "06:03"
+      },
+      {
+        "phen": "Upper Transit",
+        "time": "12:07"
+      },
+      {
+        "phen": "Set",
+        "time": "18:10"
+      },
+      {
+        "phen": "End Civil Twilight",
+        "time": "18:30"
+      }
+    ]
+  }
+]

@@ -43,6 +43,25 @@ Item {
         : weather === "snow" ? qsTranslate("plugin.pixel_landscape.main", "飘雪")
         : qsTranslate("plugin.pixel_landscape.main", "晴天")
     readonly property string statusText: phaseLabel + " · " + weatherLabel
+    readonly property var solar: plugin && plugin.solarState !== undefined ? plugin.solarState : ({active: false})
+    readonly property var location: plugin && plugin.locationState !== undefined ? plugin.locationState : ({})
+    readonly property string locationLabel: location.source === "system" ? qsTranslate("plugin.pixel_landscape.main", "Windows 当前位置")
+        : location.source === "cache" ? qsTranslate("plugin.pixel_landscape.main", "最近位置（24 小时内）")
+        : location.source === "manual" ? qsTranslate("plugin.pixel_landscape.main", "手动位置")
+        : qsTranslate("plugin.pixel_landscape.main", "未取得位置，使用固定时段")
+    readonly property string locationHint: location.pending ? qsTranslate("plugin.pixel_landscape.main", "正在定位…")
+        : location.error === "denied" ? qsTranslate("plugin.pixel_landscape.main", "定位被拒绝或关闭。可在 Windows 设置的隐私与安全中启用位置，或设置手动坐标。")
+        : location.error === "timeout" ? qsTranslate("plugin.pixel_landscape.main", "定位超时，可重试或设置手动坐标。")
+        : location.error === "foreground_required" ? qsTranslate("plugin.pixel_landscape.main", "请在此窗口中重新点击定位。")
+        : location.error === "cache_write_failed" ? qsTranslate("plugin.pixel_landscape.main", "位置已取得，但缓存保存失败。")
+        : location.error === "prompt" || (!solar.active && !location.error) ? qsTranslate("plugin.pixel_landscape.main", "点击获取当前位置，或在设置中启用手动坐标。")
+        : location.error ? qsTranslate("plugin.pixel_landscape.main", "系统暂时无法提供位置，可重试或设置手动坐标。") : ""
+    function solarTime(value) { return value ? Qt.formatTime(value, "hh:mm") : "—" }
+    readonly property string solarTimes: !solar.active ? ""
+        : (solar.dayKind === "polarDay" ? qsTranslate("plugin.pixel_landscape.main", "极昼")
+           : solar.dayKind === "polarNight" ? qsTranslate("plugin.pixel_landscape.main", "极夜")
+           : qsTranslate("plugin.pixel_landscape.main", "日出 %1 · 日落 %2").arg(solarTime(solar.sunrise)).arg(solarTime(solar.sunset)))
+          + " · " + qsTranslate("plugin.pixel_landscape.main", "电脑时区 %1").arg(solar.timeZone || "")
 
     function openLandscape() {
         // 不提供服务时保持栏上可用；窗口定位只由宿主处理。
@@ -87,6 +106,7 @@ Item {
         animationTime: controller.animationTime
         blend: controller.blend
         meteor: controller.meteor
+        solarState: root.solar
         drawingVisible: root.barVisible
     }
     MouseArea {
@@ -112,10 +132,12 @@ Item {
         readonly property var available: root.pluginContext ? root.pluginContext.screenGeometry : ({})
         readonly property real usableWidth: Math.max(1, Number(available.width || 800) - 24)
         readonly property real usableHeight: Math.max(1, Number(available.height || 600) - 24)
-        // 先用单行工具栏估计可用宽度，再决定换行，避免 width 与 sceneWidth 相互依赖。
+        // 先按窄版页脚预留高度，再决定换行；宽而矮的屏幕也不能挤掉定位提示。
         readonly property real initialSceneWidth: Math.max(1, Math.min(640, usableWidth,
-                                                     (usableHeight - 48) * 16 / 9))
-        readonly property real toolbarHeight: initialSceneWidth < 460 ? 88 : 48
+                                                     (usableHeight - (root.location.automatic ? 268 : 88)) * 16 / 9))
+        readonly property real actionHeight: initialSceneWidth < 460 ? 88 : 48
+        readonly property real locationHeight: root.location.automatic ? (initialSceneWidth < 460 ? 180 : 140) : 0
+        readonly property real toolbarHeight: actionHeight + locationHeight
         readonly property real sceneWidth: Math.max(1, Math.min(640, usableWidth,
                                                       (usableHeight - toolbarHeight) * 16 / 9))
         width: sceneWidth
@@ -145,6 +167,7 @@ Item {
                 animationTime: controller.animationTime
                 blend: controller.blend
                 meteor: controller.meteor
+                solarState: root.solar
             }
             Flow {
                 x: 12
@@ -199,6 +222,33 @@ Item {
                         }
                     }
                 }
+            }
+            Column {
+                objectName: "landscapeLocationInfo"
+                visible: root.location.automatic === true
+                x: 12; y: parent.height - details.locationHeight + 4
+                width: Math.max(0,parent.width-24)
+                spacing: 6
+                Text { width: parent.width; color: root.colors.fg; font.pixelSize: 12; wrapMode: Text.Wrap; text: root.locationLabel }
+                Text { width: parent.width; visible: text.length>0; color: root.colors.fg; font.pixelSize: 12; wrapMode: Text.Wrap; text: root.solarTimes }
+                Rectangle {
+                    objectName: "landscapeLocateButton"
+                    width: Math.min(parent.width,Math.max(130,locateText.implicitWidth+20)); height: 30
+                    radius: 4; color: locateMouse.containsMouse ? root.colors.border : root.colors.panel
+                    visible: root.location.systemSelected === true
+                    opacity: root.location.pending ? 0.5 : 1
+                    Text {
+                        id: locateText; anchors.centerIn: parent; color: root.colors.fg; font.pixelSize: 12
+                        text: root.location.pending ? qsTranslate("plugin.pixel_landscape.main", "正在定位…")
+                            : root.location.source === "system" || root.location.source === "cache"
+                                ? qsTranslate("plugin.pixel_landscape.main", "重新定位") : qsTranslate("plugin.pixel_landscape.main", "获取当前位置")
+                    }
+                    MouseArea {
+                        id: locateMouse; anchors.fill: parent; hoverEnabled: true; enabled: !root.location.pending
+                        onClicked: if (root.plugin && root.plugin.requestLocation) root.plugin.requestLocation()
+                    }
+                }
+                Text { width: parent.width; color: root.colors.fg; font.pixelSize: 11; wrapMode: Text.Wrap; text: root.locationHint }
             }
         }
     }

@@ -14,12 +14,12 @@ function tower(c,g,p,snow) {
     A.shape(c,g,p.cloud,[[5,0],[3,-55],[7,-55],[11,0]])
     A.part(c,g,p.tile,-9,-23,19,9);A.part(c,g,p.roof,5,-23,6,9)
     A.part(c,g,p.trim,-13,-58,27,3);A.part(c,g,p.trim,-10,-70,21,12)
-    A.part(c,g,p.glow,-8,-68,17,8);A.part(c,g,p.trim,-1,-70,2,12)
+    A.part(c,g,p.lamp,-8,-68,17,8);A.part(c,g,p.trim,-1,-70,2,12)
     A.shape(c,g,p.roof,[[-14,-71],[0,-79],[14,-71]])
     A.part(c,g,p.trim,0,-82,1,5)
     A.part(c,g,p.trim,-17,-58,35,1);A.part(c,g,p.trim,-17,-54,35,2)
     for(var i=-17;i<=18;i+=7)A.part(c,g,p.trim,i,-58,1,5)
-    A.part(c,g,p.trim,-3,-12,7,13);A.part(c,g,p.glow,-2,-40,4,6)
+    A.part(c,g,p.trim,-3,-12,7,13);A.part(c,g,p.lamp,-2,-40,4,6)
     A.part(c,g,p.rock,-17,0,35,3)
     if(snow){A.part(c,g,p.snow,-14,-72,28,2);A.part(c,g,p.snow,-17,-59,35,1)}
 }
@@ -61,7 +61,7 @@ function drawDynamic(c,g,p,weather,time,meteor) {
         c.globalAlpha=0.3+0.2*Math.sin(time+wave)
         A.rect(c,p.ripple,x,y,3+(y-g.horizon)*0.18,1)
     }
-    if(p.warm>0.2) {
+    if(p.warm>0) {
         var originX=g.x,originY=g.y-64*g.s,direction=Math.sin(time*0.2)
         c.globalAlpha=0.12*p.warm
         A.polygon(c,p.glow,[[originX,originY],[originX+direction*g.w*0.7,originY-g.h*0.13],[originX+direction*g.w*0.7,originY+g.h*0.08]])

@@ -28,6 +28,23 @@ function palette(phase, weather, previous, blend) {
     p.night=(previous==="night"?1:0)*(1-blend)+(phase==="night"?1:0)*blend
     p.warm=(previous==="night"||previous==="dusk"?1:0)*(1-blend)+(phase==="night"||phase==="dusk"?1:0)*blend
     p.mist=(phase==="dawn"?1:0)
+    p.lamp=p.glow
+    p.window=p.warm>0.2?p.glow:p.ripple
+    return p
+}
+function solarPalette(key, weather) {
+    var v=key.split("|"),p=palette(v[1],weather,v[0],Number(v[2]))
+    // 冬季低太阳和极区正午仍可能处于晨昏高度，晨/昏色板也须连续融合。
+    for(var i=0;i<keys.length;i++) {
+        var twilight=mix(palettes.dawn[i],palettes.dusk[i],Number(v[6]))
+        var color=v[0]==="night" ? mix(palettes.night[i],twilight,Number(v[2]))
+                                  : mix(twilight,palettes.day[i],Number(v[2]))
+        if(weather==="rain" && keys[i]!=="glow")color=mix(color,"53677a",0.30)
+        if(weather==="snow" && keys[i]!=="glow")color=mix(color,"a3b5c6",0.12)
+        p[keys[i]]=color
+    }
+    p.solar=true;p.night=Number(v[3]);p.warm=Number(v[4]);p.mist=Number(v[5])
+    p.lamp=mix(p.ripple,p.glow,p.warm);p.window=p.lamp
     return p
 }
 function noise(i) { var n=Math.sin(i*127.1+311.7)*43758.5453; return n-Math.floor(n) }
@@ -104,9 +121,9 @@ function cabin(c,g,p,snow) {
     for(var j=-24;j<-1;j+=4){r(p.wood,2,j,36,1);r(p.trim,39,j,13,1)}
     // 门、玻璃与细窗框在栏上仍保持可辨识的暖光。
     r(p.trim,22,-20,11,20);r(p.wood,24,-18,7,17);r(p.glow,29,-9,1,1)
-    r(p.trim,6,-22,12,12);r(p.warm>0.2?p.glow:p.ripple,7,-21,10,10)
+    r(p.trim,6,-22,12,12);r(p.window,7,-21,10,10)
     r(p.trim,11,-21,1,10);r(p.trim,7,-16,10,1)
-    r(p.trim,42,-20,7,10);r(p.glow,43,-19,5,8)
+    r(p.trim,42,-20,7,10);r(p.lamp,43,-19,5,8)
     r(p.rock,20,-1,18,3);r(p.earth,18,2,23,2)
     r(p.trim,38,-49,6,16);r(p.wood,39,-48,4,14);r(p.rock,37,-50,8,3)
     poly(p.trim,[[-6,-27],[16,-47],[39,-47],[61,-27]])
@@ -224,22 +241,28 @@ function drawDynamic(c,g,p,weather,time,meteor) {
 
 // 所有场景共享天空和天气，独立地形只绘制自己的动态细节。
 function drawSky(c,g,p,weather) {
-    rect(c,p.horizon,0,0,g.w,g.h)
-    // 八层阶梯天空，保留像素画的色带，不使用连续渐变或滤镜。
-    for(var band=0;band<12;band++) {
-        var t=band/11
-        rect(c,t<0.6?mix(p.sky,p.skyLow,t/0.6):mix(p.skyLow,p.horizon,(t-0.6)/0.4),0,band*g.h/15,g.w,g.h/15+1)
+    c.clearRect(0,0,g.w,g.h)
+    if(!p.solar) {
+        rect(c,p.horizon,0,0,g.w,g.h)
+        // 十二层阶梯天空；真实太阳模式由画布下方的静态矩形绘制同一色带。
+        for(var band=0;band<12;band++) {
+            var t=band/11
+            rect(c,t<0.6?mix(p.sky,p.skyLow,t/0.6):mix(p.skyLow,p.horizon,(t-0.6)/0.4),0,band*g.h/15,g.w,g.h/15+1)
+        }
     }
     if(weather==="clear") {
-        if(p.night>0.2) {
+        if(p.night>0) {
             c.globalAlpha=p.night
             for(var star=0;star<g.stars.length;star++){var st=g.stars[star];rect(c,p.sun,st.x,st.y,1,1)}
             var mx=g.w*0.79,my=g.h*0.14,ms=Math.max(3,g.h*0.075)
             rect(c,p.sun,mx,my,ms,ms);rect(c,p.sky,mx+ms*0.36,my-1,ms*0.75,ms*0.8)
             c.globalAlpha=1
-        } else {
+        }
+        if(!p.solar && p.night<1) {
+            c.globalAlpha=1-p.night
             var sx=g.w*0.21,sy=g.h*0.16,sr=Math.max(2,g.h*0.045)
             rect(c,p.sun,sx-sr,sy-sr,sr*2,sr*2);rect(c,p.sun,sx-sr-1,sy-sr+1,sr*2+2,sr*2-2)
+            c.globalAlpha=1
         }
     }
 }
@@ -251,12 +274,12 @@ function drawAmbience(c,g,p,weather,time,meteor) {
         cloud(c,p,cx,g.h*(0.09+i*0.06),size)
     }
     if(p.mist||weather==="rain") {
-        c.globalAlpha=0.10
+        c.globalAlpha=weather==="rain"?0.10:0.10*p.mist
         for(var fog=0;fog<3;fog++)rect(c,p.cloud,(time*0.8+fog*g.w/2)%(g.w*1.5)-g.w/2,g.h*(0.48+fog*0.055),g.w*0.65,Math.max(1,g.h*0.025))
     }
     c.globalAlpha=1
-    if(p.night>0.5&&weather==="clear") {
-        for(var st=0;st<g.stars.length;st+=5){var star=g.stars[st];c.globalAlpha=0.25+0.55*(Math.sin(time*0.7+st)*0.5+0.5);rect(c,p.sun,star.x,star.y,2,1)}
+    if(p.night>0&&weather==="clear") {
+        for(var st=0;st<g.stars.length;st+=5){var star=g.stars[st];c.globalAlpha=p.night*(0.25+0.55*(Math.sin(time*0.7+st)*0.5+0.5));rect(c,p.sun,star.x,star.y,2,1)}
         if(meteor>=0&&meteor<=1) {
             c.globalAlpha=Math.sin(meteor*Math.PI)
             for(var tail=0;tail<10;tail++){c.globalAlpha=Math.sin(meteor*Math.PI)*(1-tail/10);rect(c,p.sun,g.w*(0.45+meteor*0.18)-tail,g.h*(0.08+meteor*0.16)-tail*0.4,2,1)}

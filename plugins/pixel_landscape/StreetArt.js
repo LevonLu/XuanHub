@@ -18,25 +18,25 @@ function shop(c,g,p,snow) {
     A.part(c,g,p.trim,-47,-69,94,4);A.part(c,g,snow?p.snow:p.tile,-47,-70,94,2)
     for(var win=0;win<3;win++) {
         A.part(c,g,p.trim,-34+win*25,-57,17,20)
-        A.part(c,g,p.warm>0.2?p.glow:p.ripple,-32+win*25,-55,13,16)
+        A.part(c,g,p.window,-32+win*25,-55,13,16)
         A.part(c,g,p.wood,-26+win*25,-55,1,16);A.part(c,g,p.wood,-32+win*25,-48,13,1)
         A.part(c,g,p.rock,-35+win*25,-37,19,2)
     }
-    A.part(c,g,p.trim,-38,-29,49,27);A.part(c,g,p.glow,-36,-27,45,23)
+    A.part(c,g,p.trim,-38,-29,49,27);A.part(c,g,p.lamp,-36,-27,45,23)
     A.part(c,g,p.tile,-36,-12,45,2);A.part(c,g,p.trim,-14,-27,2,24)
     // 橱窗内的花盆、杯子和书架只用少量轮廓表达。
     for(var item=0;item<4;item++){A.part(c,g,p.wood,-31+item*10,-9,5,5);A.part(c,g,p.leaf,-32+item*10,-13,6,4)}
-    A.part(c,g,p.trim,18,-30,19,31);A.part(c,g,p.glow,20,-27,14,20)
+    A.part(c,g,p.trim,18,-30,19,31);A.part(c,g,p.lamp,20,-27,14,20)
     A.part(c,g,p.wood,26,-27,1,20);A.part(c,g,p.glow,31,-3,1,1)
     A.shape(c,g,p.roof,[[-47,-32],[43,-32],[48,-24],[-51,-24]])
     for(var stripe=0;stripe<10;stripe++)A.part(c,g,stripe%2?p.cloud:p.tile,-49+stripe*10,-29,8,7)
     A.part(c,g,p.trim,-51,-22,101,2)
     if(snow)A.part(c,g,p.snow,-47,-33,91,2)
-    A.part(c,g,p.trim,-7,-43,28,10);A.part(c,g,p.glow,-5,-41,24,6)
+    A.part(c,g,p.trim,-7,-43,28,10);A.part(c,g,p.lamp,-5,-41,24,6)
     for(var mark=0;mark<4;mark++)A.part(c,g,p.wood,-2+mark*5,-40,3,3)
     A.part(c,g,p.rock,-48,0,96,3)
     A.part(c,g,p.trim,57,-58,2,60);A.part(c,g,p.trim,51,-59,14,2)
-    A.part(c,g,p.glow,52,-56,12,7);A.part(c,g,p.trim,51,-49,14,2)
+    A.part(c,g,p.lamp,52,-56,12,7);A.part(c,g,p.trim,51,-49,14,2)
     A.part(c,g,p.rock,53,0,10,2)
 }
 function drawStatic(c,g,p,weather) {
@@ -59,8 +59,8 @@ function drawStatic(c,g,p,weather) {
     if(weather==="rain") {
         for(var reflection=0;reflection<12;reflection++) {
             var ry=g.ground+5+reflection*1.8*g.s
-            A.rect(c,A.mix(p.glow,p.water,0.45+reflection*0.035),g.x-34*g.s+Math.sin(reflection)*3,ry,35*g.s,1)
-            A.rect(c,A.mix(p.glow,p.water,0.55),g.x+55*g.s,ry,5*g.s,1)
+            A.rect(c,A.mix(p.lamp,p.water,0.45+reflection*0.035),g.x-34*g.s+Math.sin(reflection)*3,ry,35*g.s,1)
+            A.rect(c,A.mix(p.lamp,p.water,0.55),g.x+55*g.s,ry,5*g.s,1)
         }
     }
     shop(c,g,p,weather==="snow")
@@ -75,13 +75,13 @@ function drawDynamic(c,g,p,weather,time,meteor) {
     // 街区只在屋顶之上保留云和星光，避免天气以外的覆盖层穿过建筑。
     c.save();c.beginPath();c.rect(0,0,g.w,Math.max(1,g.y-71*g.s));c.clip()
     A.drawAmbience(c,g,p,weather,time,meteor);c.restore()
-    c.globalAlpha=0.13*(0.8+Math.sin(time*0.35)*0.2)
+    c.globalAlpha=0.13*(0.8+Math.sin(time*0.35)*0.2)*(p.solar?p.warm:1)
     A.shape(c,g,p.glow,[[52,-49],[64,-49],[77,1],[39,1]])
     c.globalAlpha=1
     A.part(c,g,p.trim,48,-38,15,1)
     A.part(c,g,p.wood,60+Math.round(Math.sin(time*0.8)),-37,2,8)
     A.part(c,g,p.tile,56+Math.round(Math.sin(time*0.8)),-32,10,13)
-    A.part(c,g,p.glow,58+Math.round(Math.sin(time*0.8)),-29,6,2)
+    A.part(c,g,p.lamp,58+Math.round(Math.sin(time*0.8)),-29,6,2)
     if(weather==="rain") {
         c.globalAlpha=0.5
         for(var ripple=0;ripple<9;ripple++) {

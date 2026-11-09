@@ -1,4 +1,4 @@
-// PixelLandscapePlugin.h — 像素小风景 插件入口
+// PixelLandscapePlugin.h — 朝暮插件入口
 #pragma once
 
 #include <QObject>

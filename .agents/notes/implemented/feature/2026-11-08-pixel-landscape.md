@@ -8,6 +8,8 @@ Status: implemented
 
 ## Decision
 
+自动模式的固定时段与无外部位置来源边界由[真实太阳光照](2026-11-09-pixel-landscape-solar.md)部分取代；本篇的场景构图、共享时钟、按需弹窗、画框和槽位宽度决定继续成立。
+
 原生 SDK V2 插件 pixel_landscape 使用 C++ 管理配置与三十秒校时，QML 共享动画时钟，以有限调色板在小尺寸静态、动态画布中绘制四时段、三天气。栏上默认自然内容宽度 320，弹窗内容按需创建、关闭释放，沿用 PluginPopup。画面占满弹窗，窗口使用不透明主题背景，无需透明合成表面。
 
 可选配置 scene 提供 cabin、lighthouse、street、campsite、railway、island 六种场景，缺省 cabin 保持已有配置的画面，configVersion 仍为 1。设置使用现有 schema，不自动更改天气或时段。ViewModel 先校验整个配置再应用，场景、画框、天气共享一次 configChanged 通知；切换不重建插件或弹窗，不清除暂停或动画时间。
