@@ -1,6 +1,6 @@
 {
   "ui": { "language": "system" },
-  "bar": { "height": 40, "edge": "top", "monitor": "primary", "opacity": 1.0, "themeId": "xuanhub-default", "theme": "dark", "mode": "appbar", "taskbarOffsetX": 0 },
+  "bar": { "height": 40, "edge": "top", "monitor": "primary", "opacity": 1.0, "themeId": "xuanhub-default", "theme": "dark", "mode": "appbar", "taskbarOffsetX": 0, "menuIcon": "original" },
   "plugins": [
     { "id": "xuanhub_menu", "position": "left", "order": 0, "config": {} },
     { "id": "clock", "position": "center", "order": 0, "config": { "format": "HH:mm:ss" } }

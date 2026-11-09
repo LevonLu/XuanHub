@@ -124,6 +124,7 @@ private Q_SLOTS:
         xuanhub::EventBus bus;
         QVERIFY(bus.setState(QStringLiteral("app.quickMenu.state"),
             {{QStringLiteral("themeMode"), QStringLiteral("light")},
+             {QStringLiteral("menuIcon"), QStringLiteral("hub")},
              {QStringLiteral("taskbarMode"), true}}));
         PluginManager manager(&bus, QDir::tempPath());
         const auto menu = entry(QStringLiteral("xuanhub_menu"));
@@ -134,6 +135,16 @@ private Q_SLOTS:
         QCOMPARE(vm->property("themeMode").toString(), QStringLiteral("dark"));
         QTRY_COMPARE(vm->property("themeMode").toString(), QStringLiteral("light"));
         QVERIFY(vm->property("taskbarMode").toBool());
+        QTRY_COMPARE(vm->property("menuIcon").toString(), QStringLiteral("hub"));
+        const auto changedStyle = [&](const QString& style, const QString& expected) {
+            const QString instance = QStringLiteral("xuanhub_menu");
+            QVERIFY(bus.setState(QStringLiteral("app.quickMenu.state"),
+                                 {{QStringLiteral("menuIcon"), style}}));
+            QTRY_COMPARE(vm->property("menuIcon").toString(), expected);
+            QCOMPARE(manager.loadedPlugin(instance)->viewModel, vm);
+        };
+        changedStyle(QStringLiteral("compact"), QStringLiteral("compact"));
+        changedStyle(QStringLiteral("invalid"), QStringLiteral("original"));
         QSignalSpy trace(&bus, &xuanhub::EventBus::traceRecorded);
         QVERIFY(QMetaObject::invokeMethod(vm, "requestState"));
         QCOMPARE(trace.last().at(0).toString(), QStringLiteral("app.quickMenu.requestState"));

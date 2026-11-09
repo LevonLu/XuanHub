@@ -958,6 +958,23 @@ Pane {
                                     font.pixelSize: UiMetrics.fontS
                                     wrapMode: Text.Wrap
                                 }
+                                UiCard {
+                                    Layout.fillWidth: true
+                                    title: root.trText("菜单图标")
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: root.trText("同步设置状态栏与托盘的玄枢图标")
+                                        color: root.c.muted
+                                        font.pixelSize: UiMetrics.fontS
+                                        wrapMode: Text.Wrap
+                                    }
+                                    MenuIconSelector {
+                                        objectName: "settingsMenuIcon"
+                                        Layout.fillWidth: true
+                                        selectedIcon: settingsVM.menuIcon
+                                        onIconChosen: function(iconStyle) { settingsVM.menuIcon = iconStyle }
+                                    }
+                                }
                                 Label {
                                     text: root.trText("状态栏")
                                     font.pixelSize: UiMetrics.fontL

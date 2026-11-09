@@ -34,6 +34,30 @@ TestCase {
         }
     }
     Component {
+        id: menuIconComponent
+        MenuIconSelector {
+            width: 320
+            onIconChosen: function(iconStyle) { selectedIcon = iconStyle }
+        }
+    }
+    function test_menu_icon_choices_and_responsive_layout() {
+        const chooser = createTemporaryObject(menuIconComponent, tests)
+        verify(chooser !== null)
+        for (const width of [320, 220, 480]) {
+            chooser.width = width
+            verify(waitForRendering(chooser))
+            for (const style of ["hub", "compact", "original"]) {
+                const button = findChild(chooser, "menuIconOption_" + style)
+                verify(button !== null)
+                const position = button.mapToItem(chooser, 0, 0)
+                verify(position.x >= 0 && position.x + button.width <= chooser.width + 0.5)
+                mouseClick(button, button.width / 2, button.height / 2)
+                compare(chooser.selectedIcon, style)
+                compare(button.checked, true)
+            }
+        }
+    }
+    Component {
         id: menuComponent
         Menu.XuanHubMenuSettings { width: 520 }
     }

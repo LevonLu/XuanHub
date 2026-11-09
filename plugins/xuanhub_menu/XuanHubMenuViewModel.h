@@ -12,6 +12,7 @@ class XuanHubMenuViewModel : public QObject {
     Q_PROPERTY(bool autoStartEnabled READ autoStartEnabled NOTIFY stateChanged)
     Q_PROPERTY(bool taskbarMode READ taskbarMode NOTIFY stateChanged)
     Q_PROPERTY(QString themeMode READ themeMode NOTIFY stateChanged)
+    Q_PROPERTY(QString menuIcon READ menuIcon NOTIFY stateChanged)
     Q_PROPERTY(bool pluginActionsEnabled READ pluginActionsEnabled NOTIFY actionFilterChanged)
     Q_PROPERTY(int actionFilterRevision READ actionFilterRevision NOTIFY actionFilterChanged)
 
@@ -22,6 +23,7 @@ public:
     bool autoStartEnabled() const { return m_autoStartEnabled; }
     bool taskbarMode() const { return m_taskbarMode; }
     QString themeMode() const { return m_themeMode; }
+    QString menuIcon() const { return m_menuIcon; }
     bool pluginActionsEnabled() const { return m_pluginActionsEnabled; }
     int actionFilterRevision() const { return m_actionFilterRevision; }
 
@@ -44,6 +46,7 @@ private:
     bool m_autoStartEnabled = false;
     bool m_taskbarMode = false;
     QString m_themeMode = QStringLiteral("dark");
+    QString m_menuIcon = QStringLiteral("original");
     bool m_pluginActionsEnabled = true;
     int m_actionFilterRevision = 0;
     QSet<QString> m_disabledPluginActions;

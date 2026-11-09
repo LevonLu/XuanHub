@@ -538,6 +538,12 @@ void SettingsViewModel::setTheme(const QString& v) {
     emit themeChanged();
 }
 
+void SettingsViewModel::setMenuIcon(const QString& v) {
+    if (m_menuIcon == v) return;
+    m_menuIcon = v;
+    emit menuIconChanged();
+}
+
 void SettingsViewModel::setThemeId(const QString& v) {
     if (m_themeId == v) return;
     m_themeId = v;
@@ -599,6 +605,7 @@ void SettingsViewModel::reloadFromConfig() {
     setBarOpacity(qRound(m_config->barOpacity() * 100));
     setBarEdge(m_config->barEdge());
     setBarMode(m_config->barMode());
+    setMenuIcon(m_config->menuIcon());
     // 主题草稿取运行时值（ThemeManager）而非文件旧值（ConfigService）：
     // 托盘「切换深色/浅色」是纯运行时切换不写文件，若此处读文件旧值，用户改了别的设置
     // 保存时会把草稿里的旧 mode 一并写回 → 热重载把用户临时切的模式打回文件值。
@@ -628,7 +635,7 @@ QString SettingsViewModel::currentFingerprint() const {
     const QJsonObject root = m_config->rawConfig();
     const QJsonObject bar = root.value(QStringLiteral("bar")).toObject();
     QJsonObject barKeys;
-    for (const char* k : {"height", "edge", "mode", "opacity", "theme", "themeId"})
+    for (const char* k : {"height", "edge", "mode", "opacity", "theme", "themeId", "menuIcon"})
         barKeys.insert(QString::fromLatin1(k), bar.value(QString::fromLatin1(k)));
     QJsonObject fp;
     QJsonObject uiKeys;
@@ -669,6 +676,12 @@ bool SettingsViewModel::apply() {
     if (m_theme != QStringLiteral("dark") && m_theme != QStringLiteral("light")) {
         setErrorMessage(QCoreApplication::translate(
             "xuanhub.settings.errors", "主题模式仅支持 dark / light"));
+        return false;
+    }
+    if (m_menuIcon != QStringLiteral("original") && m_menuIcon != QStringLiteral("hub")
+        && m_menuIcon != QStringLiteral("compact")) {
+        setErrorMessage(QCoreApplication::translate(
+            "xuanhub.settings.errors", "菜单图标配置无效"));
         return false;
     }
     if (m_language != QStringLiteral("system") && m_language != QStringLiteral("zh-CN")
@@ -736,6 +749,7 @@ bool SettingsViewModel::apply() {
     bar[QStringLiteral("opacity")] = m_barOpacity / 100.0;   // int 0-100 → qreal 0.0-1.0
     bar[QStringLiteral("theme")] = m_theme;          // 模式 dark/light
     bar[QStringLiteral("themeId")] = m_themeId;      // 主题包 id
+    bar[QStringLiteral("menuIcon")] = m_menuIcon;
     root[QStringLiteral("bar")] = bar;
     QJsonObject ui = root.value(QStringLiteral("ui")).toObject();
     ui[QStringLiteral("language")] = m_language;

@@ -102,8 +102,18 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
     const QString oldThemeId = m_themeId;
     const QString oldBarMode = m_barMode;
     const QString oldLanguage = m_language;
+    const QString oldMenuIcon = m_menuIcon;
 
     const auto bar = root.value("bar").toObject();
+    // 缺省与非法值都回退原版；删除字段也应撤销上次选择，避免热重载残留旧值。
+    const QString menuIcon = bar.value(QStringLiteral("menuIcon")).toString(QStringLiteral("original"));
+    if (menuIcon == QStringLiteral("original") || menuIcon == QStringLiteral("hub")
+        || menuIcon == QStringLiteral("compact")) {
+        m_menuIcon = menuIcon;
+    } else {
+        qWarning() << "[Config] invalid menu icon:" << menuIcon << "-> original";
+        m_menuIcon = QStringLiteral("original");
+    }
     // height：钳到与设置窗口校验一致的范围（24–200），防手写越界（负值/超大）
     // 直接用于 AppBar reserve 会压坏工作区
     if (bar.contains("height")) {
@@ -229,6 +239,7 @@ bool ConfigService::load(const QString& exeDir, const QString& configDir) {
     if (m_themeId != oldThemeId) emit themeIdChanged();
     if (m_barMode != oldBarMode) emit barModeChanged();
     if (m_language != oldLanguage) emit languageChanged();
+    if (m_menuIcon != oldMenuIcon) emit menuIconChanged();
     // 已成功从真实文件加载：此后文件缺失时不再播种默认配置（见上方缺失分支）
     m_everLoadedFromFile = true;
     return true;

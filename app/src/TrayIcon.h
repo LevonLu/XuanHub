@@ -31,7 +31,7 @@ signals:
 private slots:
     void setAutoStartEnabled(bool on);
     void setTaskbarMode(bool on);   // 菜单 "任务栏模式"：写回 config.json 走热重载生效
-    void refreshIcon();             // 主题变化时重绘图标（连 ThemeManager::themeChanged）
+    void refreshIcon();             // 主题或主框架图标选择变化时重绘
     void onAppNotify(QVariantMap payload);  // EventBus "app.notify"：插件请求的气泡提示
     void onQuickMenuCommand(QVariantMap envelope);  // bar 菜单插件复用托盘动作
     void publishQuickMenuState(QVariantMap payload = {});  // 向插件回传当前勾选状态

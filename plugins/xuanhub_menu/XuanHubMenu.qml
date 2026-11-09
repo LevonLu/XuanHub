@@ -49,10 +49,12 @@ Item {
         }
     }
 
-    XuanHubGlyph {
+    BrandIcon {
         anchors.centerIn: parent
-        width: 28
-        height: 28
+        iconStyle: root.plugin && typeof root.plugin.menuIcon === "string"
+                   ? root.plugin.menuIcon : "original"
+        width: resolvedStyle === "original" ? 28 : 24
+        height: width
         glyphColor: root.colors.fg
     }
 

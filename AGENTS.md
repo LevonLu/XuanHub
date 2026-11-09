@@ -160,6 +160,8 @@ V2 的命名空间、异步投递、保留状态、请求响应、权限和背�
 
 `position` 取值 `left/center/right`（空默认 `right`）；`edge` 仅 `top/bottom`；`config` 段原样经 `ctx->pluginConfig` 传给插件。插件条目另有 `width`（像素，0=跟随内容自适应，>0 固定宽，上限 800）；设置窗口的宽度「手动」模式初始值取 `PluginSlot` 实时上报的自然内容宽度（`PluginListModel::reportContentWidth` → `SettingsViewModel::pluginContentWidth`）。
 
+**菜单图标**：`bar.menuIcon` 为 `original`（默认）/ `hub`（方框枢纽 A）/ `compact`（紧凑 H C），在主框架“外观”页选择。缺失或非法值回退原版；设置指纹包含本字段。保存后经 watcher 加载，由既有 `app.quickMenu.state.menuIcon` 保留状态推送给菜单，原地更新图形；托盘监听同一配置同步更新。设置预览与菜单共用 `BrandIcon.qml`，托盘由 `BrandIconRenderer` 按相同几何规则生成多尺寸图标；窗口与可执行文件图标不变。
+
 **工作模式**：`bar.mode` = `appbar`（默认）/ `taskbar`。taskbar 选型：`SetParent` 嵌入 `Shell_TrayWnd` 是业界验证方案（TrafficMonitor 等；Deskband 已被 Win11 移除、顶层透明叠加有 z-order 缺陷，均未采用）。`TaskbarEmbed` 把 BarWindow `SetParent` 到 `Shell_TrayWnd`（强制 `WS_CHILD`、保留 `WS_EX_NOACTIVATE`），贴合任务栏左侧（`bar.taskbarOffsetX` 微调），高度跟随任务栏、背景全透明、宽度收缩为内容宽；500ms 轮询矫正位置与 z-order。explorer 重启时经 `TaskbarCreated` 与 `taskbarVanished` 双路触发 `recreateForTaskbar()` 重新嵌入（`TaskbarCreated` 是广播、进程内每个顶层窗口都收到，`TaskbarMonitor` 去重后顺延到事件循环只重建一次，不在消息分发栈内同步 destroy/create）。切换方式：改 config 热重载 / 托盘勾选项 / 设置窗口。
 
 **热重载**：保存 config.json 自动生效（`QFileSystemWatcher` + 300ms 防抖，重命名式保存后自动重挂；文件缺失期退而监视父目录，永不失挂）。`reload()` 顺序：`load()`（解析失败保留旧配置；**运行中文件丢失同样保留当前设置**——qrc 播种仅限首运行从未成功加载过时）→ theme 按文件覆盖 → 按插件 ID 计算差异。`position/order/width` 只增量更新模型，C++ `IBarPluginConfigurable` 与 Python `set_config` 支持原地应用配置，V1 插件只停止并重建目标实例；新增/删除也只处理目标 ID，失败不回滚或重启其他插件。旧第三方 host 缺少独立销毁能力时在 init 前拒绝；host 子实例必须提供配置初始化与应用回执（见 SDK 文档），不再全量回退。配置以逐插件已确认快照计算差异，Python 入队仅表示 pending，失败后相同文件可再次重试。操作 QML/DLL 的顺序始终是先从模型解除目标引用并处理 DeferredDelete，再 shutdown/unload。托盘 "重新加载配置" 走 `forceReload()` 无条件全量重建插件实例，作为故障恢复入口；同路径原生 DLL 替换须退出宿主后进行。

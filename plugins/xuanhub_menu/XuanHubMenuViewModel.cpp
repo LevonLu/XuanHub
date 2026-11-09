@@ -71,12 +71,16 @@ void XuanHubMenuViewModel::onState(QVariantMap envelope) {
     const bool taskbar = payload.value(QStringLiteral("taskbarMode")).toBool();
     const QString theme = payload.value(QStringLiteral("themeMode"),
                                         QStringLiteral("dark")).toString();
+    QString menuIcon = payload.value(QStringLiteral("menuIcon"), QStringLiteral("original")).toString();
+    if (menuIcon != QStringLiteral("hub") && menuIcon != QStringLiteral("compact"))
+        menuIcon = QStringLiteral("original");
     if (autoStart == m_autoStartEnabled && taskbar == m_taskbarMode
-        && theme == m_themeMode) {
+        && theme == m_themeMode && menuIcon == m_menuIcon) {
         return;
     }
     m_autoStartEnabled = autoStart;
     m_taskbarMode = taskbar;
     m_themeMode = theme;
+    m_menuIcon = menuIcon;
     emit stateChanged();
 }

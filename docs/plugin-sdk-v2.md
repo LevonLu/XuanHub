@@ -197,6 +197,10 @@ bar 点击处理调用 `details.toggleFromBar()`。宿主负责逻辑坐标定�
 `openAnchored()` 可用于非 bar 点击入口，`closePopup()` 用于内容区关闭按钮。高级插件仍可
 自建 `Window`，但必须自行处理上述平台细节，也不会自动加入互斥策略。
 
+宿主还提供共用品牌组件 `BrandIcon`，供内置菜单和设置预览保持一致。其属性为
+`iconStyle`（`original/hub/compact`，缺省及未知值回退 `original`）与 `glyphColor`。
+菜单从保留状态 `app.quickMenu.state.menuIcon` 接收已生效的主框架选择，不读插件私有配置。
+
 ### 声明式动作
 
 插件可以在 `metadata.json` 声明由宿主菜单呈现的稳定动作 ID：

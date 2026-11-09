@@ -27,6 +27,10 @@ class SettingsPresentationTest(unittest.TestCase):
             module = Path(imports) / "XuanHub"
             module.mkdir()
             controls = sorted((ROOT / "app/qml").glob("Ui*.qml"))
+            controls += [ROOT / "app/qml/BrandIcon.qml", ROOT / "app/qml/MenuIconSelector.qml"]
+            resources = Path(imports) / "resources"
+            resources.mkdir()
+            shutil.copy2(ROOT / "app/resources/xuanhub-tray-icon-64.png", resources)
             for control in controls:
                 shutil.copy2(control, module)
             (module / "qmldir").write_text("module XuanHub\n" + "\n".join(
@@ -71,6 +75,8 @@ TestCase {
                 output += log.read_text(encoding="utf-8", errors="replace")
             self.assertEqual(result.returncode, 0, output)
             self.assertNotIn("Binding loop", output)
+            self.assertNotIn("TypeError:", output)
+            self.assertNotIn("ReferenceError:", output)
             enum_result = subprocess.run(
                 [runner, "-import", imports, "-input", str(enum_test), "-o", str(log) + ",txt"],
                 env={**os.environ, "QT_QPA_PLATFORM": "offscreen", "QT_QUICK_BACKEND": "software",

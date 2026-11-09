@@ -29,6 +29,7 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(int barOpacity READ barOpacity WRITE setBarOpacity NOTIFY barOpacityChanged)
     Q_PROPERTY(QString barEdge READ barEdge WRITE setBarEdge NOTIFY barEdgeChanged)
     Q_PROPERTY(QString barMode READ barMode WRITE setBarMode NOTIFY barModeChanged)
+    Q_PROPERTY(QString menuIcon READ menuIcon WRITE setMenuIcon NOTIFY menuIconChanged)
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
     Q_PROPERTY(QString themeId READ themeId WRITE setThemeId NOTIFY themeIdChanged)
     Q_PROPERTY(QStringList themePackNames READ themePackNames NOTIFY themePacksReloaded)
@@ -70,6 +71,7 @@ public:
     QVariantList themePackExtensionFlags() const;      // 与 names 同序，提示可信 QML 扩展
     bool autoStart() const { return m_autoStart; }
     QString language() const { return m_language; }
+    QString menuIcon() const { return m_menuIcon; }
     QAbstractItemModel* pluginModel() const;   // 实现在 .cpp（头里模型是不完整类型）
     QObject* pluginProxy() const;              // 同上，实现在 .cpp
     QString errorMessage() const { return m_errorMessage; }
@@ -85,6 +87,7 @@ public:
     void setBarOpacity(int v);   // 0-100 百分比
     void setBarEdge(const QString& v);
     void setBarMode(const QString& v);          // 设置工作模式（appbar/taskbar）
+    void setMenuIcon(const QString& v);
     void setTheme(const QString& v);            // 设置模式
     void setThemeId(const QString& v);          // 设置主题包 id
     void setAutoStart(bool v);
@@ -125,6 +128,7 @@ signals:
     void barOpacityChanged();
     void barEdgeChanged();
     void barModeChanged();
+    void menuIconChanged();
     void themeChanged();
     void themeIdChanged();
     void themePacksReloaded();
@@ -174,6 +178,7 @@ private:
     QString m_themeId = QStringLiteral("xuanhub-default"); // 主题包 id
     bool m_autoStart = false;
     QString m_language = QStringLiteral("system");
+    QString m_menuIcon = QStringLiteral("original");
     QString m_errorMessage;
     QString m_updateSources;
     QVariantList m_availablePluginUpdates;

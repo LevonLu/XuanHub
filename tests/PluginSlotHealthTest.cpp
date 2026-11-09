@@ -1,5 +1,6 @@
 // PluginSlotHealthTest.cpp — 验证槽位上下文注入、弹窗服务与稳定启动耗时
 #include "PopupService.h"
+#include "BrandIconRenderer.h"
 #include <QQuickWindow>
 #include <QQuickView>
 #include <QFile>
@@ -218,6 +219,34 @@ private:
 class PluginSlotHealthTest final : public QObject {
     Q_OBJECT
 private Q_SLOTS:
+    void trayVectorIconsKeepTheirShapeAtMultipleDpi() {
+        const QColor color(QStringLiteral("#237c96"));
+        const QIcon hub = renderMenuVectorIcon(QStringLiteral("hub"), color);
+        const QIcon compact = renderMenuVectorIcon(QStringLiteral("compact"), color);
+        QVERIFY(!hub.isNull());
+        QVERIFY(!compact.isNull());
+        QVERIFY(renderMenuVectorIcon(QStringLiteral("original"), color).isNull());
+        for (const qreal dpr : {1.0, 1.25, 1.5, 2.0}) {
+            const int pixels = qRound(16 * dpr);
+            for (const QIcon& icon : {hub, compact}) {
+                QVERIFY(icon.availableSizes().contains(QSize(pixels, pixels)));
+                const QImage image = icon.pixmap(QSize(16, 16), dpr).toImage();
+                QCOMPARE(image.size(), QSize(pixels, pixels));
+                QCOMPARE(image.pixelColor(0, 0).alpha(), 0);
+                bool hasInk = false;
+                for (int y = 0; y < image.height() && !hasInk; ++y)
+                    for (int x = 0; x < image.width(); ++x)
+                        if (image.pixelColor(x, y).alpha() > 0) { hasInk = true; break; }
+                QVERIFY(hasInk);
+            }
+        }
+        // 方框中心透明，H 中心为横梁；换色不能改变这两个结构。
+        QCOMPARE(hub.pixmap(24, 24).toImage().pixelColor(12, 12).alpha(), 0);
+        QCOMPARE(compact.pixmap(24, 24).toImage().pixelColor(12, 12), color);
+        const QIcon recolored = renderMenuVectorIcon(QStringLiteral("compact"), Qt::white);
+        QCOMPARE(recolored.pixmap(24, 24).toImage().pixelColor(12, 12), QColor(Qt::white));
+    }
+
     void initTestCase() {
         qputenv("QT_QUICK_CONTROLS_STYLE", QByteArrayLiteral("Basic"));
         qmlRegisterSingletonType<UiMetricsStub>(
@@ -226,6 +255,9 @@ private Q_SLOTS:
         qmlRegisterType(QUrl::fromLocalFile(
             QStringLiteral(XUANHUB_SOURCE_DIR "/app/qml/PluginPopup.qml")),
             "XuanHub", 1, 0, "PluginPopup");
+        qmlRegisterType(QUrl::fromLocalFile(
+            QStringLiteral(XUANHUB_SOURCE_DIR "/app/qml/BrandIcon.qml")),
+            "XuanHub", 1, 0, "BrandIcon");
     }
 
     void popupUsesOnlyScopedServicesForPlacementAndDismissal() {
@@ -336,14 +368,11 @@ private Q_SLOTS:
         QFETCH(QString, barEdge);
         QTemporaryDir menuDir;
         QVERIFY(menuDir.isValid());
-        // 按运行目录带上品牌图标，避免源码目录缺少部署资源掩盖 QML 告警。
-        for (const QString& name : {QStringLiteral("XuanHubMenu.qml"),
-                                    QStringLiteral("XuanHubGlyph.qml")}) {
+        // 品牌图形由宿主共用组件提供；插件无需携带绘制代码与资源副本。
+        for (const QString& name : {QStringLiteral("XuanHubMenu.qml")}) {
             QVERIFY(QFile::copy(QStringLiteral(XUANHUB_SOURCE_DIR "/plugins/xuanhub_menu/")
                                     + name, menuDir.filePath(name)));
         }
-        QVERIFY(QFile::copy(QStringLiteral(XUANHUB_SOURCE_DIR "/app/resources/xuanhub-tray-icon-64.png"),
-                            menuDir.filePath(QStringLiteral("xuanhub-tray-icon-64.png"))));
         QQmlEngine engine;
         QSignalSpy warnings(&engine, &QQmlEngine::warnings);
         PopupService popups;

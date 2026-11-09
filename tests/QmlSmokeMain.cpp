@@ -1,5 +1,6 @@
 // QmlSmokeMain.cpp — 在最小宿主上下文中加载插件 QML 并验证根契约与尺寸
 #include <QGuiApplication>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QImage>
@@ -112,6 +113,11 @@ int main(int argc, char* argv[]) {
         return finish(failure(QStringLiteral("qml.popup_registration"),
                               QStringLiteral("cannot register PluginPopup"), qmlPath));
     }
+
+    const QString brandIconPath = QFileInfo(popupPath).dir().filePath(QStringLiteral("BrandIcon.qml"));
+    if (qmlRegisterType(QUrl::fromLocalFile(brandIconPath), "XuanHub", 1, 0, "BrandIcon") < 0)
+        return finish(failure(QStringLiteral("qml.brand_icon_registration"),
+                              QStringLiteral("cannot register BrandIcon"), qmlPath));
 
     QQmlEngine engine;
     SmokeObject plugin;

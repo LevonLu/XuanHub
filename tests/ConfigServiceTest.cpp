@@ -49,6 +49,44 @@ class ConfigServiceTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void menuIconDefaultsReloadsAndRoundTrips() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        ConfigService service;
+        QSignalSpy changed(&service, &ConfigService::menuIconChanged);
+        QJsonObject config = configWithPlugins({});
+        QVERIFY(writeJson(dir.path(), QJsonDocument(config)));
+        QVERIFY(service.load(dir.path(), {}));
+        QCOMPARE(service.menuIcon(), QStringLiteral("original"));
+        for (const QString& style : {QStringLiteral("hub"), QStringLiteral("compact"),
+                                     QStringLiteral("original")}) {
+            QJsonObject bar = config.value(QStringLiteral("bar")).toObject();
+            bar.insert(QStringLiteral("menuIcon"), style);
+            bar.insert(QStringLiteral("custom"), 42);
+            config.insert(QStringLiteral("bar"), bar);
+            QVERIFY(service.save(config));
+            QVERIFY(service.load(dir.path(), {}));
+            QCOMPARE(service.menuIcon(), style);
+            QCOMPARE(service.rawConfig().value(QStringLiteral("bar")).toObject()
+                         .value(QStringLiteral("custom")).toInt(), 42);
+        }
+        QCOMPARE(changed.size(), 3);
+        QJsonObject bar = config.value(QStringLiteral("bar")).toObject();
+        bar.insert(QStringLiteral("menuIcon"), QStringLiteral("future-icon"));
+        config.insert(QStringLiteral("bar"), bar);
+        QVERIFY(writeJson(dir.path(), QJsonDocument(config)));
+        QVERIFY(service.load(dir.path(), {}));
+        QCOMPARE(service.menuIcon(), QStringLiteral("original"));
+        bar.insert(QStringLiteral("menuIcon"), QStringLiteral("hub"));
+        config.insert(QStringLiteral("bar"), bar);
+        QVERIFY(writeJson(dir.path(), QJsonDocument(config)));
+        QVERIFY(service.load(dir.path(), {}));
+        config.insert(QStringLiteral("bar"), QJsonObject{});
+        QVERIFY(writeJson(dir.path(), QJsonDocument(config)));
+        QVERIFY(service.load(dir.path(), {}));
+        QCOMPARE(service.menuIcon(), QStringLiteral("original"));
+    }
+
     void mergesUsageHubWithoutWritingAndProtectsAdoptedAccounts() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());

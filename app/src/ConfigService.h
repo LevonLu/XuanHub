@@ -26,6 +26,7 @@ class ConfigService : public QObject {
     Q_PROPERTY(QString theme READ theme NOTIFY themeChanged)
     Q_PROPERTY(QString themeId READ themeId NOTIFY themeIdChanged)
     Q_PROPERTY(QString barMode READ barMode NOTIFY barModeChanged)
+    Q_PROPERTY(QString menuIcon READ menuIcon NOTIFY menuIconChanged)
     Q_PROPERTY(QString language READ language NOTIFY languageChanged)
 
 public:
@@ -50,6 +51,7 @@ public:
     QString themeId() const { return m_themeId; }      // 主题包 id（如 "xuanhub-default"）
     QString barMode() const { return m_barMode; }      // 工作模式 "appbar"（占工作区）/"taskbar"（嵌入任务栏）
     QString language() const { return m_language; }    // "system"/"zh-CN"/"en-US"
+    QString menuIcon() const { return m_menuIcon; }    // "original"/"hub"/"compact"
     int taskbarOffsetX() const { return m_taskbarOffsetX; }  // taskbar 模式下距任务栏左缘的水平偏移（逻辑像素）
     const QList<PluginConfigEntry>& pluginEntries() const { return m_pluginEntries; }
 
@@ -69,6 +71,7 @@ signals:
     void themeChanged();
     void themeIdChanged();
     void barModeChanged();
+    void menuIconChanged();
     void languageChanged();
 
 private:
@@ -85,6 +88,7 @@ private:
     QString m_themeId = QStringLiteral("xuanhub-default"); // 主题包 id
     QString m_barMode = QStringLiteral("appbar");          // 工作模式（appbar/taskbar）
     QString m_language = QStringLiteral("system");         // 界面语言（system/zh-CN/en-US）
+    QString m_menuIcon = QStringLiteral("original");       // 菜单入口图标，兼容旧配置
     int m_taskbarOffsetX = 0;                              // taskbar 模式水平偏移（逻辑像素）
     QList<PluginConfigEntry> m_pluginEntries;
     QString m_activePath;

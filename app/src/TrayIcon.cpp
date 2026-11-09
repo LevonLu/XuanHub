@@ -1,5 +1,6 @@
-// TrayIcon.cpp
+// TrayIcon.cpp — 系统托盘入口、菜单动作与主框架图标选择同步
 #include "TrayIcon.h"
+#include "BrandIconRenderer.h"
 #include "ThemeManager.h"
 #include "ConfigService.h"
 #include "AutoStart.h"
@@ -24,8 +25,7 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
     m_tray = new QSystemTrayIcon(this);
     refreshIcon();   // 首次设置品牌图标
 
-    // 保留主题变化刷新入口；ThemeManager 在主线程，AutoConnection 排队到 GUI 线程安全。
-    // 品牌图标当前为固定配色，后续若增加主题化变体可继续复用此入口。
+    // A、C 随主题前景色重绘；原版保留既有品牌图片。
     if (m_theme) connect(m_theme, &ThemeManager::themeChanged, this, &TrayIcon::refreshIcon);
 
     // 插件经 EventBus 请求的气泡提示（如 pybridge 未检测到 Python 环境）。
@@ -109,6 +109,11 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
                          [this] { publishQuickMenuState(); });
     if (m_config) connect(m_config, &ConfigService::barModeChanged, this,
                           [this] { publishQuickMenuState(); });
+    if (m_config) connect(m_config, &ConfigService::menuIconChanged, this,
+                          [this] {
+                              refreshIcon();
+                              publishQuickMenuState();
+                          });
     publishQuickMenuState();
 }
 
@@ -173,6 +178,18 @@ TrayIcon::~TrayIcon() {
 }
 
 void TrayIcon::refreshIcon() {
+    const QString style = m_config ? m_config->menuIcon() : QStringLiteral("original");
+    QColor glyphColor(QStringLiteral("#ffffff"));
+    if (m_theme) {
+        const QColor foreground = m_theme->colors().value(QStringLiteral("fg")).value<QColor>();
+        if (foreground.isValid()) glyphColor = foreground;
+    }
+    const QIcon vectorIcon = renderMenuVectorIcon(style, glyphColor);
+    if (!vectorIcon.isNull()) {
+        m_tray->setIcon(vectorIcon);
+        return;
+    }
+
     // 托盘只有 16–24 px：使用去掉端点层级、星形和渐变的紧凑 X 版本；
     // 完整品牌图标缩到这里会变成零散亮点，并在浅色任务栏上显得过轻。
     const QIcon brandIcon(QStringLiteral(
@@ -285,5 +302,7 @@ void TrayIcon::publishQuickMenuState(QVariantMap) {
     state.insert(QStringLiteral("taskbarMode"), mode == QStringLiteral("taskbar"));
     state.insert(QStringLiteral("themeMode"),
                  m_theme ? m_theme->mode() : QStringLiteral("dark"));
+    state.insert(QStringLiteral("menuIcon"),
+                 m_config ? m_config->menuIcon() : QStringLiteral("original"));
     m_bus->setState(QStringLiteral("app.quickMenu.state"), state);
 }

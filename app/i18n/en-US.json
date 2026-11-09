@@ -177,7 +177,12 @@
       "正在安装…": "Installing…",
       "安装离线依赖": "Install offline dependencies",
       "应用": "Apply",
-      "保存并关闭": "Save and close"
+      "保存并关闭": "Save and close",
+      "菜单图标": "Menu icon",
+      "同步设置状态栏与托盘的玄枢图标": "Use the same XuanHub icon on the bar and in the system tray",
+      "原版": "Original",
+      "方框枢纽": "Framed hub",
+      "紧凑 H": "Compact H"
     },
     "xuanhub.settings.errors": {
       "配置已被外部修改（热重载/手动编辑），请关闭设置窗口重开后再保存": "The configuration changed outside this window. Close and reopen Settings before saving.",
@@ -212,7 +217,8 @@
       "py_usage_hub：无法清除已删除厂商的凭据": "py_usage_hub: could not remove credentials for a deleted provider",
       "%1：position 非法（left/center/right）": "%1: invalid position (left/center/right)",
       "%1：order 不能为负": "%1: order cannot be negative", "%1：width 需在 0-800 之间": "%1: width must be between 0 and 800",
-      "%1：无法安全保存 %2": "%1: could not securely save %2"
+      "%1：无法安全保存 %2": "%1: could not securely save %2",
+      "菜单图标配置无效": "Invalid menu icon setting"
     },
     "xuanhub.pluginSlot": {
       "无法加载插件界面：%1": "Could not load the plugin interface: %1"

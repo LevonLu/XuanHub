@@ -154,6 +154,7 @@ set_tests_properties(xuanhub_qml_smoke_hello PROPERTIES
 
 add_executable(xuanhub_plugin_slot_health_tests
     PluginSlotHealthTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/BrandIconRenderer.cpp
     ${CMAKE_SOURCE_DIR}/app/src/PopupService.h
     ${CMAKE_SOURCE_DIR}/app/src/PopupService.cpp
 )
