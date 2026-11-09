@@ -968,6 +968,84 @@ private Q_SLOTS:
                  QStringLiteral("disabled-left"));
     }
 
+    void pluginDragReordersOnlyItsVisibleGroupAndPreservesDraft() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        auto entry = [](const QString& id, const QString& position, int order) {
+            PluginConfigEntry value;
+            value.id = id;
+            value.position = position;
+            value.order = order;
+            value.width = 123;
+            value.config.insert(QStringLiteral("custom"), id);
+            return value;
+        };
+        const QList<PluginConfigEntry> entries{
+            entry(QStringLiteral("a"), QStringLiteral("right"), 7),
+            entry(QStringLiteral("b"), QStringLiteral("right"), 7),
+            entry(QStringLiteral("c"), QStringLiteral("right"), 99),
+            entry(QStringLiteral("disabled"), QStringLiteral("right"), 8),
+            entry(QStringLiteral("left"), QStringLiteral("left"), 42)};
+        QJsonArray raw;
+        for (const auto& entry : entries) {
+            raw.append(QJsonObject{{QStringLiteral("id"), entry.id},
+                                   {QStringLiteral("unknown"), QStringLiteral("keep")}});
+        }
+        SettingsPluginModel model;
+        model.reload(entries, raw, directory.path(), directory.filePath(QStringLiteral("config.json")));
+        SettingsPluginSortModel proxy;
+        proxy.setSourceModel(&model);
+        proxy.sort(0);
+        QVERIFY(!proxy.moveRelativeTo(QStringLiteral("missing"), QStringLiteral("a"), false));
+        QVERIFY(!proxy.moveRelativeTo(QStringLiteral("a"), QStringLiteral("a"), true));
+        QVERIFY(!proxy.moveRelativeTo(QStringLiteral("a"), QStringLiteral("b"), false));
+        QVERIFY(!proxy.moveRelativeTo(QStringLiteral("a"), QStringLiteral("left"), true));
+        QVERIFY(!model.isDirty());
+        QVERIFY(proxy.setRoleValue(proxy.rowForId(QStringLiteral("disabled")),
+                                   QStringLiteral("enabled"), false));
+        QVERIFY(!proxy.moveRelativeTo(QStringLiteral("a"), QStringLiteral("disabled"), true));
+        QVERIFY(!proxy.canMoveDown(proxy.rowForId(QStringLiteral("c"))));
+        QVERIFY(!proxy.canMoveUp(proxy.rowForId(QStringLiteral("disabled"))));
+        QVERIFY(proxy.moveRelativeTo(QStringLiteral("a"), QStringLiteral("c"), true));
+        QVERIFY(model.isDirty());
+        QCOMPARE(proxy.rowForId(QStringLiteral("a")), 3);
+        QCOMPARE(proxy.rowForId(QStringLiteral("b")), 1);
+        QCOMPARE(proxy.rowForId(QStringLiteral("c")), 2);
+
+        QJsonArray exported;
+        QString error;
+        QVERIFY2(model.toPluginEntriesJson(&exported, &error), qPrintable(error));
+        QHash<QString, QJsonObject> byId;
+        for (const auto& value : exported) {
+            const auto object = value.toObject();
+            byId.insert(object.value(QStringLiteral("id")).toString(), object);
+            QCOMPARE(object.value(QStringLiteral("unknown")).toString(), QStringLiteral("keep"));
+            QCOMPARE(object.value(QStringLiteral("width")).toInt(), 123);
+            QCOMPARE(object.value(QStringLiteral("config")).toObject().value(QStringLiteral("custom")),
+                     object.value(QStringLiteral("id")));
+        }
+        QCOMPARE(byId.value(QStringLiteral("b")).value(QStringLiteral("order")).toInt(), 0);
+        QCOMPARE(byId.value(QStringLiteral("c")).value(QStringLiteral("order")).toInt(), 1);
+        QCOMPARE(byId.value(QStringLiteral("a")).value(QStringLiteral("order")).toInt(), 2);
+        QCOMPARE(proxy.roleValue(proxy.rowForId(QStringLiteral("disabled")), QStringLiteral("order")).toInt(), 8);
+        QVERIFY(!byId.contains(QStringLiteral("disabled")));
+        QCOMPARE(byId.value(QStringLiteral("left")).value(QStringLiteral("order")).toInt(), 42);
+
+        // 配置落盘再加载，顺序与草稿一致；取消/重新加载则丢弃尚未保存的移动。
+        QVERIFY(writeJson(directory.path(), QJsonDocument(QJsonObject{
+            {QStringLiteral("plugins"), exported}})));
+        ConfigService service;
+        QVERIFY(service.load(directory.path(), directory.path()));
+        model.reload(service.pluginEntries(), exported, directory.path(), service.activePath());
+        QCOMPARE(proxy.rowForId(QStringLiteral("a")), 3);
+        QVERIFY(!model.isDirty());
+        QVERIFY(proxy.moveRelativeTo(QStringLiteral("a"), QStringLiteral("b"), false));
+        QCOMPARE(proxy.rowForId(QStringLiteral("a")), 1);
+        model.reload(service.pluginEntries(), exported, directory.path(), service.activePath());
+        QCOMPARE(proxy.rowForId(QStringLiteral("a")), 3);
+        QVERIFY(!model.isDirty());
+    }
+
     void pluginDraftDirtyOnlyAfterActualEdit() {
         PluginConfigEntry entry;
         entry.id = QStringLiteral("py_countdown");

@@ -62,10 +62,10 @@ public:
     // 用户明确接受后才把建议提升为当前草稿版本，最终仍由 apply() 原子保存。
     bool acceptMigration(const QString& id);
 
-    // 在同一状态栏区域内移动插件。order 仍是持久化格式，但仅由上移/下移操作
-    // 维护，避免让用户手动猜数字；sourceRow 是本模型的行号。
+    // 只调整同一区域、同一启用状态的可见分组，避免越过隐藏的禁用项。
     bool canMoveWithinPosition(int sourceRow, int direction) const;
     bool moveWithinPosition(int sourceRow, int direction);
+    bool moveRelativeTo(int sourceRow, int targetRow, bool after);
 
     // 导出保存用 plugins 数组（含 position/order/schema 字段校验与 pybridge 托管）；
     // 校验失败 err 带原因、返回 false
@@ -108,7 +108,7 @@ private:
     };
     // dir = 该插件 sidecar 所在目录（settingsQml 相对路径据此解析为绝对 URL）
     void mergeDiscovered(const QJsonObject& meta, const QString& kind, const QString& dir);
-    QVector<int> orderedRowsForPosition(const QString& position) const;
+    QVector<int> orderedRowsForPosition(const QString& position, bool enabled) const;
 
     QVector<Row> m_rows;
     QString m_secretDir;  // secrets.json 与当前 config.json 同目录（便携模式也成立）

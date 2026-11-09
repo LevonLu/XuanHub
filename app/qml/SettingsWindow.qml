@@ -624,18 +624,6 @@ Pane {
         qsTranslate("xuanhub.settings", "通用")
     ]
     readonly property var pageIcons: ["\uE790", "\uEA86", "\uE713"]
-    function positionLabel(position) {
-        if (position === "left") return trText("左侧区域")
-        if (position === "center") return trText("中间区域")
-        return position === "right" ? trText("右侧区域") : trText("未识别区域")
-    }
-    function groupLabel(groupKey) {
-        const separator = groupKey.indexOf("-")
-        const enabled = groupKey.substring(0, separator) === "enabled"
-        const position = separator >= 0 ? groupKey.substring(separator + 1) : groupKey
-        return (enabled ? trText("已启用") : trText("未启用"))
-                + " · " + positionLabel(position)
-    }
     function healthLabel(state) {
         if (state === "starting") return trText("正在启动")
         if (state === "running") return trText("运行正常")
@@ -1138,153 +1126,32 @@ Pane {
                                         }
                                     }
 
-                                    ListView {
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: pluginPane.filterText.length > 0
+                                            ? root.trText("清空搜索后可拖拽排序")
+                                            : root.trText("拖动右侧手柄调整组内顺序")
+                                        color: root.c.muted
+                                        font.pixelSize: UiMetrics.fontTiny
+                                        wrapMode: Text.Wrap
+                                    }
+                                    SettingsPluginList {
                                         id: pluginList
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
-                                        clip: true
-                                        spacing: UiMetrics.space1
-                                        // SettingsPluginSortModel：已启用插件总在前，再按左/中/右
-                                        // 区域与由上移/下移维护的顺序排列。组合分组键令区域标题在
-                                        // 启用状态切换处也保持准确，不会把两段同名区域误合并。
                                         model: settingsVM.pluginModel
-                                        section.property: "groupKey"
-                                        section.criteria: ViewSection.FullString
-
-                                        function matchesRow(row) {
-                                            const name = String(model.roleValue(row, "name")
-                                                                      || model.roleValue(row, "id")).toLowerCase()
-                                            const id = String(model.roleValue(row, "id")).toLowerCase()
-                                            return pluginPane.filterText.length === 0
-                                                || name.indexOf(pluginPane.filterText) >= 0
-                                                || id.indexOf(pluginPane.filterText) >= 0
-                                        }
-                                        function sectionHasMatch(groupKey) {
-                                            for (let row = 0; row < model.count(); ++row) {
-                                                if (model.roleValue(row, "groupKey") === groupKey
-                                                        && matchesRow(row)) return true
-                                            }
-                                            return false
-                                        }
-                                        section.delegate: Item {
-                                            width: pluginList.width
-                                            height: pluginList.sectionHasMatch(section) ? 28 : 0
-                                            visible: height > 0
-                                            Text {
-                                                id: sectionName
-                                                anchors.left: parent.left
-                                                anchors.leftMargin: UiMetrics.space2
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                text: root.groupLabel(section)
-                                                color: root.c.muted
-                                                font.pixelSize: UiMetrics.fontTiny
-                                                font.weight: Font.DemiBold
-                                            }
-                                            Rectangle {
-                                                anchors.left: sectionName.right
-                                                anchors.leftMargin: UiMetrics.space2
-                                                anchors.right: parent.right
-                                                anchors.rightMargin: UiMetrics.space2
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                height: 1
-                                                color: root.translucent(root.fgColor, 0.14)
-                                            }
-                                        }
-
-                                    // 选中项按 id 跟踪（勾选启用触发重排后行号会变）
-                                    property string currentId: ""
-
-                                    // 选中变化必须刷新右侧面板（refresh 不绑 currentId，靠显式触发）。
-                                    // 定序铁律：草稿桥 pluginId 必须先于面板刷新指向新插件——
-                                    // 若 refresh 先跑，自绘设置页加载完成时 proxy 还指向上一个
-                                    // 插件，页面的默认值回写会落进上一个插件的草稿
-                                    // （sysinfo 混入 countdown 全套键的实测根因）
-                                    onCurrentIdChanged: {
-                                        root.selectedPluginId = pluginList.currentId
-                                        settingsVM.pluginProxy.pluginId = pluginList.currentId
-                                        detailPanel.refresh()
-                                    }
-
-                                    function ensureSelection() {
-                                        if (currentId.length > 0 && model.rowForId(currentId) >= 0) return
-                                        currentId = model.count() > 0 ? model.roleValue(0, "id") : ""
-                                    }
-                                    Component.onCompleted: {
-                                        currentId = root.selectedPluginId
-                                        ensureSelection()
-                                    }
-                                    Connections {
-                                        target: pluginList.model
-                                        function onModelReset() { pluginList.ensureSelection() }
-                                    }
-
-                                    delegate: Rectangle {
-                                        id: pluginRow
-                                        width: pluginList.width
-                                        property bool matches: pluginList.matchesRow(index)
-                                        height: matches ? 56 : 0
-                                        visible: matches
-                                        radius: UiMetrics.radiusS
-                                        property bool selected: pluginList.currentId === model.id
-                                        readonly property color acc: root.c.accent
-                                        readonly property color fg: root.c.fg
-                                        color: selected ? Qt.rgba(fg.r, fg.g, fg.b, 0.07)
-                                             : rowMa.containsMouse ? Qt.rgba(fg.r, fg.g, fg.b, 0.06)
-                                             : "transparent"
-                                        Behavior on color { ColorAnimation { duration: UiMetrics.animFast } }
-
-                                        Rectangle {   // 选中 accent 左竖条
-                                            visible: pluginRow.selected
-                                            anchors.left: parent.left
-                                            anchors.leftMargin: 2
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            width: 3
-                                            height: 26
-                                            radius: 1.5
-                                            color: pluginRow.acc
-                                        }
-                                        Rectangle {   // 启用状态点
-                                            id: dot
-                                            anchors.left: parent.left
-                                            anchors.leftMargin: UiMetrics.space3
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            width: 9; height: 9; radius: 4.5
-                                            color: model.enabled ? root.c.accent : root.c.muted
-                                        }
-                                        ColumnLayout {
-                                            anchors.left: dot.right
-                                            anchors.leftMargin: 8
-                                            anchors.right: parent.right
-                                            anchors.rightMargin: UiMetrics.space2
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            spacing: 0
-                                            Text {
-                                                color: root.c.fg
-                                                font.pixelSize: UiMetrics.fontM
-                                                font.weight: pluginRow.selected ? Font.DemiBold : Font.Normal
-                                                text: model.name ? model.name : model.id
-                                                elide: Text.ElideRight
-                                                Layout.fillWidth: true
-                                            }
-                                            Text {
-                                                color: root.c.muted
-                                                font.pixelSize: UiMetrics.fontTiny
-                                                text: model.id + " · " + (model.kind === "python" ? "Python" : "C++")
-                                                      + (model.discovered ? "" : " · " + root.trText("磁盘缺失"))
-                                                elide: Text.ElideRight
-                                                Layout.fillWidth: true
-                                            }
-                                        }
-                                        MouseArea {
-                                            id: rowMa
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: pluginList.currentId = model.id
+                                        colors: root.c
+                                        filterText: pluginPane.filterText
+                                        translateText: root.trText
+                                        currentId: root.selectedPluginId
+                                        // 必须先更新草稿桥，再刷新详情，避免默认值写入旧插件。
+                                        onCurrentIdChanged: {
+                                            root.selectedPluginId = currentId
+                                            settingsVM.pluginProxy.pluginId = currentId
+                                            detailPanel.refresh()
                                         }
                                     }
                                 }
-                            }
                             }
 
                             // ── 右栏：选中插件的设置 ──

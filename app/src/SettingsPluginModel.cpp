@@ -532,14 +532,15 @@ bool SettingsPluginModel::acceptMigration(const QString& id) {
     return false;
 }
 
-QVector<int> SettingsPluginModel::orderedRowsForPosition(const QString& position) const {
+QVector<int> SettingsPluginModel::orderedRowsForPosition(const QString& position, bool enabled) const {
     QVector<int> rows;
     rows.reserve(m_rows.size());
     for (int i = 0; i < m_rows.size(); ++i) {
-        if (m_rows.at(i).position == position) rows.append(i);
+        if (m_rows.at(i).position == position && m_rows.at(i).enabled == enabled)
+            rows.append(i);
     }
     // 与排序代理在同一分区内的比较规则保持一致；旧配置存在相同 order 时，
-    // 用 id 给出稳定顺序，用户首次点上移/下移后会被归一化为连续序号。
+    // 用 id 给出稳定顺序，首次拖动或上移/下移后归一化为连续序号。
     std::sort(rows.begin(), rows.end(), [this](int left, int right) {
         const Row& a = m_rows.at(left);
         const Row& b = m_rows.at(right);
@@ -551,19 +552,37 @@ QVector<int> SettingsPluginModel::orderedRowsForPosition(const QString& position
 bool SettingsPluginModel::canMoveWithinPosition(int sourceRow, int direction) const {
     if (sourceRow < 0 || sourceRow >= m_rows.size() || (direction != -1 && direction != 1))
         return false;
-    const QVector<int> rows = orderedRowsForPosition(m_rows.at(sourceRow).position);
+    const Row& source = m_rows.at(sourceRow);
+    if (!source.enabled) return false;
+    const QVector<int> rows = orderedRowsForPosition(source.position, source.enabled);
     const int current = rows.indexOf(sourceRow);
     return current >= 0 && current + direction >= 0 && current + direction < rows.size();
 }
 
 bool SettingsPluginModel::moveWithinPosition(int sourceRow, int direction) {
     if (!canMoveWithinPosition(sourceRow, direction)) return false;
-    QVector<int> rows = orderedRowsForPosition(m_rows.at(sourceRow).position);
+    const Row& source = m_rows.at(sourceRow);
+    const QVector<int> rows = orderedRowsForPosition(source.position, source.enabled);
     const int current = rows.indexOf(sourceRow);
-    std::swap(rows[current], rows[current + direction]);
+    return moveRelativeTo(sourceRow, rows.at(current + direction), direction > 0);
+}
+
+bool SettingsPluginModel::moveRelativeTo(int sourceRow, int targetRow, bool after) {
+    if (sourceRow < 0 || sourceRow >= m_rows.size()
+        || targetRow < 0 || targetRow >= m_rows.size() || sourceRow == targetRow)
+        return false;
+    const Row& source = m_rows.at(sourceRow);
+    const Row& target = m_rows.at(targetRow);
+    if (!source.enabled || source.position != target.position || source.enabled != target.enabled)
+        return false;
+    QVector<int> rows = orderedRowsForPosition(source.position, source.enabled);
+    const QVector<int> original = rows;
+    rows.removeOne(sourceRow);
+    rows.insert(rows.indexOf(targetRow) + (after ? 1 : 0), sourceRow);
+    if (rows == original) return false;
 
     // 只交换两个旧数字会在重复 order 的旧配置里留下不确定顺序；整组规范化后，
-    // order 仍是兼容的磁盘格式，而界面则完全由可见的上移/下移控制。
+    // order 仍是兼容的磁盘格式。一次更新全部序号后再通知代理，拖动途中不改草稿。
     for (int i = 0; i < rows.size(); ++i)
         m_rows[rows[i]].order = i;
     m_dirty = true;

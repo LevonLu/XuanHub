@@ -1,5 +1,5 @@
 // SettingsPluginSortModel.h — 插件列表排序代理（M10）
-// 排序键：启用状态 → 状态栏区域（左/中/右）→ order 升序 → id 升序。order 由上移/下移维护，
+// 排序键：启用状态 → 状态栏区域（左/中/右）→ order 升序 → id 升序。order 由拖动和上移/下移维护，
 // 代理同时为 QML 提供可移动性查询与操作，避免暴露内部 source 行号。
 // 另向 QML 暴露按 id 查行、按角色名读写行的辅助（右侧详情面板用——
 // QAbstractItemModel 的 data/setData 不是 Q_INVOKABLE，QML 无法直接调）。
@@ -19,6 +19,8 @@ public:
     Q_INVOKABLE bool canMoveDown(int row) const;
     Q_INVOKABLE bool moveUp(int row);
     Q_INVOKABLE bool moveDown(int row);
+    // 拖动跨越多行时使用稳定 ID，禁止将会随代理重排而变化的行号保存在 QML。
+    Q_INVOKABLE bool moveRelativeTo(const QString& sourceId, const QString& targetId, bool after);
 
 protected:
     bool lessThan(const QModelIndex& left, const QModelIndex& right) const override;

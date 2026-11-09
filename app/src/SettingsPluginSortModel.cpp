@@ -1,4 +1,4 @@
-// SettingsPluginSortModel.cpp
+// SettingsPluginSortModel.cpp — 插件设置草稿的分组排序与移动入口
 #include "SettingsPluginSortModel.h"
 #include "SettingsPluginModel.h"
 
@@ -54,6 +54,16 @@ bool SettingsPluginSortModel::moveDown(int row) {
     auto* model = qobject_cast<SettingsPluginModel*>(sourceModel());
     if (!model || row < 0 || row >= rowCount()) return false;
     return model->moveWithinPosition(mapToSource(index(row, 0)).row(), 1);
+}
+
+bool SettingsPluginSortModel::moveRelativeTo(const QString& sourceId,
+                                             const QString& targetId, bool after) {
+    auto* model = qobject_cast<SettingsPluginModel*>(sourceModel());
+    const int sourceRow = rowForId(sourceId);
+    const int targetRow = rowForId(targetId);
+    if (!model || sourceRow < 0 || targetRow < 0) return false;
+    return model->moveRelativeTo(mapToSource(index(sourceRow, 0)).row(),
+                                 mapToSource(index(targetRow, 0)).row(), after);
 }
 
 bool SettingsPluginSortModel::lessThan(const QModelIndex& left,

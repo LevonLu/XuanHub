@@ -2,6 +2,9 @@
   "locale": "en-US",
   "contexts": {
     "xuanhub.settings": {
+      "拖动右侧手柄调整组内顺序": "Drag the handle to reorder within a group",
+      "清空搜索后可拖拽排序": "Clear the search to drag and reorder",
+      "拖动调整组内顺序": "Drag to reorder within this group",
       "插件信息": "Plugin information",
       "最小化": "Minimize",
       "外观": "Appearance",

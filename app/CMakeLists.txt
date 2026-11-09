@@ -130,6 +130,7 @@ qt_add_qml_module(XuanHub
         qml/PluginSlot.qml
         qml/PluginPopup.qml
         qml/SettingsWindow.qml
+        qml/SettingsPluginList.qml
         qml/BrandIcon.qml
         qml/MenuIconSelector.qml
         # FluentWinUI3 控件封装与设置卡片（保留插件共用接口）

@@ -13,6 +13,114 @@ TestCase {
     width: 640
     height: 720
 
+    ListModel {
+        id: pluginDraft
+        property int moveCalls: 0
+        function roleValue(row, role) { return get(row)[role] }
+        function rowForId(id) {
+            for (let row = 0; row < count; ++row) if (get(row).id === id) return row
+            return -1
+        }
+        function moveRelativeTo(source, target, after) {
+            const from = rowForId(source)
+            const to = rowForId(target)
+            if (from < 0 || to < 0 || get(from).groupKey !== get(to).groupKey) return false
+            const destination = to + (after ? 1 : 0) - (from < to ? 1 : 0)
+            if (from === destination) return false
+            ++moveCalls
+            move(from, destination, 1)
+            return true
+        }
+    }
+    Component {
+        id: pluginListComponent
+        SettingsPluginList {
+            width: 250
+            height: 480
+            model: pluginDraft
+            colors: ({fg: "#202020", muted: "#606060", accent: "#0067c0", panel: "#ffffff"})
+        }
+    }
+    function makePluginList(count) {
+        pluginDraft.clear()
+        pluginDraft.moveCalls = 0
+        for (let i = 0; i < count; ++i) {
+            pluginDraft.append({id: "plugin_" + i, name: "插件 " + i,
+                                enabled: true, discovered: true, kind: "dll", groupKey: "enabled-right"})
+        }
+        pluginDraft.append({id: "disabled", name: "未启用插件", enabled: false,
+                            discovered: true, kind: "dll", groupKey: "disabled-right"})
+        const list = createTemporaryObject(pluginListComponent, tests)
+        verify(list !== null)
+        verify(waitForRendering(list))
+        return list
+    }
+    function startPluginDrag(list, sourceId, targetId, after) {
+        const handle = findChild(list, "pluginDragHandle_" + sourceId)
+        const target = findChild(list, "pluginRow_" + targetId)
+        verify(handle !== null && target !== null)
+        const start = handle.mapToItem(list, handle.width / 2, handle.height / 2)
+        const end = target.mapToItem(list, target.width - 16, after ? target.height - 8 : 8)
+        mousePress(handle, handle.width / 2, handle.height / 2)
+        mouseMove(list, start.x, start.y + 16, 20)
+        mouseMove(list, end.x, end.y, 20)
+        return end
+    }
+    function test_plugin_drag_commits_on_release_and_keeps_selection() {
+        const list = makePluginList(4)
+        const end = startPluginDrag(list, "plugin_0", "plugin_3", true)
+        compare(list.dragging, true)
+        compare(list.targetId, "plugin_3")
+        compare(findChild(list, "pluginDropIndicator").visible, true)
+        compare(pluginDraft.rowForId("plugin_0"), 0)
+        compare(pluginDraft.moveCalls, 0)
+        mouseRelease(list, end.x, end.y)
+        compare(pluginDraft.rowForId("plugin_0"), 3)
+        compare(pluginDraft.moveCalls, 1)
+        compare(list.currentId, "plugin_0")
+        compare(list.dragging, false)
+        verify(waitForRendering(list))
+        const back = startPluginDrag(list, "plugin_0", "plugin_1", false)
+        mouseRelease(list, back.x, back.y)
+        compare(pluginDraft.rowForId("plugin_0"), 0)
+        compare(list.currentId, "plugin_0")
+    }
+    function test_plugin_drag_cancel_and_reject_other_group() {
+        const list = makePluginList(3)
+        compare(findChild(list, "pluginDragHandle_disabled").visible, false)
+        let end = startPluginDrag(list, "plugin_0", "plugin_2", true)
+        keyClick(Qt.Key_Escape)
+        mouseRelease(list, end.x, end.y)
+        compare(pluginDraft.moveCalls, 0)
+        end = startPluginDrag(list, "plugin_0", "disabled", false)
+        compare(list.targetId, "")
+        mouseRelease(list, end.x, end.y)
+        compare(pluginDraft.moveCalls, 0)
+        end = startPluginDrag(list, "plugin_0", "plugin_2", true)
+        mouseMove(list, list.width + 20, end.y)
+        mouseRelease(list, list.width + 20, end.y)
+        compare(pluginDraft.moveCalls, 0)
+        compare(list.dragging, false)
+        list.filterText = "插件"
+        verify(waitForRendering(list))
+        compare(findChild(list, "pluginDragHandle_plugin_0").enabled, false)
+    }
+    function test_plugin_drag_scrolls_and_keeps_mouse_grab() {
+        const list = makePluginList(18)
+        list.height = 240
+        verify(waitForRendering(list))
+        const handle = findChild(list, "pluginDragHandle_plugin_0")
+        mousePress(handle, 16, 28)
+        mouseMove(list, list.width - 16, list.height - 8, 30)
+        tryVerify(function() { return list.contentY > list.originY + 600 }, 4000)
+        compare(list.dragging, true)
+        verify(list.targetId.length > 0)
+        mouseRelease(list, list.width - 16, list.height - 8)
+        compare(pluginDraft.moveCalls, 1)
+        verify(pluginDraft.rowForId("plugin_0") >= 10)
+        compare(list.currentId, "plugin_0")
+    }
+
     QtObject {
         id: draft
         property var values: ({})

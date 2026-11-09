@@ -28,6 +28,7 @@ class SettingsPresentationTest(unittest.TestCase):
             module.mkdir()
             controls = sorted((ROOT / "app/qml").glob("Ui*.qml"))
             controls += [ROOT / "app/qml/BrandIcon.qml", ROOT / "app/qml/MenuIconSelector.qml"]
+            controls += [ROOT / "app/qml/SettingsPluginList.qml"]
             resources = Path(imports) / "resources"
             resources.mkdir()
             shutil.copy2(ROOT / "app/resources/xuanhub-tray-icon-64.png", resources)
