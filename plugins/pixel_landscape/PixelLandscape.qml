@@ -154,20 +154,31 @@ Item {
         id: popupBody
         Rectangle {
             color: root.colors.panel
-            LandscapeScene {
-                objectName: "expandedScene"
+            Item {
                 width: parent.width
                 height: Math.max(0, parent.height - details.toolbarHeight)
-                expanded: true
-                sceneType: root.scene
-                drawingVisible: details.visible
-                phase: root.phase
-                previousPhase: root.plugin && root.plugin.previousPhase !== undefined ? root.plugin.previousPhase : root.phase
-                weather: root.weather
-                animationTime: controller.animationTime
-                blend: controller.blend
-                meteor: controller.meteor
-                solarState: root.solar
+                LandscapeFrame {
+                    id: popupFrame
+                    objectName: "landscapePopupFrame"
+                    anchors.fill: parent
+                    frameStyle: root.frameStyle
+                    colors: root.colors
+                }
+                LandscapeScene {
+                    objectName: "expandedScene"
+                    anchors.fill: parent
+                    anchors.margins: popupFrame.inset
+                    expanded: true
+                    sceneType: root.scene
+                    drawingVisible: details.visible
+                    phase: root.phase
+                    previousPhase: root.plugin && root.plugin.previousPhase !== undefined ? root.plugin.previousPhase : root.phase
+                    weather: root.weather
+                    animationTime: controller.animationTime
+                    blend: controller.blend
+                    meteor: controller.meteor
+                    solarState: root.solar
+                }
             }
             Flow {
                 x: 12

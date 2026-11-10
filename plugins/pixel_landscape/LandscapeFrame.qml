@@ -1,4 +1,4 @@
-// LandscapeFrame.qml — 五种栏上画框，静态几何装饰不参与动画时钟
+// LandscapeFrame.qml — 栏上与欣赏弹窗共用画框，静态几何装饰不参与动画时钟
 import QtQuick
 
 Item {
