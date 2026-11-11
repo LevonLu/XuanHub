@@ -18,6 +18,7 @@ class PluginListModel;
 class LocaleManager;
 class PluginManager;
 class PluginActionRegistry;
+class AppUpdateService;
 
 class SettingsController : public QObject {
     Q_OBJECT
@@ -26,11 +27,13 @@ public:
                        LocaleManager* locale, const QString& exeDir,
                        PluginListModel* barPlugins, PluginManager* pluginManager,
                        PluginActionRegistry* pluginActions,
+                       AppUpdateService* appUpdater,
                        QObject* parent = nullptr);
     ~SettingsController() override;
 
 public slots:
     void open();   // 按需重建窗口并刷新草稿
+    void openUpdates();
     void openForPlugin(QVariantMap payload);  // HostServices：打开并按宿主绑定 id 选中
 
     // devUiEvent(spec)：仅 --uitest 模式生效。spec 形如
@@ -49,6 +52,7 @@ private:
     PluginListModel* m_barPlugins;   // bar 的插件模型：查询部件实时内容宽度（手动定宽初始值）
     PluginManager* m_pluginManager;
     PluginActionRegistry* m_pluginActions;
+    AppUpdateService* m_appUpdater;
     SettingsViewModel* m_vm = nullptr;   // 首次打开时创建，跨视图重建保留后台回执
     QPointer<QQuickView> m_window;
     bool m_uitest = false;               // --uitest 启动参数置位

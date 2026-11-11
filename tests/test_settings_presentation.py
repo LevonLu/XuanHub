@@ -29,6 +29,7 @@ class SettingsPresentationTest(unittest.TestCase):
             controls = sorted((ROOT / "app/qml").glob("Ui*.qml"))
             controls += [ROOT / "app/qml/BrandIcon.qml", ROOT / "app/qml/MenuIconSelector.qml"]
             controls += [ROOT / "app/qml/SettingsPluginList.qml"]
+            controls += [ROOT / "app/qml/AppUpdateCard.qml"]
             resources = Path(imports) / "resources"
             resources.mkdir()
             shutil.copy2(ROOT / "app/resources/xuanhub-tray-icon-64.png", resources)
@@ -64,7 +65,7 @@ TestCase {
  }
 }''', encoding="utf-8")
             log = Path(imports) / "settings-presentation.txt"
-            for test_file in ("tst_SettingsPresentation.qml", "tst_PixelLandscapeSettings.qml"):
+            for test_file in ("tst_SettingsPresentation.qml", "tst_PixelLandscapeSettings.qml", "tst_AppUpdateCard.qml"):
                 result = subprocess.run(
                     [runner, "-import", imports, "-input", str(ROOT / "tests/qml" / test_file),
                      "-o", str(log) + ",txt"],

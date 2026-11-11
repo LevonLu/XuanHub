@@ -10,6 +10,7 @@ Python worker 的 stdout 未被消费，第三方插件持续输出时存在宿�
 ## Decision
 
 设置窗口隐藏后延迟释放视图，独立保留负责异步依赖安装和更新回执的 ViewModel；重新打开时重建视图。
+[宿主一键更新](../../implemented/feature/2026-11-10-github-app-update.md)的后台状态由主程序持有，不随设置视图关闭而丢失，继续沿用本篇的视图释放边界。
 设置页首次访问时实例化，本次编辑期间保留非法输入和选中项；关闭窗口统一释放。
 设置页的视觉与控件采用[FluentWinUI3](../../implemented/feature/2026-11-03-fluent-settings.md)，本篇的草稿与资源生命周期约束继续成立。
 Token Usage 弹窗及其当前页面按需创建。保留共享 PluginPopup 的定位、互斥和关闭规则。

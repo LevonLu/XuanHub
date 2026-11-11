@@ -51,6 +51,9 @@ param(
     [Parameter(Mandatory = $false)]
     [string]$OutputDir = "",
 
+    # 独立验收构建可指定目录，避免覆盖正在运行的默认构建。
+    [string]$BuildDirectory = "build/default",
+
     [Parameter(Mandatory = $false)]
     [switch]$NoZip,
 
@@ -364,7 +367,7 @@ if (-not $OutputDir) {
     $OutputDir = Join-Path $ProjectRoot "dist"
 }
 
-$SourceDistDir = Join-Path $ProjectRoot "build\default\dist\$Config"
+$SourceDistDir = Join-Path (Join-Path $ProjectRoot $BuildDirectory) "dist\$Config"
 
 # Read version from CMakeLists.txt
 $CmakeFile = Join-Path $ProjectRoot "CMakeLists.txt"
@@ -429,8 +432,10 @@ $stageCopyArgs = @(
     "/DCOPY:DAT",
     "/R:1", "/W:1",
     "/XD", "__pycache__", ".git", ".hg", ".svn",
+           "plugin-data", "plugin-store", "python-envs", "plugin-update-cache", "app-update-cache",
            (Join-Path $SourceDistDir "plugins_py\tests"),
     "/XF", "config.json", "secrets.json", "XuanHub.lock", "xuanhub.log", "portable",
+            "app-update-state.json", ".xuanhub-update.json", "update-manifest.json",
             "*.pyc", "*.pyo", "*.pdb", "*.log", "*.db", "*.sqlite", "*.sqlite3",
             "*.dmp", "*.dump", "*.trace", "*.pem", "*.key", "*.p12", "*.pfx",
     "/NJH", "/NJS", "/NDL", "/NFL"
@@ -804,6 +809,9 @@ if (-not $NoPrune) {
 
 # ---- Step 6: Create zip archive ----
 Write-Host "`n[6/6] Packaging..."
+
+. (Join-Path $PSScriptRoot "app_update_manifest.ps1")
+Write-AppUpdateManifest -Directory $DistDir -Version $Version
 
 Assert-PackageSafe -PackageDir $DistDir -DefaultConfig $defaultConfig -LicenseFile $licenseFile
 

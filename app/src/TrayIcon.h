@@ -21,10 +21,12 @@ public:
     ~TrayIcon() override;   // m_menu 无父对象（setContextMenu 不接管所有权），需手动释放
 
     void show();
+    void showUpdateNotification(const QString& version);
     void recreate();               // Explorer 重启后重建托盘图标
     void setPluginActions(PluginActionRegistry* actions);
 
 signals:
+    void softwareUpdateRequested();
     void settingsRequested();    // 菜单 "设置..." 触发（M8 设置窗口）
     void reloadRequested();      // 菜单 "重新加载配置" 触发（M7 热重载）
 
@@ -53,4 +55,6 @@ private:
     QAction*         m_toggleThemeAction = nullptr;
     QAction*         m_reloadAction = nullptr;
     QAction*         m_quitAction = nullptr;
+    QAction*         m_updateAction = nullptr;
+    bool m_updateNotice = false;
 };

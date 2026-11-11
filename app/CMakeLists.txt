@@ -68,6 +68,10 @@ qt_add_executable(XuanHub WIN32
     src/PluginUpdateIndex.cpp
     src/PluginUpdateService.h
     src/PluginUpdateService.cpp
+    src/AppUpdateService.h
+    src/AppUpdateService.cpp
+    src/AppUpdatePackage.h
+    src/AppUpdatePackage.cpp
     src/PluginDiagnostics.h
     src/PluginDiagnostics.cpp
 
@@ -130,6 +134,7 @@ qt_add_qml_module(XuanHub
         qml/PluginSlot.qml
         qml/PluginPopup.qml
         qml/SettingsWindow.qml
+        qml/AppUpdateCard.qml
         qml/SettingsPluginList.qml
         qml/BrandIcon.qml
         qml/MenuIconSelector.qml
@@ -152,6 +157,7 @@ qt_add_qml_module(XuanHub
 )
 
 target_link_libraries(XuanHub PRIVATE
+    xuanhub_app_update_core
     Qt6::Quick
     Qt6::QuickControls2   # 设置窗口（M8）的表单控件
     Qt6::Gui
@@ -165,6 +171,20 @@ target_link_libraries(XuanHub PRIVATE
     crypt32              # Windows DPAPI（插件 API Key 密钥库）
     bcrypt               # .xuanplugin ECDSA P-256 发布者签名校验
 )
+
+# 更新器只链接 Core；运行前连同 Core 和 CRT 复制到独立事务目录，避免锁住被替换的运行库。
+add_library(xuanhub_app_update_core STATIC
+    src/AppUpdateManifest.cpp src/AppUpdateManifest.h
+    src/AppUpdateTransaction.cpp src/AppUpdateTransaction.h
+    src/SemanticVersion.cpp src/SemanticVersion.h)
+target_include_directories(xuanhub_app_update_core PUBLIC src)
+target_link_libraries(xuanhub_app_update_core PUBLIC Qt6::Core)
+target_compile_definitions(xuanhub_app_update_core PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+qt_add_executable(XuanHubUpdater WIN32 src/AppUpdaterMain.cpp)
+target_link_libraries(XuanHubUpdater PRIVATE xuanhub_app_update_core Qt6::Core user32)
+target_compile_definitions(XuanHubUpdater PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+set_target_properties(XuanHubUpdater PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${XUANHUB_BIN_DIR}")
+add_dependencies(XuanHub XuanHubUpdater)
 
 # 开发者 CLI 在 Qt 构建可用时调用这个轻量探针，确保 Manifest、设置 Schema
 # 与 i18n 使用安装/运行链路中的同一份 C++ 校验代码；纯 Python 开发仍可离线预检。

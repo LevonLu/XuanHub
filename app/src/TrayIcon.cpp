@@ -96,6 +96,12 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
     m_pluginActionsMenu->menuAction()->setVisible(false);
 
     m_menu->addSeparator();
+    m_updateAction = m_menu->addAction(QString());
+    connect(m_updateAction, &QAction::triggered, this, &TrayIcon::softwareUpdateRequested);
+    connect(m_tray, &QSystemTrayIcon::messageClicked, this, [this] {
+        if (m_updateNotice) emit softwareUpdateRequested();
+        m_updateNotice = false;
+    });
     m_quitAction = m_menu->addAction(QString());
     connect(m_quitAction, &QAction::triggered, []() { QCoreApplication::quit(); });
 
@@ -118,6 +124,7 @@ TrayIcon::TrayIcon(ThemeManager* theme, xuanhub::EventBus* bus,
 }
 
 void TrayIcon::retranslate() {
+    m_updateAction->setText(QCoreApplication::translate("xuanhub.update", "检查软件更新"));
     m_tray->setToolTip(QCoreApplication::translate(
         "xuanhub.tray", "玄枢 XuanHub"));
     m_settingsAction->setText(QCoreApplication::translate(
@@ -137,6 +144,12 @@ void TrayIcon::retranslate() {
 }
 
 void TrayIcon::show() { m_tray->show(); }
+
+void TrayIcon::showUpdateNotification(const QString& version) {
+    m_updateNotice = true;
+    m_tray->showMessage(QStringLiteral("XuanHub"), QCoreApplication::translate(
+        "xuanhub.update", "发现新版本 %1，点击查看并更新").arg(version), QSystemTrayIcon::Information);
+}
 
 void TrayIcon::setPluginActions(PluginActionRegistry* actions) {
     if (m_pluginActions == actions) return;
@@ -247,6 +260,7 @@ void TrayIcon::setTaskbarMode(bool on) {
 }
 
 void TrayIcon::onAppNotify(QVariantMap payload) {
+    m_updateNotice = false;
     const QString title = payload.value(QStringLiteral("title"),
                                         QStringLiteral("XuanHub")).toString();
     const QString msg   = payload.value(QStringLiteral("message")).toString();

@@ -19,6 +19,7 @@
 #include <QScreen>
 #include <QTest>
 #include <QTimer>
+#include "AppUpdateService.h"
 
 SettingsController::SettingsController(ConfigService* config, ThemeManager* theme,
                                        ThemeRegistry* registry,
@@ -26,10 +27,12 @@ SettingsController::SettingsController(ConfigService* config, ThemeManager* them
                                        PluginListModel* barPlugins,
                                        PluginManager* pluginManager,
                                        PluginActionRegistry* pluginActions,
+                                       AppUpdateService* appUpdater,
                                        QObject* parent)
     : QObject(parent), m_config(config), m_theme(theme), m_registry(registry),
       m_locale(locale), m_exeDir(exeDir), m_barPlugins(barPlugins),
       m_pluginManager(pluginManager), m_pluginActions(pluginActions),
+      m_appUpdater(appUpdater),
       m_uitest(QCoreApplication::arguments().contains(QStringLiteral("--uitest"))) {}
 
 SettingsController::~SettingsController() {
@@ -77,6 +80,7 @@ void SettingsController::open() {
         w->rootContext()->setContextProperty(QStringLiteral("settingsVM"), m_vm);
         w->rootContext()->setContextProperty(QStringLiteral("themeManager"), m_theme);
         w->rootContext()->setContextProperty(QStringLiteral("settingsCtl"), this);
+        w->rootContext()->setContextProperty(QStringLiteral("appUpdater"), m_appUpdater);
         if (m_pluginActions)
             w->rootContext()->setContextProperty(QStringLiteral("pluginActions"),
                                                  m_pluginActions);
@@ -125,6 +129,13 @@ void SettingsController::open() {
         m_window->show();
     m_window->raise();
     m_window->requestActivate();
+}
+
+void SettingsController::openUpdates() {
+    open();
+    if (m_window && m_window->rootObject())
+        QMetaObject::invokeMethod(m_window->rootObject(), "showSoftwareUpdates");
+    if (m_appUpdater) m_appUpdater->check();
 }
 
 void SettingsController::openForPlugin(QVariantMap payload) {

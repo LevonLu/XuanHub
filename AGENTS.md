@@ -222,6 +222,9 @@ python scripts/xuanhub_plugin.py doctor <插件目录或运行时目录>
 
 ## 8. 部署
 
+- **宿主一键更新**：`AppUpdateService` 从固定官方 GitHub 正式 Release 读取便携包大小及 SHA-256；`AppUpdatePackage` 在后台校验并解压。`XuanHubUpdater.exe` 及 Core/CRT 复制到独立事务目录，握手并等待宿主真正退出后，按 `update-manifest.json` 备份和替换官方文件；新版主 QML 就绪并确认存活后提交，失败恢复旧版。当前仅支持 GitHub，契约见 `docs/app-update.md`。
+- **发行清单**：便携打包通过 `scripts/app_update_manifest.ps1` 生成清单，源码构建目录不生成；配置、密钥、用户数据、受管插件和未列入清单的第三方文件均保留。本地修改官方文件或路径冲突时拒绝更新。修改更新流程必须覆盖真实独立进程、占用失败、启动失败与回滚，不能只用文件复制单测验收。
+
 - **部署已自动化**：`XuanHub` 目标 POST_BUILD 在每次链接后执行 `windeployqt --release/--debug --qmldir app/qml <exe>`。`--qmldir app/qml` 不可少：不带它不扫描 QML import，会漏 QML 插件 DLL（设置窗口曾因缺 `qtquickcontrols2plugin.dll` 打开空白）。
 - 已知无害告警：`VCINSTALLDIR is not set`——只是不复制 MSVC 运行时 DLL，绿色分发包需自行带上 `vcruntime140.dll` 等。
 - 手动重新部署：`pixi run deploy`（`scripts/deploy_qt.ps1`，windeployqt 自动定位，不写死 Qt 路径）。

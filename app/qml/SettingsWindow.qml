@@ -15,6 +15,7 @@ Pane {
     clip: true
     property int cornerRadius: UiMetrics.radiusL
     function trText(source) { return qsTranslate("xuanhub.settings", source) }
+    function showSoftwareUpdates() { pageStack.currentIndex = 2 }
 
     // [dev] UI 测试驱动：--uitest 启动时 SettingsController 注入 uiTestCommands（命令
     // 数组），本 Timer 每 500ms 回放一条（click:x,y / kp:文本）；正常启动该属性
@@ -2194,6 +2195,10 @@ Pane {
                                         color: root.c.muted
                                         font.pixelSize: UiMetrics.fontS
                                     }
+                                }
+                                AppUpdateCard {
+                                    Layout.fillWidth: true
+                                    updater: typeof appUpdater !== "undefined" ? appUpdater : null
                                 }
                             }
                         }

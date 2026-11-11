@@ -26,6 +26,7 @@
 #include "PluginActionRegistry.h"
 #include "PluginListModel.h"
 #include "SettingsController.h"
+#include "AppUpdateService.h"
 #include "ThemeManager.h"
 #include "ThemeRegistry.h"
 #include "TrayIcon.h"
@@ -119,9 +120,10 @@ int main(int argc, char* argv[]) {
     app.setFont(uiFont);
 
     const QString exeDir = QCoreApplication::applicationDirPath();
+    if (AppUpdateService::handlePendingUpdate(exeDir)) return 0;
 
     // 便携标记：exeDir 下存在 portable 文件时，强制所有运行时数据（配置、日志、锁）
-    // 留在 exeDir，不触碰 %APPDATA% 与 %TEMP%
+    // 留在 exeDir；独立更新器的临时事务使用 %TEMP%，不迁移这些持久数据。
     const bool isPortable = QFile::exists(QDir(exeDir).absoluteFilePath(QStringLiteral("portable")));
 
     // 配置目录：便携模式用 exeDir；常规模式用 %APPDATA%/XuanHub，不可用时退回 exeDir
@@ -211,8 +213,18 @@ int main(int argc, char* argv[]) {
                      &reloader, &ConfigHotReloader::forceReload);
 
     // 设置窗口（M8）：托盘按需打开；关闭释放视图，后台任务状态由控制器保留。
+    AppUpdateService appUpdater(exeDir, configDir);
     SettingsController settingsCtl(&config, &theme, &registry, &locale, exeDir,
-                                   &model, &pm, &pluginActions);
+                                   &model, &pm, &pluginActions, &appUpdater);
+    QObject::connect(&tray, &TrayIcon::softwareUpdateRequested,
+                     &settingsCtl, &SettingsController::openUpdates);
+    QObject::connect(&appUpdater, &AppUpdateService::updateAvailable,
+                     &tray, &TrayIcon::showUpdateNotification);
+    appUpdater.scheduleAutomaticCheck();
+    QTimer::singleShot(3000, &app, [&window, exeDir] {
+        if (window.status() == QQuickView::Ready && window.isVisible())
+            AppUpdateService::reportReady(exeDir);
+    });
     QObject::connect(&tray, &TrayIcon::settingsRequested,
                      &settingsCtl, &SettingsController::open);
     bus.subscribe(QStringLiteral("app.settings.open"), &settingsCtl,

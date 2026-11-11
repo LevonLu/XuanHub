@@ -1,4 +1,28 @@
 # tests/CMakeLists.txt — 核心配置与密钥持久化的轻量回归测试
+add_executable(xuanhub_app_update_tests AppUpdateTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/AppUpdateService.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/AppUpdateService.h
+    ${CMAKE_SOURCE_DIR}/app/src/AppUpdatePackage.cpp)
+set_target_properties(xuanhub_app_update_tests PROPERTIES AUTOMOC ON)
+target_link_libraries(xuanhub_app_update_tests PRIVATE xuanhub_app_update_core
+    Qt6::CorePrivate Qt6::Network Qt6::Test user32)
+add_dependencies(xuanhub_app_update_tests XuanHub)
+add_custom_command(TARGET xuanhub_app_update_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Core>" "$<TARGET_FILE_DIR:xuanhub_app_update_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Network>" "$<TARGET_FILE_DIR:xuanhub_app_update_tests>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Test>" "$<TARGET_FILE_DIR:xuanhub_app_update_tests>"
+    VERBATIM)
+add_test(NAME xuanhub_app_update_tests COMMAND xuanhub_app_update_tests)
+add_test(NAME xuanhub_app_update_manifest_tests
+    COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+        "${CMAKE_SOURCE_DIR}/tests/AppUpdateManifestTest.ps1"
+        -ManifestScript "${CMAKE_SOURCE_DIR}/scripts/app_update_manifest.ps1")
+set_tests_properties(xuanhub_app_update_tests PROPERTIES TIMEOUT 90)
+add_executable(xuanhub_app_update_host_fixture AppUpdateHostFixture.cpp)
+target_link_libraries(xuanhub_app_update_host_fixture PRIVATE xuanhub_app_update_core Qt6::Core)
 # 像素风景同时验证原生状态模型、实际画布和可选槽位宽度契约。
 add_executable(xuanhub_pixel_landscape_tests
     PixelLandscapeTest.cpp
@@ -441,6 +465,10 @@ target_link_libraries(xuanhub_plugin_package_tests PRIVATE
     bcrypt
 )
 if(Python_Interpreter_FOUND)
+    add_test(NAME xuanhub_app_update_process_tests
+        COMMAND "${Python_EXECUTABLE}" -B "${CMAKE_SOURCE_DIR}/tests/app_update_process_test.py" -v)
+    set_tests_properties(xuanhub_app_update_process_tests PROPERTIES TIMEOUT 90
+        ENVIRONMENT "XUANHUB_UPDATE_FIXTURE=$<TARGET_FILE:xuanhub_app_update_host_fixture>;XUANHUB_UPDATE_HELPER=$<TARGET_FILE:XuanHubUpdater>;XUANHUB_UPDATE_CORE=$<TARGET_FILE:Qt6::Core>;PYTHONUTF8=1")
     target_compile_definitions(xuanhub_plugin_package_tests PRIVATE
         XUANHUB_TEST_PYTHON="${Python_EXECUTABLE}"
         XUANHUB_SOURCE_DIR="${CMAKE_SOURCE_DIR}")

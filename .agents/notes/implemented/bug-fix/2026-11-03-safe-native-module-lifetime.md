@@ -16,6 +16,7 @@ Status: implemented
 卸载仍先移除 QML 引用、关闭事件作用域、停止线程和 worker，再 shutdown/unload 销毁插件根实例；
 DLL 代码、静态元对象与元类型实现保持映射直到进程结束。重载继续创建新的插件实例。
 同一路径的原生 DLL 替换需要退出宿主；新版本目录发现机制保持原样。
+[宿主一键更新](../../implemented/feature/2026-11-10-github-app-update.md)通过独立更新器等待整个宿主进程结束后才替换发行文件，继续遵循本篇的映像存活边界。
 该策略遵循 Qt 的 [QPluginLoader 默认加载提示](https://doc.qt.io/archives/qt-6.9/qpluginloader.html#loadHints-prop)
 与 [PreventUnloadHint 契约](https://doc.qt.io/archives/qt-6.9/qlibrary.html#LoadHint-enum)。
 
