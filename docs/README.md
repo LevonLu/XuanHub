@@ -60,6 +60,7 @@ python scripts/xuanhub_plugin.py package <插件目录或运行时目录> --outp
 
 ## 发布记录
 
+- [`v0.5.0`](releases/v0.5.0.md)：GitHub 宿主一键更新与回滚、朝暮风景、米家插件、插件拖拽排序及首页运行截图。
 - [`v0.4.4`](releases/v0.4.4.md)：FluentWinUI3 设置界面、WinUI 配色与紧凑菜单、原生插件重载崩溃修复。
 - [`v0.4.3`](releases/v0.4.3.md)：菜单分段切换、Token Usage 统一账户与弹窗优化、内存及多屏定位改进。
 - [`v0.4.2`](releases/v0.4.2.md)：taskbar 几何与菜单定位修复、内置插件 SDK V2 升级、多工具用量监控。
