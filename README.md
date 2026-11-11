@@ -7,6 +7,21 @@ XuanHub 提供两种工作模式：`appbar` 以无边框、置顶窗口占据主
 - **C++ 插件**：独立 DLL，性能最好，可直接调用 Win32 API；
 - **Python 子插件**：由内置的 `pybridge` 桥接插件承载，每个插件运行在独立的 `python.exe` worker 中；**写插件不需要 Qt、MSVC 或 C++ 编译环境**。
 
+## 运行效果
+
+以下为 Windows 上的实际运行截图，使用 WinUI 青绿主题和展示配置；插件可按需启用，点击图片可查看大图。
+
+**顶部状态栏 · 深色 / 浅色**（左侧局部，依次为玄枢菜单、朝暮风景、系统指标和时钟）
+
+![深色状态栏：玄枢菜单、朝暮风景、CPU 与内存占用、上下行网速和时钟](docs/screenshots/appbar-dark.png)
+![浅色状态栏：相同插件布局随主题切换配色](docs/screenshots/appbar-light.png)
+
+| 系统监控 · CPU、内存、GPU 与网络趋势 | 朝暮 · 黄昏山间小屋欣赏弹窗 |
+|---|---|
+| ![系统信息弹窗，展示实时指标、采样曲线和硬件详情](docs/screenshots/system-monitor.png) | ![朝暮风景弹窗，展示黄昏小屋、木质画框和暂停、设置操作](docs/screenshots/landscape.png) |
+| **外观设置 · 主题、明暗与菜单图标** | **插件设置 · 启停、布局与插件专有选项** |
+| ![浅色外观设置页，可选择主题包、明暗模式和菜单图标](docs/screenshots/settings-appearance.png) | ![深色插件设置页，可管理插件并配置朝暮的场景、时段和天气](docs/screenshots/settings-plugins.png) |
+
 ## 特性
 
 - 双工作模式：`appbar` 支持顶部/底部贴边并保留工作区，`taskbar` 嵌入原生任务栏并随内容收缩
