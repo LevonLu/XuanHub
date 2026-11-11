@@ -22,6 +22,7 @@ class PixelLandscapeViewModel final : public QObject, public QAbstractNativeEven
     Q_PROPERTY(bool rareEventsEnabled READ rareEventsEnabled NOTIFY configChanged)
     Q_PROPERTY(bool paused READ paused WRITE setPaused NOTIFY pausedChanged)
     Q_PROPERTY(QVariantMap solarState READ solarState NOTIFY solarStateChanged)
+    Q_PROPERTY(QVariantMap goldenHourState READ goldenHourState NOTIFY goldenHourStateChanged)
     Q_PROPERTY(QVariantMap locationState READ locationState NOTIFY locationStateChanged)
 
 public:
@@ -37,6 +38,7 @@ public:
     Q_INVOKABLE void resync();
     Q_INVOKABLE void requestLocation();
     QVariantMap solarState() const { return m_solarState; }
+    QVariantMap goldenHourState() const { return m_goldenHourState; }
     QVariantMap locationState() const { return m_locationState; }
     QString phase() const { return m_phase; }
     QString previousPhase() const { return m_previousPhase; }
@@ -53,6 +55,7 @@ Q_SIGNALS:
     void configChanged();
     void pausedChanged();
     void solarStateChanged();
+    void goldenHourStateChanged();
     void locationStateChanged();
 private:
     friend class PixelLandscapeTest;
@@ -62,10 +65,15 @@ private:
     void locationFinished(quint64 id, const QString& error, double latitude, double longitude,
                           const QDateTime& timestamp);
     void revokeLocation();
+    void refreshGoldenHour(const QDateTime& now, const QVariantMap& solar);
     QTimer m_timer;
     LandscapeLocation* m_location;
     xuanhub::IPluginStorage* m_storage = nullptr;
     QVariantMap m_solarState;
+    QVariantMap m_goldenHourState;
+    QString m_goldenHourMode = QStringLiteral("random");
+    QDate m_goldenDate;
+    bool m_goldenSelected = false;
     QVariantMap m_locationState;
     QString m_locationSource = QStringLiteral("system");
     QString m_locationError;

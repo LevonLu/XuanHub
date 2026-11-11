@@ -148,6 +148,15 @@ Item {
                     options: [{value:"none",label:"无画框"},{value:"thin",label:"极简细框"},{value:"wood",label:"暖木框"},
                         {value:"mat",label:"白色卡纸框"},{value:"metal",label:"像素金属框"}]
                 }
+                Choice {
+                    fieldKey: "goldenHourMode"; title: root.tr("朝阳与晚霞"); fallback: "random"
+                    options: [{value:"random",label:"随机出现（每天 1/3 概率）"},
+                        {value:"always",label:"每天出现"},{value:"off",label:"关闭"}]
+                }
+            }
+            Label {
+                Layout.fillWidth: true; wrapMode: Text.Wrap
+                text: root.tr("仅晴天黄金时段生效，朝夕共用当天随机结果。选择每天出现，再切换清晨或黄昏可预览。")
             }
             Switch {
                 text: root.tr("动态效果"); checked: root.read("animationsEnabled", true)

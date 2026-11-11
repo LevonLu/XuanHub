@@ -44,6 +44,7 @@ Item {
         : qsTranslate("plugin.pixel_landscape.main", "晴天")
     readonly property string statusText: phaseLabel + " · " + weatherLabel
     readonly property var solar: plugin && plugin.solarState !== undefined ? plugin.solarState : ({active: false})
+    readonly property var goldenHour: plugin && plugin.goldenHourState !== undefined ? plugin.goldenHourState : ({strength: 0})
     readonly property var location: plugin && plugin.locationState !== undefined ? plugin.locationState : ({})
     readonly property string locationLabel: location.source === "system" ? qsTranslate("plugin.pixel_landscape.main", "Windows 当前位置")
         : location.source === "cache" ? qsTranslate("plugin.pixel_landscape.main", "最近位置（24 小时内）")
@@ -107,6 +108,7 @@ Item {
         blend: controller.blend
         meteor: controller.meteor
         solarState: root.solar
+        goldenHourState: root.goldenHour
         drawingVisible: root.barVisible
     }
     MouseArea {
@@ -178,6 +180,7 @@ Item {
                     blend: controller.blend
                     meteor: controller.meteor
                     solarState: root.solar
+                    goldenHourState: root.goldenHour
                 }
             }
             Flow {

@@ -5,6 +5,8 @@
 #include <QJsonObject>
 #include <QTimeZone>
 #include <QCoreApplication>
+#include <QCryptographicHash>
+#include <algorithm>
 #include <windows.h>
 #include <cmath>
 #include "SolarCalculator.h"
@@ -46,6 +48,9 @@ QString PixelLandscapeViewModel::configurationError(const QVariantMap& config) {
     if (!error.isEmpty()) return error;
     error = enumError(QStringLiteral("frameStyle"),
         {QStringLiteral("none"), QStringLiteral("thin"), QStringLiteral("wood"), QStringLiteral("mat"), QStringLiteral("metal")});
+    if (!error.isEmpty()) return error;
+    error = enumError(QStringLiteral("goldenHourMode"),
+        {QStringLiteral("random"), QStringLiteral("always"), QStringLiteral("off")});
     if (!error.isEmpty()) return error;
     for (const QString& key : {QStringLiteral("animationsEnabled"), QStringLiteral("rareEventsEnabled"), QStringLiteral("manualLocationEnabled")})
         if (config.contains(key) && config.value(key).metaType().id() != QMetaType::Bool)
@@ -93,6 +98,7 @@ bool PixelLandscapeViewModel::applyConfig(const QVariantMap& config) {
     m_frameStyle = config.value(QStringLiteral("frameStyle"), QStringLiteral("wood")).toString();
     m_animationsEnabled = config.value(QStringLiteral("animationsEnabled"), true).toBool();
     m_rareEventsEnabled = config.value(QStringLiteral("rareEventsEnabled"), true).toBool();
+    m_goldenHourMode = config.value(QStringLiteral("goldenHourMode"), QStringLiteral("random")).toString();
     m_locationSource = config.value(QStringLiteral("locationSource"), QStringLiteral("system")).toString();
     if (m_locationSource == QStringLiteral("manual") || m_timeMode != QStringLiteral("auto")) m_locationError.clear();
     m_manualLocationEnabled = config.value(QStringLiteral("manualLocationEnabled"), false).toBool();
@@ -118,6 +124,7 @@ void PixelLandscapeViewModel::refreshAt(const QDateTime& now, bool force) {
         source = QStringLiteral("manual");
     }
     if (solar != m_solarState) { m_solarState = solar; Q_EMIT solarStateChanged(); }
+    refreshGoldenHour(now, solar);
     const QVariantMap state{{QStringLiteral("source"), source}, {QStringLiteral("error"), m_locationError},
         {QStringLiteral("pending"), m_pending}, {QStringLiteral("automatic"), automatic},
         {QStringLiteral("systemSelected"), m_locationSource == QStringLiteral("system")}};
@@ -133,6 +140,46 @@ void PixelLandscapeViewModel::refreshAt(const QDateTime& now, bool force) {
     m_transitionAllowed = !solar.value(QStringLiteral("active")).toBool() && !force
         && delta >= 0 && delta <= 90000 && m_previousPhase != next;
     Q_EMIT phaseChanged();
+}
+
+void PixelLandscapeViewModel::refreshGoldenHour(const QDateTime& now, const QVariantMap& solar) {
+    // 日期固定的伪随机抽签使重启、重开弹窗、改场景都不会重新掷骰；朝夕共用结果。
+    // 拒绝 255 后，三个余数桶各有 85 个值，不把“随机”做成每三天固定出现一次。
+    if (m_goldenDate != now.date()) {
+        m_goldenDate = now.date();
+        m_goldenSelected = false;
+        const auto hash = QCryptographicHash::hash(
+            QByteArrayLiteral("pixel_landscape.golden.v1:") + now.date().toString(Qt::ISODate).toUtf8(),
+            QCryptographicHash::Sha256);
+        for (const unsigned char sample : hash) {
+            if (sample == 255) continue;
+            m_goldenSelected = sample % 3 == 0;
+            break;
+        }
+    }
+    const bool selected = now.isValid() && (m_goldenHourMode == QStringLiteral("always")
+        || (m_goldenHourMode == QStringLiteral("random") && m_goldenSelected));
+    double strength = 0;
+    double evening = 0;
+    if (selected && m_weather == QStringLiteral("clear")) {
+        if (solar.value(QStringLiteral("active")).toBool()) {
+            const auto smooth = [](double lo, double hi, double value) {
+                const double t = std::clamp((value-lo)/(hi-lo), 0.0, 1.0);
+                return t*t*(3-2*t);
+            };
+            const double elevation = solar.value(QStringLiteral("elevation")).toDouble();
+            // 艺术化黄金时段：太阳高度 -4° 到 +6°，地平线附近最强，无硬切换。
+            strength = smooth(-4,0,elevation) * (1-smooth(2,6,elevation));
+            evening = solar.value(QStringLiteral("twilightMix")).toDouble();
+        } else if (m_timeMode == QStringLiteral("dawn") || m_timeMode == QStringLiteral("dusk")) {
+            strength = 1;
+            evening = m_timeMode == QStringLiteral("dusk") ? 1 : 0;
+        }
+    }
+    const QVariantMap state{{QStringLiteral("selected"), selected},
+        {QStringLiteral("strength"), std::round(strength*128)/128},
+        {QStringLiteral("evening"), strength > 0 ? evening : 0}};
+    if (state != m_goldenHourState) { m_goldenHourState = state; Q_EMIT goldenHourStateChanged(); }
 }
 
 void PixelLandscapeViewModel::resync() {

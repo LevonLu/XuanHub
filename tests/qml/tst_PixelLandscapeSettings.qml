@@ -80,6 +80,16 @@ TestCase {
         compare(draft.value("latitude"), lat); compare(draft.value("longitude"), lon)
         compare(city.currentIndex, 0)
     }
+    function test_golden_hour_modes_preserve_other_settings() {
+        const page = makePage({scene:"street",weather:"clear",unknown:42})
+        const mode = findChild(page,"landscapeSetting_goldenHourMode")
+        compare(mode.currentIndex,0); compare(draft.revision,0)
+        select(mode,1); compare(draft.value("goldenHourMode"),"always")
+        select(mode,2); compare(draft.value("goldenHourMode"),"off")
+        select(mode,0); compare(draft.value("goldenHourMode"),"random")
+        compare(draft.value("scene"),"street"); compare(draft.value("weather"),"clear")
+        compare(draft.value("unknown"),42)
+    }
     function test_reopen_recognizes_city_and_edit_keeps_invalid_draft() {
         const city = Cities.countries[8].cities[1]
         const page = makePage({manualLocationEnabled:true,locationSource:"manual",latitude:city.latitude,longitude:city.longitude}, 360)

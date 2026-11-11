@@ -47,6 +47,23 @@ function solarPalette(key, weather) {
     p.lamp=mix(p.ripple,p.glow,p.warm);p.window=p.lamp
     return p
 }
+function goldenPalette(p, strength, evening) {
+    var amount=Math.max(0,Math.min(1,strength)), dusk=Math.max(0,Math.min(1,evening))
+    if(amount===0)return p
+    var dawn={sky:"526b91",skyLow:"d99a77",horizon:"ffd39a",cloud:"f7c495",sun:"ffe6ac",
+        far:"b6a0a0",ridge:"867f91",mountain:"6b7789"}
+    var sunset={sky:"685c9a",skyLow:"da7b76",horizon:"ffb66f",cloud:"ff9b85",sun:"ffd38a",
+        far:"aa8d9f",ridge:"8b728d",mountain:"74697e"}
+    for(var key in dawn)p[key]=mix(p[key],mix(dawn[key],sunset[key],dusk),amount)
+    // 地物只加少量暖光，避免整幅画成为不分材质的橙色滤镜。
+    for(var i=0;i<keys.length;i++) {
+        var name=keys[i]
+        if(!(name in dawn)&&name!=="glow")p[name]=mix(p[name],"eaa269",amount*0.12)
+    }
+    p.lamp=mix(p.ripple,p.glow,p.warm);p.window=p.lamp
+    p.golden=amount;p.goldenEvening=dusk
+    return p
+}
 function noise(i) { var n=Math.sin(i*127.1+311.7)*43758.5453; return n-Math.floor(n) }
 function rect(c,color,x,y,w,h) {
     c.fillStyle=color
@@ -250,6 +267,18 @@ function drawSky(c,g,p,weather) {
             rect(c,t<0.6?mix(p.sky,p.skyLow,t/0.6):mix(p.skyLow,p.horizon,(t-0.6)/0.4),0,band*g.h/15,g.w,g.h/15+1)
         }
     }
+    if(weather==="clear" && p.golden>0 && !g.minimal) {
+        // 静态霞云先于地形绘制，所有场景自然遮挡；不跟随太阳坐标触发地形重绘。
+        var side=p.solar ? 0.18+0.64*p.goldenEvening : 0.21
+        for(var ribbon=0;ribbon<5;ribbon++) {
+            var cx=g.w*(side+(ribbon%2?0.12:-0.08)), cy=g.h*(0.17+ribbon*0.055)
+            var span=g.w*(0.22+noise(ribbon+1400)*0.26)
+            c.globalAlpha=p.golden*(0.23+ribbon*0.06)
+            rect(c,p.cloud,cx-span/2,cy,span,Math.max(1,g.h*0.012))
+            rect(c,p.horizon,cx-span*0.3,cy+Math.max(1,g.h*0.012),span*0.7,1)
+        }
+        c.globalAlpha=1
+    }
     if(weather==="clear") {
         if(p.night>0) {
             c.globalAlpha=p.night
@@ -261,6 +290,13 @@ function drawSky(c,g,p,weather) {
         if(!p.solar && p.night<1) {
             c.globalAlpha=1-p.night
             var sx=g.w*0.21,sy=g.h*0.16,sr=Math.max(2,g.h*0.045)
+            if(p.golden>0) {
+                for(var halo=3;halo>0;halo--) {
+                    c.globalAlpha=p.golden*0.10
+                    rect(c,p.horizon,sx-sr-halo*2,sy-sr-halo,sr*2+halo*4,sr*2+halo*2)
+                }
+                c.globalAlpha=1-p.night
+            }
             rect(c,p.sun,sx-sr,sy-sr,sr*2,sr*2);rect(c,p.sun,sx-sr-1,sy-sr+1,sr*2+2,sr*2-2)
             c.globalAlpha=1
         }

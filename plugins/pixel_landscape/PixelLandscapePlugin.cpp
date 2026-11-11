@@ -7,7 +7,7 @@ xuanhub::PluginDescriptor PixelLandscapePlugin::descriptor() const {
     xuanhub::PluginDescriptor value;
     value.id = QStringLiteral("pixel_landscape");
     value.displayName = QStringLiteral("朝暮");
-    value.version = QStringLiteral("0.2.0");
+    value.version = QStringLiteral("0.3.0");
     value.apiVersion = 2;
     value.configVersion = 1;
     value.minHostVersion = QStringLiteral("0.4.0");

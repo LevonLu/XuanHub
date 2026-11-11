@@ -19,6 +19,8 @@ Item {
     property real blend: 1
     property real meteor: -1
     property var solarState: ({active: false})
+    property var goldenHourState: ({strength: 0})
+    readonly property real goldenStrength: weather === "clear" ? Number(goldenHourState.strength || 0) : 0
     readonly property bool solarActive: !!solarState && solarState.active === true
     // 太阳坐标变化不影响调色板键，因而不会使静态地形失效。
     readonly property string lightKey: solarActive ? [solarState.from, solarState.to, solarState.mix,
@@ -30,8 +32,9 @@ Item {
     readonly property int gridWidth: expanded ? 320 : Math.max(1, Math.min(800, Math.round(width * gridHeight / Math.max(1, height))))
     readonly property bool animatedDetails: expanded || gridWidth >= 32
     // 以最终颜色和光照强度判定失效，正午的相位变化不会重画颜色未变的地形。
-    readonly property string paletteKey: JSON.stringify(lightKey ? Art.solarPalette(lightKey, weather)
-                                           : Art.palette(phase, weather, previousPhase, blend))
+    readonly property string paletteKey: JSON.stringify(Art.goldenPalette(
+        lightKey ? Art.solarPalette(lightKey, weather) : Art.palette(phase, weather, previousPhase, blend),
+        goldenStrength, Number(goldenHourState.evening || 0)))
     readonly property var palette: JSON.parse(paletteKey)
     readonly property var renderer: sceneType === "lighthouse" ? Lighthouse
         : sceneType === "street" ? Street : sceneType === "campsite" ? Campsite
@@ -74,7 +77,20 @@ Item {
             }
         }
         // 天空和太阳位于透明地形画布下方，山脊自然遮挡，不新增 Canvas 或遮罩纹理。
+        Repeater {
+            model: 3
+            Rectangle {
+                required property int index
+                readonly property int spread: (index + 1) * Math.max(2, Math.round(scene.gridHeight * 0.025))
+                x: solarDisc.x - spread; y: solarDisc.y - Math.floor(spread * 0.6)
+                width: solarDisc.width + spread * 2; height: solarDisc.height + Math.round(spread * 1.2)
+                color: scene.palette.horizon
+                opacity: scene.goldenStrength * (0.13 - index * 0.03) * solarDisc.opacity
+                visible: solarDisc.visible && scene.goldenStrength > 0
+            }
+        }
         Rectangle {
+            id: solarDisc
             objectName: "solarDisc"
             visible: scene.solarActive && scene.weather === "clear"
             readonly property real horizon: scene.geometry.horizon || scene.gridHeight * 0.6

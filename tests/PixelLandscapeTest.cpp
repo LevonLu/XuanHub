@@ -130,6 +130,101 @@ public:
 class PixelLandscapeTest final : public QObject {
     Q_OBJECT
 private Q_SLOTS:
+    void goldenHourSelectionAndConditions() {
+        PixelLandscapeViewModel vm(nullptr,new FakeLandscapeLocation);
+        QVERIFY(vm.applyConfig({}));
+        QCOMPARE(vm.m_goldenHourMode,QStringLiteral("random"));
+        const QTimeZone zone=QTimeZone::fromSecondsAheadOfUtc(8*3600);
+        const QDate day(2026,6,21);
+        const QVariantMap sun{{"active",true},{"elevation",1.0},{"twilightMix",0.0}};
+        int selectedDays=0;
+        for(int i=0;i<3650;++i) {
+            const QDateTime morning(day.addDays(i),QTime(5,0),zone);
+            vm.refreshGoldenHour(morning,sun);
+            const bool selected=vm.goldenHourState().value("selected").toBool();
+            selectedDays+=selected;
+            vm.refreshGoldenHour(morning.addSecs(14*3600),sun);
+            QCOMPARE(vm.goldenHourState().value("selected").toBool(),selected);
+        }
+        QVERIFY(selectedDays>1100 && selectedDays<1330);
+        vm.refreshGoldenHour(QDateTime(day,QTime(5,0),zone),sun);
+        PixelLandscapeViewModel restarted(nullptr,new FakeLandscapeLocation);restarted.applyConfig({});
+        restarted.refreshGoldenHour(QDateTime(day,QTime(19,0),zone),sun);
+        QCOMPARE(restarted.goldenHourState().value("selected"),vm.goldenHourState().value("selected"));
+        for(const QVariant& mode:{QVariant("unknown"),QVariant(42),QVariant(true)})
+            QVERIFY(!vm.applyConfig({{"goldenHourMode",mode}}));
+        QVariantMap config{{"locationSource","manual"},{"manualLocationEnabled",true},
+            {"latitude",39.9},{"longitude",116.4},{"goldenHourMode","always"},{"animationsEnabled",false}};
+        QVERIFY(vm.applyConfig(config));vm.setPaused(true);
+        for(const QTime& time:{QTime(5,0),QTime(19,30),QTime(12,0),QTime(23,0)}) {
+            vm.refreshAt(QDateTime(day,time,zone));
+            const double strength=vm.goldenHourState().value("strength").toDouble();
+            QVERIFY(std::isfinite(strength) && strength>=0 && strength<=1);
+            if(time.hour()==5 || time.hour()==19) QVERIFY(strength>0.7);
+            else QCOMPARE(strength,0.0);
+            QVERIFY(vm.paused());
+        }
+        // 精确覆盖光照包络边界，不用本实现的太阳公式生成时间预期值。
+        for(double elevation:{-10.0,-4.0,0.0,1.0,2.0,6.0,40.0}) {
+            auto sample=sun;sample["elevation"]=elevation;
+            vm.refreshGoldenHour(QDateTime(day,QTime(5,0),zone),sample);
+            QCOMPARE(vm.goldenHourState().value("strength").toDouble(),
+                elevation>=0 && elevation<=2 ? 1.0 : 0.0);
+        }
+        for(const QString& weather:{"rain","snow"}) {
+            config["weather"]=weather;QVERIFY(vm.applyConfig(config));
+            vm.refreshAt(QDateTime(day,QTime(5,0),zone));
+            QCOMPARE(vm.goldenHourState().value("strength").toDouble(),0.0);
+        }
+        QVERIFY(vm.applyConfig({{"timeMode","dawn"},{"goldenHourMode","always"}}));
+        QCOMPARE(vm.goldenHourState().value("strength").toDouble(),1.0);
+        QCOMPARE(vm.goldenHourState().value("evening").toDouble(),0.0);
+        QVERIFY(vm.applyConfig({{"timeMode","dusk"},{"goldenHourMode","always"}}));
+        QCOMPARE(vm.goldenHourState().value("evening").toDouble(),1.0);
+        QVERIFY(vm.applyConfig({{"timeMode","dusk"},{"goldenHourMode","off"}}));
+        QCOMPARE(vm.goldenHourState().value("strength").toDouble(),0.0);
+        QVERIFY(vm.applyConfig({{"goldenHourMode","always"}}));
+        QCOMPARE(vm.goldenHourState().value("strength").toDouble(),0.0);
+    }
+
+    void goldenHourRenderingAndBudget() {
+        QQuickView view;view.setResizeMode(QQuickView::SizeRootObjectToView);
+        view.setSource(QUrl::fromLocalFile(pluginSource("LandscapeScene.qml")));
+        QCOMPARE(view.status(),QQuickView::Ready);
+        QSignalSpy warnings(view.engine(),&QQmlEngine::warnings);
+        auto* root=view.rootObject();root->setProperty("expanded",true);view.resize(320,180);view.show();
+        const QTimeZone zone=QTimeZone::fromSecondsAheadOfUtc(8*3600);
+        const auto dawn=landscape::solarState(QDateTime(QDate(2026,6,21),QTime(5,0),zone),39.9,116.4);
+        const auto dusk=landscape::solarState(QDateTime(QDate(2026,6,21),QTime(19,30),zone),39.9,116.4);
+        const QVariantMap morning{{"strength",1.0},{"evening",0.0}};
+        const QVariantMap evening{{"strength",1.0},{"evening",1.0}};
+        QTRY_VERIFY(root->property("staticPaintCount").toInt()>0);
+        QImage gallery(960,6*208,QImage::Format_RGB32);gallery.fill(QColor("#182330"));QPainter painter(&gallery);
+        const QStringList scenes{"cabin","lighthouse","street","campsite","railway","island"};
+        for(int row=0;row<scenes.size();++row)for(int col=0;col<3;++col) {
+            root->setProperty("sceneType",scenes[row]);root->setProperty("solarState",col==2?dusk:dawn);
+            root->setProperty("goldenHourState",col==0?QVariantMap{}:col==1?morning:evening);
+            QTest::qWait(40);const auto image=view.grabWindow();QVERIFY(!image.isNull());
+            QVERIFY(image.pixelColor(20,20)!=image.pixelColor(20,160));
+            painter.drawImage(col*320,row*208+28,image);painter.setPen(Qt::white);
+            painter.drawText(col*320+8,row*208+19,scenes[row]+QStringList{" normal"," sunrise glow"," sunset colors"}[col]);
+        }
+        painter.end();
+        root->setProperty("solarState",dawn);root->setProperty("goldenHourState",morning);QTest::qWait(40);
+        const int paints=root->property("staticPaintCount").toInt();
+        auto moved=dawn;moved["sunX"]=0.6;root->setProperty("solarState",moved);QTest::qWait(40);
+        QCOMPARE(root->property("staticPaintCount").toInt(),paints);
+        for(const QString& weather:{"rain","snow"}) {
+            root->setProperty("goldenHourState",morning);
+            root->setProperty("weather",weather);QTest::qWait(40);const auto withEffect=view.grabWindow();
+            root->setProperty("goldenHourState",QVariantMap{});QTest::qWait(40);
+            QCOMPARE(view.grabWindow(),withEffect);
+        }
+        const auto output=qEnvironmentVariable("XUANHUB_PIXEL_EVIDENCE");
+        if(!output.isEmpty()){QDir().mkpath(output);QVERIFY(gallery.save(output+"/golden-hour-gallery.png"));}
+        QVERIFY(warnings.isEmpty());
+    }
+
     void citySettingsBilingualRendering() {
         for(const QString& locale:{"zh-CN","en-US"}) {
             PixelTranslator translator;
@@ -386,7 +481,8 @@ private Q_SLOTS:
         const QString output=qEnvironmentVariable("XUANHUB_PIXEL_EVIDENCE");
         if(!output.isEmpty()){QDir().mkpath(output);QVERIFY(gallery.save(output+"/solar-day-gallery.png"));}
         // 关闭装饰动画后，现实光照仍驱动两处画面，且不推进动画时钟。
-        PixelLandscapeViewModel vm;vm.applyConfig({{"manualLocationEnabled",true},{"latitude",39.9},{"longitude",116.4},{"animationsEnabled",false}});
+        PixelLandscapeViewModel vm;vm.applyConfig({{"manualLocationEnabled",true},{"latitude",39.9},{"longitude",116.4},
+            {"animationsEnabled",false},{"goldenHourMode","always"}});
         PopupService popups;PixelContext context;context.popups=&popups;
         QQuickView plugin;plugin.setSource(QUrl::fromLocalFile(pluginSource("PixelLandscape.qml")));
         QCOMPARE(plugin.status(),QQuickView::Ready);
@@ -401,6 +497,10 @@ private Q_SLOTS:
         const auto previousKey=bar->property("lightKey");
         vm.refreshAt(QDateTime(day,QTime(12,0),zone),true);QTest::qWait(40);
         QVERIFY(previousKey!=bar->property("lightKey"));QCOMPARE(bar->property("lightKey"),expanded->property("lightKey"));
+        vm.refreshAt(QDateTime(day,QTime(5,0),zone),true);QTest::qWait(40);
+        QVERIFY(vm.goldenHourState().value("strength").toDouble()>0);
+        QCOMPARE(bar->property("goldenHourState"),expanded->property("goldenHourState"));
+        QCOMPARE(bar->property("goldenHourState").toMap(),vm.goldenHourState());
         QCOMPARE(body->findChild<QObject*>("landscapeController")->property("animationTime").toDouble(),0.0);
         if(!output.isEmpty())QVERIFY(popup->grabWindow().save(output+"/solar-popup.png"));
         QVERIFY(warnings.isEmpty());QVERIFY(pluginWarnings.isEmpty());
