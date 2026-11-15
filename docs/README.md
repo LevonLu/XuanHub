@@ -3,6 +3,16 @@
 本文档是仓库内开发资料的统一入口。根目录 `README.md` 面向用户和首次开发者；具体契约只在
 下表指定的权威文档中维护，其他文件应链接到这里，不再复制整套协议。
 
+## 当前基线与证据口径
+
+当前发布基线为 [v0.5.0](releases/v0.5.0.md)（2026-11-11）。截至 2026-11-15 的文档核对，
+PF-01～PF-10 已完成，原生 Worker 隔离只完成原型与评估，产品化暂缓。
+现状、历史实施和后续边界集中在[路线图](plugin-framework-roadmap.md)。
+
+官方便携包包含 Python 与内置插件依赖；源码构建和脚本 `None` 策略不能等同于正式包。
+宿主更新从 v0.5.0 建立基线，历史包需手动迁移一次。
+发布记录与验证报告保留当时的版本、日期和测试范围，不把历史数字改写成当前重新验收结果。
+
 ## 按角色阅读
 
 | 角色 | 从这里开始 | 继续阅读 |
@@ -13,6 +23,7 @@
 | Python 插件开发者 | [`plugins_py/README.md`](../plugins_py/README.md) | [`i18n.md`](i18n.md)、[`xuanplugin-format.md`](xuanplugin-format.md)、[`xuanplugin-update-index.md`](xuanplugin-update-index.md) |
 | 主题开发者 | [`themes/README.md`](../themes/README.md) | 根目录 [`README.md`](../README.md) 的运行和打包说明 |
 | 插件发布者 | [`xuanplugin-format.md`](xuanplugin-format.md) | [`xuanplugin-update-index.md`](xuanplugin-update-index.md)、对应运行时的插件契约 |
+| 用户安装与升级 | [`README.md`](../README.md) | [`app-update.md`](app-update.md)、对应版本发布说明 |
 
 ## 权威文档
 
@@ -30,6 +41,24 @@
 | [`app-update.md`](app-update.md) | GitHub 宿主一键更新、用户数据保留与恢复 |
 | [`native-worker-isolation-evaluation.md`](native-worker-isolation-evaluation.md) | 原生后端隔离原型结论和产品化门槛 |
 | [`themes/README.md`](../themes/README.md) | Theme Schema v2、外观令牌和可信 Bar 外壳扩展契约 |
+
+## 内置插件与专项验证
+
+插件身份、版本、依赖和设置字段以对应目录中的 `metadata.json` / `plugin.json` 为准。
+下表是源码导航，不表示所有插件默认启用，也不表示真实账号或硬件均已验收。
+
+| 插件或资料 | 入口 |
+|---|---|
+| 时钟、系统监控、玄枢菜单 | [`clock`](../plugins/clock/)、[`sysinfo`](../plugins/sysinfo/)、[`xuanhub_menu`](../plugins/xuanhub_menu/) |
+| 菜单与托盘图标 | [`ICON.md`](../plugins/xuanhub_menu/ICON.md) |
+| 朝暮风景 | [使用与配置](../plugins/pixel_landscape/README.md)、[城市数据许可](../plugins/pixel_landscape/CITY-DATA-LICENSE.md) |
+| Python 桥接与示例 | [`pybridge`](../plugins/pybridge/)、[`hello`](../plugins_py/hello/) |
+| Token Usage | [账户、采集与数据边界](../plugins_py/agent_usage/README.md) |
+| 倒计时 | [悬浮提示、发薪日与离线日历覆盖](../plugins_py/countdown/README.md) |
+| 米家 | [使用、设备兼容与会话存储](../plugins_py/mijia/README.md) |
+| 心率、定时提醒、待办 | [`heartrate`](../plugins_py/heartrate/)、[`intime`](../plugins_py/intime/)、[`todo`](../plugins_py/todo/) |
+| 朝暮验证记录 | [初版与六场景](pixel-landscape-validation.md)、[太阳光照与黄金时刻](pixel-landscape-solar-validation.md) |
+| 原生 Worker 原型 | [评估与产品化前置条件](native-worker-isolation-evaluation.md) |
 
 ## 插件开发闭环
 
@@ -49,6 +78,11 @@ python scripts/xuanhub_plugin.py package <插件目录或运行时目录> --outp
 预检；`test` 执行真实 Python Worker 生命周期；`run` 使用最小 Qt 宿主做 QML Smoke Test；
 `doctor` 检查 Python 依赖或原生 ABI；`package` 复用安装器的安全门禁。
 
+宿主和 C++ 插件统一用 `pixi run build` / `pixi run build-debug` 构建；Release 后执行
+`pixi run ctest --test-dir build/default -C Release --output-on-failure`。
+纯 Python 开发不要求编译宿主；CLI `run` 需要现成的 QML Smoke Runner，缺少时保留真实便携宿主验收项。
+笔记变更运行 `pixi run verify-notes`；文档修改检查相对链接、示例字段与 `git diff --check`。
+
 ## 维护规则
 
 1. 改动公开插件接口时，必须同时更新对应的 C++ 或 Python 权威契约和测试。
@@ -57,6 +91,7 @@ python scripts/xuanhub_plugin.py package <插件目录或运行时目录> --outp
 4. 框架内部实现和生命周期铁律只写入 `AGENTS.md`，路线图只记录计划、状态和验收证据。
 5. `README.md` 和工具专属的本地速查文件保持短小，只提供入口和高频命令，不复制完整协议。
 6. 文档中的版本、测试数量和插件清单容易变化，优先写可执行命令，避免固定数量或重复清单。
+7. 历史发布说明、验证记录和决策理由保留原有时间与范围；事实过时可注明对应现行入口，不把未执行的检查改成通过。
 
 ## 发布记录
 

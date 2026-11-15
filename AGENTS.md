@@ -7,9 +7,9 @@
 **玄枢（XuanHub）** 是一个基于 **Qt6 / QML 的 Windows 插件化状态栏框架**（对标 polybar / waybar / Rainmeter），当前版本 0.5.0。
 
 - `XuanHub.exe`：无边框、置顶、`Qt::Tool` 的 `QQuickView`，两种形态（`bar.mode`）：`appbar`（默认，Win32 AppBar 占住主屏顶部/底部工作区）；`taskbar`（`SetParent` 嵌入原生任务栏左侧，透明、不占工作区）。
-- 原生插件是独立 DLL（`QPluginLoader` 加载），Python 插件由 pybridge 托管；两者都使用 QML 界面。内置原生插件包括 `clock`、`sysinfo`、`xuanhub_menu` 和 host 插件 `pybridge`。
+- 原生插件是独立 DLL（`QPluginLoader` 加载），Python 插件由 pybridge 托管；两者都使用 QML 界面。内置原生插件包括 `clock`、`sysinfo`、`pixel_landscape`、`xuanhub_menu` 和 host 插件 `pybridge`。
 - 仅支持 Windows，直接用 Win32 API，不做跨平台抽象。
-- `pybridge` 桥接插件为 `plugins_py/` 下每个 Python 子插件启动独立的 `python.exe` worker，并以受随机令牌认证的 loopback IPC 连接 QML 代理；Python 崩溃、GIL 卡死或扩展模块异常不会进入宿主。分发默认依赖用户自装 CPython ≥3.12，打包脚本可选 Bundle 策略带上解释器与标准库（见 §5、§8）。
+- `pybridge` 桥接插件为 `plugins_py/` 下每个 Python 子插件启动独立的 `python.exe` worker，并以受随机令牌认证的 loopback IPC 连接 QML 代理；Python 崩溃、GIL 卡死或扩展模块异常不会进入宿主。官方便携包内置 Python 及内置插件依赖；源码运行或脚本 `None` 策略才需要用户自装 CPython ≥3.12。脚本策略与正式发行要求见 §5、§8。
 
 ## 2. 技术栈
 
@@ -31,9 +31,8 @@
 pybridge 不要求构建机安装 Python 开发包；它始终参与构建。运行时若找不到 Python ≥3.12 的 `python.exe`、标准库和 `python3XX.dll`，pybridge 自动停用子插件并托盘提示，其余功能照常运行。
 
 ```bash
-cmake --preset default                 # 配置（生成到 build/default）
-cmake --build --preset default         # Release
-cmake --build --preset default-debug   # Debug
+pixi run build                        # 配置并构建 Release（build/default）
+pixi run build-debug                  # 配置并构建 Debug
 ```
 
 常用命令封装为 pixi 任务（见 `pixi.toml`）：`pixi run build`、`build-debug`、`run`、`run-settings`、`package` / `package-bundle` / `package-nozip`、`setup-config`、`deploy`、`log`、`clean`。
@@ -58,10 +57,10 @@ XuanHub/
 │   │                                    # PluginManager、PluginListModel/FilterModel、ThemeManager、
 │   │                                    # ThemeRegistry、TrayIcon、AutoStart.h
 │   ├── qml/                             # main.qml / Bar.qml（三栏）/ PluginSlot.qml（Loader 槽）
-│   │                                    # / SettingsWindow.qml / Ui*.qml（设计令牌 + 自绘控件库）
+│   │                                    # / SettingsWindow.qml / Ui*.qml（设计令牌 + FluentWinUI3 包装控件）
 │   └── resources/default_config.json    # qrc 内置默认配置（首运行播种用）
 ├── plugins/
-│   ├── clock/  sysinfo/  xuanhub_menu/  # 内置可见原生插件
+│   ├── clock/  sysinfo/  pixel_landscape/  xuanhub_menu/  # 内置可见原生插件
 │   └── pybridge/                        # Python host + PyWorkerViewModel（无 CPython 链接）
 ├── plugins_py/                          # Python 子插件 + bridge_worker.py（README 即开发契约）
 ├── themes/                              # 主题包（ThemeRegistry 扫描；README 即开发契约；xuanhub-default 兜底勿删）
@@ -89,18 +88,18 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 扫描 `<exeDir>/plugins/*/metadata.json` 与 DLL → 在执行代码前校验 Manifest、路径、宿主范围、
 SDK、架构、依赖和权限 → 加载 DLL 并按 IID 选择 `IBarPlugin2` 或 V1 适配器 → 按依赖拓扑与配置
 初始化 → 注入作用域化事件、HostServices、语言、主题和插件配置 → 收入 `PluginListModel`。V2 的
-sidecar 与运行时 Descriptor 必须一致；内置 `clock/sysinfo/xuanhub_menu/pybridge` 均实现 V2；外部 V1 继续兼容，公开契约以 `docs/plugin-sdk-v2.md` 为准。
+sidecar 与运行时 Descriptor 必须一致；内置 `clock/sysinfo/pixel_landscape/xuanhub_menu/pybridge` 均实现 V2；外部 V1 继续兼容，公开契约以 `docs/plugin-sdk-v2.md` 为准。
 
-**host 插件分支**：`initialize` 后若命中 `IBarPluginHost`（如 pybridge），自身不进可见列表，走两阶段契约：`subPluginIds()` 枚举 → 核心按 config 过滤 → `createSubPlugin(id, cfg)` 实例化。子插件以 `iface=nullptr` 收入模型（生命周期归 host）；`shutdownAll()` 中 host **最后** shutdown（子插件 VM 依赖 host 持有的运行时），随后统一 `unload()`。
+**host 插件分支**：`initialize` 后若命中 `IBarPluginHost`（如 pybridge），自身不进可见列表，走两阶段契约：`subPluginIds()` 枚举 → 核心按 config 过滤 → `createSubPlugin(id, cfg)` 实例化。子插件以 `iface=nullptr` 收入模型（生命周期归 host）；`shutdownAll()` 中 host **最后** shutdown（子插件 VM 依赖 host 持有的运行时），随后统一 `unload()` 释放插件根实例。Qt 默认 `PreventUnloadHint` 保留，DLL 映像驻留至进程退出，同路径二进制替换必须退出宿主。
 
 ### QML 契约（写插件时必须遵守）
 
 - V1/V2 插件只向宿主提供 ViewModel 和 QML URL，**绝不返回 `QWidget*`/`QQuickItem*`**；QML 实例化由核心统一做。
-- 每个插件 QML 的**根 `Item` 必须声明 `property var plugin`**；`PluginSlot.qml` 会把 viewModel 注入该属性。插件内用 `plugin ? plugin.x : fallback` 防御空值。
+- 每个插件 QML 的**根 `Item` 必须声明 `property var plugin`**，新插件同时声明 `property var pluginContext` 访问作用域服务；`PluginSlot.qml` 分别注入 ViewModel 与宿主上下文。插件内用 `plugin ? plugin.x : fallback` 防御空值。
 - 槽位（`PluginSlot`）`clip: true`：插件根 Item 声明的 width 即其占位宽度，**任何超出槽位边界的绘制都会被裁掉**（ListView 只裁整列不裁单个 delegate，槽位不裁剪时溢出内容会直接画到相邻插件上）。插件必须保证根 Item 宽度 ≥ 实际内容宽度；固定宽模式下被截断属预期行为，由插件自行处理对齐。
 - Manifest 可声明 `layout.region/minWidth/preferredWidth/maxWidth/flex/priority/overflow`。appbar 按全栏预算先收缩低 priority，再执行 `hide/menu`；`menu` 进入末尾 overflow 弹窗。未声明者、taskbar 紧凑模式和 config `width > 0` 保持旧语义，完整契约见 `docs/plugin-sdk-v2.md`。
 - 不用 `QML_ELEMENT` 静态注册——外部 DLL 无法在宿主编译期注册类型；`Loader + source URL` 是既定方案。
-- 宿主 QML 根上下文的 context property（插件 QML 同引擎可访问）：`pluginModel`（含 left/center/right 过滤子模型）、`themeManager`（`themeId`/`mode`/`colors` 11 字段色板，用 `themeManager.colors.bg` 取色）、`barConfig`、`barScreenGeometry`（当前屏 `availableGeometry` 逻辑像素，弹窗越界修正的唯一可靠来源——taskbar 模式下 `Item.Screen` 失效）、`barWindow`（插件用 `Connections` 收听其 `barPressed()` 实现"点 bar 关闭弹窗"；信号先于 item 的 `onClicked` 到达，toggle 部件需记录按下瞬间的弹窗状态防重开，范式见 `plugins_py/agent_usage/AgentUsage.qml`）。
+- 宿主 QML 根上下文的 context property（仅宿主与旧插件兼容使用，新插件使用 `pluginContext`）：`pluginModel`（含 left/center/right 过滤子模型）、`themeManager`（`themeId`/`mode`/`colors` 11 字段色板，用 `themeManager.colors.bg` 取色）、`barConfig`、`barScreenGeometry`（当前屏 `availableGeometry` 逻辑像素，弹窗越界修正的唯一可靠来源——taskbar 模式下 `Item.Screen` 失效）、`barWindow`（插件用 `Connections` 收听其 `barPressed()` 实现"点 bar 关闭弹窗"；信号先于 item 的 `onClicked` 到达，toggle 部件需记录按下瞬间的弹窗状态防重开，范式见 `plugins_py/agent_usage/AgentUsage.qml`）。
 - 插件弹窗优先使用 `import XuanHub` 提供的 `PluginPopup`：设置 `anchorItem`、`pluginContext`，bar 点击调用 `toggleFromBar()`；宿主统一处理当前屏边界、顶部/底部方向、动态高度稳定显现、跨插件互斥、Esc/失焦/bar 点击关闭。只有特殊 flags 或非互斥场景才自建 `Window` 并自行处理定位。**改插件 QML 后必须重启进程验证**：引擎对 file:// 组件有内存缓存，热重载不加载磁盘新文件。
 - QML 加载失败默认静默：`PluginSlot.qml` 监听 `Loader.Error` 画红色占位符，真实错误在 `xuanhub.log` 的 qWarning 里。
 
@@ -142,12 +141,12 @@ V2 的命名空间、异步投递、保留状态、请求响应、权限和背�
 
 - 主题包目录为 `<exeDir>/themes/<id>/`。`theme.json` 的 `dark/light` 继续提供色板，Theme Schema v2 的 `appearance/darkAppearance/lightAppearance` 提供经过 allowlist、类型检查和数值钳制的圆角、间距、区域与插件槽装饰令牌；契约见 `themes/README.md`。
 - 复杂主题可在 `extension` 声明 `barChrome` API 1 QML 入口。路径必须是主题目录内真实存在的相对 `.qml` 文件，最终规范路径不得越界；该入口是会执行代码的可信扩展，选择主题即表示信任。`Bar.qml` 只负责加载与契约注入，缺字段或 Loader.Error 时必须回退 `StandardBarChrome.qml`，不得让 bar 空白。
-- QML 统一以 `themeManager.colors.<field>` 取色、`themeManager.appearance.<group>.<field>` 取外观令牌，不本地维护色板。配置双字段：`bar.themeId`（缺省 `xuanhub-default`）+ `bar.theme`（dark/light，缺省 dark）。
+- 宿主 QML 使用 `themeManager.colors/appearance`，新插件使用 `pluginContext.colors/appearance`；旧全局仅用于兼容，不在插件中复制宿主色板。配置双字段：`bar.themeId`（缺省 `xuanhub-default`）+ `bar.theme`（dark/light，缺省 dark）。
 - 托盘 "切换深色/浅色" 仅切模式（不写回文件，热重载时回滚）；主题包切换走设置窗口。热重载时重扫 `themes/` 再 `applyTheme`。`themes/` 全丢时有硬编码默认主题兜底。
 
 ### 配置（`config.json`）
 
-解析顺序：**exeDir（便携/开发优先）→ `%APPDATA%/XuanHub`**（缺失时从 qrc 播种）。结构：
+普通模式优先读 exeDir 配置，再读 `%APPDATA%/XuanHub`；有 `portable` 标记时数据根固定为 exeDir。首次缺失时从 qrc 播种。结构：
 
 ```json
 {
@@ -158,7 +157,7 @@ V2 的命名空间、异步投递、保留状态、请求响应、权限和背�
 }
 ```
 
-`position` 取值 `left/center/right`（空默认 `right`）；`edge` 仅 `top/bottom`；`config` 段原样经 `ctx->pluginConfig` 传给插件。插件条目另有 `width`（像素，0=跟随内容自适应，>0 固定宽，上限 800）；设置窗口的宽度「手动」模式初始值取 `PluginSlot` 实时上报的自然内容宽度（`PluginListModel::reportContentWidth` → `SettingsViewModel::pluginContentWidth`）。
+`position` 取值 `left/center/right`（缺失时采用 Manifest 的 `layout.region`，未声明者默认 `right`）；`edge` 仅 `top/bottom`；`config` 段原样经 `ctx->pluginConfig` 传给插件。插件条目另有 `width`（像素，0=跟随内容自适应，>0 固定宽，上限 800）；设置窗口的宽度「手动」模式初始值取 `PluginSlot` 实时上报的自然内容宽度（`PluginListModel::reportContentWidth` → `SettingsViewModel::pluginContentWidth`）。
 
 **菜单图标**：`bar.menuIcon` 为 `original`（默认）/ `hub`（方框枢纽 A）/ `compact`（紧凑 H C），在主框架“外观”页选择。缺失或非法值回退原版；设置指纹包含本字段。保存后经 watcher 加载，由既有 `app.quickMenu.state.menuIcon` 保留状态推送给菜单，原地更新图形；托盘监听同一配置同步更新。设置预览与菜单共用 `BrandIcon.qml`，托盘由 `BrandIconRenderer` 按相同几何规则生成多尺寸图标；窗口与可执行文件图标不变。
 
@@ -232,7 +231,12 @@ python scripts/xuanhub_plugin.py doctor <插件目录或运行时目录>
 - **插件分发**：`python scripts/xuanhub_plugin.py package <插件目录> --output <文件.xuanplugin>`
   复用安装器的 Manifest、路径、凭据、哈希和签名安全门禁。格式见 `docs/xuanplugin-format.md`，
   更新源见 `docs/xuanplugin-update-index.md`；不得手工改扩展名或直接压缩插件目录冒充安装包。
-- **便携分发打包**：`scripts/package_portable.ps1` 把只读构建输出复制到全新的 `dist/XuanHub-v<版本>-portable-x64/` staging，再加工并打 zip；绝不直接压缩运行过的 build dist。脚本收集 MSVC 运行时 DLL；`-PythonStrategy` 两策略——`None`（默认，不内置 Python）/ `Bundle`（拷 `python.exe`、`Lib/`（排除 site-packages）、`DLLs/`（`_socket`/`_ssl` 等编译扩展）和 `python3*.dll`，使隔离 worker 免安装运行）；统一排除 VCS 元数据、删除 `__pycache__`/`*.pyc`，只复制内置默认配置，并在压缩前 fail-closed 检查 `.git/.hg/.svn`、`secrets.json`、锁/日志/数据库/密钥文件、高置信凭据形状及本机用户路径；创建 `portable` 标记文件；裁剪 translations/、qmltooling/ 及未使用样式；**必须保留 `qml/QtQuick/Controls/{FluentWinUI3,Fusion,Basic,impl}/` 和对应运行库**，Fusion 是 Fluent 未覆盖控件的回退，Basic/impl 是共享依赖；`-NoZip` 只准备通过同一安全检查的 staging。注意：该脚本含中文注释，**必须保存为 UTF-8 with BOM**（PowerShell 5.1 对无 BOM 脚本按 GBK 误读）。
+- **便携分发打包**：`scripts/package_portable.ps1` 把只读构建输出复制到全新的 `dist/XuanHub-v<版本>-portable-x64/` staging，再加工并打 zip；绝不直接压缩运行过的 build dist。脚本收集 MSVC 运行时 DLL；脚本参数 `-PythonStrategy` 两策略——`None`（脚本默认，不内置 Python，供开发与定制）/ `Bundle`（拷 `python.exe`、`Lib/`（排除 site-packages）、`DLLs/`（`_socket`/`_ssl` 等编译扩展）和 `python3*.dll`，使隔离 worker 免安装运行）；统一排除 VCS 元数据、删除 `__pycache__`/`*.pyc`，只复制内置默认配置，并在压缩前 fail-closed 检查 `.git/.hg/.svn`、`secrets.json`、锁/日志/数据库/密钥文件、高置信凭据形状及本机用户路径；创建 `portable` 标记文件；裁剪 translations/、qmltooling/ 及未使用样式；**必须保留 `qml/QtQuick/Controls/{FluentWinUI3,Fusion,Basic,impl}/` 和对应运行库**，Fusion 是 Fluent 未覆盖控件的回退，Basic/impl 是共享依赖；`-NoZip` 只准备通过同一安全检查的 staging。注意：该脚本含中文注释，**必须保存为 UTF-8 with BOM**（PowerShell 5.1 对无 BOM 脚本按 GBK 误读）。
+
+正式发行使用 Bundle 并包含内置插件依赖，完整打包命令见根 `README.md` 的“从源码构建”。
+`package-bundle-full` 当前只补心率依赖，不代表包含 Token Usage 等全部依赖；发布前按 Manifest
+逐项运行 doctor，并验证全新解压目录的 Worker、设置启动和发行清单。
+v0.5.0 为宿主一键更新基线，发布验证记录在 `docs/releases/v0.5.0.md`；历史测试通过不能代替本次验收。
 
 ## 9. 安全与注意事项（改代码前必读）
 
@@ -247,7 +251,7 @@ python scripts/xuanhub_plugin.py doctor <插件目录或运行时目录>
 
 ## 10. 关键文件索引
 
-- 文档总入口：`docs/README.md`；框架路线图：`docs/plugin-framework-roadmap.md`
+- 文档总入口：`docs/README.md`；当前状态、历史实施与后续边界：`docs/plugin-framework-roadmap.md`
 - 插件接口：`lib/barplugin/include/barplugin/IBarPlugin2.h`（V2）与 `IBarPlugin.h`（V1 兼容）；host 契约 `IBarPluginHost.h`
 - V2 上下文与服务：`IBarPlugin2.h` 中的 `PluginContext2`、`HostServices.h`、`PluginEventScope.h`；公开契约 `docs/plugin-sdk-v2.md`
 - 插件发现：`app/src/PluginCatalog.cpp`；实例生命周期：`app/src/PluginManager.cpp`；增量配置：`app/src/PluginReconciler.cpp` + `PluginConfigTracker.h`；QML 注入契约：`app/qml/PluginSlot.qml`

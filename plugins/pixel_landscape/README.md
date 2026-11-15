@@ -4,7 +4,7 @@
 
 ## 使用
 
-构建后在玄枢的「设置 → 插件」启用。默认不写入现有启用配置。左键打开或关闭欣赏弹窗，右键进入本插件设置；弹窗可暂停、继续和关闭，Esc、失焦及其他插件弹窗沿用宿主规则。
+使用官方便携包，或从源码构建后，在玄枢的「设置 → 插件」启用。默认不写入现有启用配置。左键打开或关闭欣赏弹窗，右键进入本插件设置；弹窗可暂停、继续和关闭，Esc、失焦及其他插件弹窗沿用宿主规则。
 
 默认自然内容宽度 320，位置为中间；位置、顺序、手动宽度使用宿主通用设置。槽位内边距会占用一部分实际画面宽度。自动布局最低槽位宽度 160，继续不足时隐藏；手动设置不足 32 的内容宽度时保留当前场景的简化地标，停止栏上动态细节。弹窗场景最大 640 × 360，按屏幕可用范围缩小，工具栏单独换行。
 
@@ -77,6 +77,6 @@ pixi run verify-notes
 
 专用回归为 `xuanhub_pixel_landscape_tests`。设置环境变量 `XUANHUB_PIXEL_EVIDENCE` 为输出目录后运行测试，可生成 `landscape-scenes.png`（六场景概览）、`landscape-gallery-<scene>.png`（各场景 12 种组合）与 `landscape-widths-<scene>.png`（160/320/480/64/24/8 宽度）。测试程序另有独立长运行入口：`--probe baseline|shell|bar|popup|cycles <秒数>`；用环境变量 `XUANHUB_PIXEL_SCENE` 选择探针场景，缺省 `cabin`。`cycles` 在前 30 秒完成 30 次开关，其余时间观察释放后的稳定状态。常规 CTest 不执行半小时等待。
 
-实测、检查图位置和尚未完成的真实设备验收见[验证记录](../../docs/pixel-landscape-validation.md)。设计依据见[决策笔记](../../.agents/notes/implemented/feature/2026-11-08-pixel-landscape.md)。
+实测、检查图位置和尚未完成的真实设备验收见[验证记录](../../docs/pixel-landscape-validation.md)。其中完整宿主弹窗组合私有提交增量超过 35 MiB 原目标；太阳光照的短时离屏探针不代表该预算已达标，最新版本仍需按同一宿主口径复测。设计依据见[决策笔记](../../.agents/notes/implemented/feature/2026-11-08-pixel-landscape.md)。
 
 真实太阳回归、独立参考来源、性能样本与未覆盖的设备验收见[太阳光照验证](../../docs/pixel-landscape-solar-validation.md)。

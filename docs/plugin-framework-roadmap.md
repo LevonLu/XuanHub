@@ -2,13 +2,14 @@
 
 > 文档导航：[`docs/README.md`](README.md)。本文记录方向、状态和验收，不替代公开插件契约。
 
-> 基线版本：0.2.1
-> 文档状态：草案，等待按里程碑逐项批准实施
-> 最后更新：2026-08-22
+> 当前发布基线：0.5.0（2026-11-11 发布）
+> 文档状态：PF-01～PF-10 已完成；PF-11 评估完成，产品化暂缓
+> 状态核对：2026-11-15（文档与代码核对，不代表重新执行运行时验收）
 
-本文档是插件框架后续升级的唯一总路线图，用于管理 C++ 插件、Python 子插件、QML
-界面、设置系统、跨插件通信、分发安装和开发工具的演进。每个大型方向均拆成可独立评审、
-实现、测试和回滚的完整计划；实施时不得把多个尚未稳定的基础设施方向合并到同一个大改中。
+本文记录插件框架已完成方向、历史实施与验收记录，以及仍未完成的产品化边界。
+PF 编号保留，便于追溯已有代码和测试；原目标版本表示当时的规划归属，不替代实际发布记录。
+公开 API、字段和示例分别以 [SDK V2](plugin-sdk-v2.md)、[Python 契约](../plugins_py/README.md)
+和其他权威文档为准。各节的“实施前问题”是历史背景，不表示这些问题在当前版本仍然存在。
 
 ## 1. 使用方式
 
@@ -20,7 +21,8 @@
 | `已批准` | 设计已确认，可以拆任务实施 |
 | `进行中` | 已有实现分支或提交 |
 | `阻塞` | 存在明确外部依赖或未决设计 |
-| `已完成` | 代码、测试、文档和迁移全部通过 |
+| `已完成` | 该方向的实现与记录内验收已完成；不代表全部设备、账号或发布场景通过 |
+| `评估完成，产品化暂缓` | 技术原型和结论已完成，尚未进入正式运行与分发链路 |
 
 ### 1.2 更新规则
 
@@ -33,29 +35,28 @@
 
 ## 2. 当前基线
 
-0.2.1 已具备以下插件框架能力：
+v0.5.0 已具备：
 
-- C++ DLL 插件统一通过 `IBarPlugin` 返回 ViewModel 与 QML 文件。
-- `IBarPluginHost` 可以承载子插件；pybridge 已用它承载 Python 插件。
-- 状态栏提供左、中、右三区域、顺序、自动宽度和固定宽度。
-- C++ 插件可使用 EventBus；Python 插件按插件独占进程运行。
-- Python 支持 `init/update/invoke/stop/set_locale` 生命周期。
-- 设置窗口支持通用 schema、自绘 `settingsQml`、草稿保护和 DPAPI 密钥库。
-- 宿主、插件和设置窗口支持中文、英文和运行时热切换。
-- 插件可跟随主题，并能使用独立 QML `Window` 实现弹窗。
-- 配置文件支持热重载；插件段未变化时不会销毁插件状态。
-- Python Worker 具备 loopback IPC、随机令牌、超时、崩溃重启和进程回收。
+- Windows appbar/taskbar、三栏布局、主题 Schema v2、FluentWinUI3 设置和中英文切换。
+- C++ SDK V2、外部 V1 兼容、Manifest/ABI/依赖预检，以及作用域 HostServices/EventBus。
+- 单插件增量启停、布局更新和配置回执；设置草稿保护、配置迁移与 DPAPI 密钥事务。
+- Python 独立 Worker、Protocol V2、主动推送、异步调用结果、超时重启、熔断和依赖诊断。
+- 标准弹窗、声明式动作、appbar 响应式宽度与溢出，以及插件列表组内拖拽排序。
+- `.xuanplugin` 校验、安装、签名、更新索引与回滚，统一开发者 CLI 和运行诊断。
+- GitHub 宿主一键更新、发行清单与独立更新器回滚；v0.5.0 是首次可升级基线，旧包需手动迁移一次。
 
-当前基础能够支撑内置插件，但距离稳定的第三方插件平台仍有以下结构性缺口：
+近期产品交付还包括朝暮风景、米家设备读数、Token Usage 统一账户与菜单/托盘图标选择，
+详见 [v0.5.0](releases/v0.5.0.md) 及 [发布记录](README.md#发布记录)。
 
-- 插件配置或布局变化会导致全部插件重载。
-- Python `intervalMs` 文档契约尚未真正生效。
-- C++ ABI、宿主版本和插件能力缺少加载前协商。
-- EventBus 的卸载安全依赖插件自行销毁订阅对象，Python 也没有总线入口。
-- 插件没有统一健康状态、熔断、标准通知、存储和弹窗服务。
-- 嵌套密钥存在针对特定插件的宿主硬编码。
-- 没有插件包格式、安装更新、签名验证和开发者校验工具。
-- C++ 插件仍在宿主进程内运行，崩溃和卡死会直接影响 XuanHub。
+### 当前边界与验证证据
+
+- PF-11 仅有实验原型，正式版 C++ 插件仍在宿主进程内运行；Python 进程隔离也不是操作系统权限沙箱。
+- 2026-11-11 的 v0.5.0 独立发布构建已通过完整 CTest、包检查与全新解压验证；本次状态同步未重跑这些检查。
+- 真实跨远端版本升级、Explorer、多屏与 Windows 实际 DPI 切换、真实账号和设备服务需按场景另行验收。
+- 朝暮既有完整宿主样本中，弹窗组合私有提交增量超过 35 MiB 目标；后续短时离屏太阳探针不能替代该项复测。
+  详细口径见[场景验证](pixel-landscape-validation.md)和[太阳光照验证](pixel-landscape-solar-validation.md)。
+- 本文带日期的验收数字只属于对应版本和测试范围；旧 `usage_hub` 记录保留历史名称，当前账户能力已并入
+  [Token Usage](../plugins_py/agent_usage/README.md)。
 
 ## 3. 总体原则
 
@@ -115,7 +116,7 @@
 建立统一插件健康状态和故障边界，修复 Python 刷新周期，避免无限崩溃重启，并让宿主在
 卸载插件时主动清理跨 DLL 订阅关系，不再把稳定性寄托于插件作者完全遵守生命周期规范。
 
-### 当前问题
+### 实施前问题
 
 1. `PyWorkerViewModel::scheduleUpdate()` 未读取 `config.intervalMs`，一次 `update()` 完成后会
    立即安排下一次更新。
@@ -138,59 +139,18 @@
 - 不重写 EventBus 的 Topic 和请求响应协议，完整升级放在 PF-05。
 - 不实现完整性能分析器，只提供最小健康指标。
 
-### 设计
+### 当前实现与契约
 
-统一状态枚举：
+健康模型记录状态、最近错误、成功时间、重启次数、启动耗时和队列深度。
+Python `intervalMs` 缺省 1000 ms，钳制到 100–60000 ms，从上次完成后计时；
+push-only 插件首次快照成功后停止周期轮询。Worker/IPC 在 10 分钟内连续失败 5 次熔断，
+设置页可清除熔断并只重启目标插件，UI 保留最后成功数据。
 
-```text
-Discovered -> Starting -> Running
-                    |-> Degraded -> Restarting -> Running
-                    |-> Failed
-                    |-> CircuitOpen
-Disabled
-Stopping -> Stopped
-```
-
-每个插件记录：
-
-```text
-state
-lastError
-lastErrorAt
-startedAt
-lastHealthyAt
-restartCount
-consecutiveFailures
-loadDurationMs
-queueDepth（Python）
-```
-
-Python 刷新规则：
-
-- `intervalMs` 缺省 1000ms，钳制到 100–60000ms。
-- 从一次 `update()` 完成时开始计算下一周期，避免慢请求产生积压。
-- `init/invoke/set_locale` 完成后可立即安排一次更新。
-- 队列中最多存在一个待执行 `update`。
-- 连续成功一次 `update` 后清零连续失败计数。
-
-熔断规则初始建议：
-
-- 10 分钟内连续失败 5 次则进入 `CircuitOpen`。
-- 用户手动重启或配置发生变化后解除熔断。
-- 熔断状态不再自动启动 Worker，但保留最后一次成功数据。
-
-EventBus 作用域：
-
-```cpp
-class PluginEventScope {
-public:
-    Subscription subscribe(...);
-    void clear();
-};
-```
-
-宿主为每个插件创建作用域，`shutdown()` 前先禁止新增订阅，DLL unload 前强制 `clear()`。
-V1 插件仍可通过原始 EventBus 工作，但宿主应逐步把内置插件迁移到作用域 API。
+事件作用域在插件停止时清除订阅和未完成请求。先解除 QML 引用、处理 DeferredDelete，
+再 shutdown 并释放插件根实例。原生 DLL 保留 Qt 默认 `PreventUnloadHint`，映像驻留到进程退出，
+同路径 DLL 替换必须退出宿主；这不影响配置热更新或实例重建。
+具体健康字段、故障和生命周期规则见 [Python 契约](../plugins_py/README.md)与
+[SDK 生命周期](plugin-sdk-v2.md#运行时应用结果与生命周期)。
 
 ### 实施阶段
 
@@ -268,7 +228,7 @@ V1 插件仍可通过原始 EventBus 工作，但宿主应逐步把内置插件�
 把当前“插件段变化就全部卸载重载”改成按插件 ID 计算差异，只重建真正受影响的实例；
 位置、顺序和宽度变化不得摧毁插件状态。
 
-### 当前问题
+### 实施前问题
 
 插件指纹包含 `id/position/order/width/config`。任一字段变化都会清空整个模型、关闭所有
 弹窗、终止全部 Python Worker、卸载所有 C++ DLL，再从头加载。待办、计时器、网络连接
@@ -301,41 +261,17 @@ V1 插件仍可通过原始 EventBus 工作，但宿主应逐步把内置插件�
 | pybridge 总开关变化 | 只影响 Python 子插件集合 |
 | 主题/语言 | 保持现有热切换，不重启插件 |
 
-### 设计
+### 当前实现与契约
 
-引入运行实例表：
+`PluginCatalog` 负责发现，`PluginDependencyGraph` 负责加载/停止顺序，`PluginRuntime`
+适配 V1/V2，`PluginManager` 管理实例，`PluginConfigTracker` 保存已确认和待确认配置，
+`PluginReconciler` 执行增量协调；`ConfigHotReloader` 负责文件、主题和窗口同步。
 
-```cpp
-QHash<QString, PluginRuntime> m_runtimes;
-
-struct PluginRuntime {
-    PluginDescriptor descriptor;
-    LoadedPlugin loaded;
-    PluginHealth health;
-    QString configFingerprint;
-    QString binaryFingerprint;
-};
-```
-
-配置重载生成 `PluginChangeSet`：
-
-```text
-added
-removed
-layoutChanged
-configChanged
-binaryReloadRequested
-unchanged
-```
-
-应用顺序固定为：
-
-1. 从模型移除即将停止的实例。
-2. 处理延迟删除。
-3. 停止 removed/restart 集合。
-4. 加载 added/restart 集合。
-5. 对 layoutChanged 更新角色。
-6. 一次性提交模型变化并重新计算 bar 尺寸。
+停止前先从模型解除目标 QML 引用并处理 DeferredDelete，再停止目标及其依赖闭包。
+布局变更只更新模型。Python 配置入队表示 pending，实际回执成功后才更新确认快照；
+失败不重启其他插件，再次保存相同文件可以重试。缺少独立子实例生命周期能力的第三方 host
+在初始化前被拒绝，不回退为全量重载。托盘强制重载仍作为显式恢复入口。
+完整回执与 host 扩展签名见 [SDK 生命周期](plugin-sdk-v2.md#运行时应用结果与生命周期)。
 
 ### 实施阶段
 
@@ -416,7 +352,7 @@ unchanged
 为第三方插件建立可演进、可预检、可兼容的 SDK 和 Manifest，避免只能通过加载 DLL 后的
 崩溃或日志判断 ABI 是否匹配。
 
-### 当前问题
+### 实施前问题
 
 - `PluginMetadata` 只有 ID、名称、版本和作者。
 - IID 只能区分 `1.0`，不能表达最小宿主版本、能力或依赖。
@@ -438,53 +374,16 @@ unchanged
 - 不实现在线市场和自动下载依赖。
 - 权限的运行时执行放在 PF-04。
 
-### Manifest 草案
+### 当前 Manifest 与 SDK
 
-```json
-{
-  "id": "plugin.demo",
-  "name": "示例插件",
-  "version": "1.2.0",
-  "apiVersion": 2,
-  "minHostVersion": "0.3.0",
-  "maxHostVersion": "0.x",
-  "author": "Example",
-  "entry": {
-    "backend": "demo.dll",
-    "qml": "Demo.qml",
-    "settingsQml": "DemoSettings.qml"
-  },
-  "capabilities": ["barItem", "settings", "popup"],
-  "permissions": ["notifications"],
-  "dependencies": [
-    {"id": "plugin.base", "version": ">=1.0.0", "optional": false}
-  ]
-}
-```
+原生插件通过 `IBarPlugin2` 与 IID `xuanhub.BarPlugin/2.0` 暴露 Descriptor、初始化、
+配置验证/应用、ViewModel、QML URL 和停止能力。加载前校验 sidecar 的入口路径、
+宿主范围、SDK、架构、Qt、编译器、CRT 与依赖，运行时 Descriptor 必须与 sidecar 一致。
+V1 仅作为外部旧插件兼容入口；新 Python 插件继续使用全局唯一的 `py_` 前缀。
 
-ID 规则建议：
-
-- 内置 C++：`clock` 等历史 ID 保持兼容。
-- 新第三方：反向域名或 `vendor.plugin`。
-- Python 历史插件继续接受 `py_*`；新插件推荐统一全局 ID 规则。
-- 只允许 ASCII 字母、数字、点、下划线和短横线，长度不超过 128。
-
-### SDK V2 草案
-
-```cpp
-class IBarPlugin2 {
-public:
-    virtual PluginDescriptor descriptor() const = 0;
-    virtual InitResult initialize(const PluginContext2& context) = 0;
-    virtual ConfigResult validateConfig(const QVariantMap& config) const = 0;
-    virtual ApplyResult applyConfig(const QVariantMap& config) = 0;
-    virtual QObject* viewModel() = 0;
-    virtual QUrl qmlUrl() const = 0;
-    virtual void shutdown() = 0;
-};
-```
-
-宿主按 V2、V1 顺序探测；V1 包装成内部统一 Runtime，不要求旧插件重新编译。
+当前字段、返回类型、示例与独立 SDK 构建方式统一维护在
+[SDK V2](plugin-sdk-v2.md)与 [Python Manifest](../plugins_py/README.md)，
+本路线图不再保留与实现不同步的接口草案。
 
 ### 实施阶段
 
@@ -581,40 +480,15 @@ public:
 - 不在本阶段实现 AppContainer。
 - 不把业务 HTTP API 封装成宿主特定服务。
 
-### 服务草案
+### 当前服务边界
 
-```text
-logger.debug/info/warning/error
-notifications.show
-storage.read/write/remove/list
-secrets.read/write/remove
-settings.open
-shell.openUrl/openFile
-locale.activeLocale
-theme.currentPalette
-```
+HostServices 以插件 ID 绑定日志、通知、私有存储、密钥、设置跳转、Shell、语言和主题能力。
+私有存储位于 `<configDir>/plugin-data/<plugin-id>/`，便携模式跟随 exe 目录。
+服务执行路径与权限检查绑定身份；进程内原生代码仍是受信任代码，不能据此宣称沙箱。
 
-标准弹窗归 PF-07，跨运行时事件与请求响应归 PF-05，避免首版宿主服务接口过度膨胀。
-
-存储目录建议：
-
-```text
-<configDir>/plugin-data/<plugin-id>/
-```
-
-便携模式继续跟随 exe 同目录数据根。服务必须清理文件名和相对路径，拒绝离开插件私有目录。
-
-权限草案：
-
-```json
-"permissions": [
-  "notifications",
-  "storage.private",
-  "secrets.own",
-  "shell.openUrl",
-  "events.publish:plugin.demo.*"
-]
-```
+Python 同步 RPC 当前开放日志、通知与本插件密钥读写，不等同于已开放全部原生 HostServices。
+其线程要求、错误结果和跨运行时差异见 [Python HostServices](../plugins_py/README.md#hostservices-与权限)；
+原生接口及 QML 上下文见 [SDK HostServices](plugin-sdk-v2.md#hostservices-与权限)。
 
 ### 实施阶段
 
@@ -713,39 +587,14 @@ Python 接入，使 EventBus 成为 C++、Python、宿主服务之间统一且�
 - 不允许跨进程传递 QObject、指针或自定义 C++ 类型。
 - 不在本阶段提供跨机器或局域网事件通信。
 
-### Topic 规范
+### 当前 Topic 与 API
 
-```text
-app.*                 宿主事件
-service.<name>.*      宿主服务
-plugin.<id>.*         插件拥有的事件
-```
+V2 使用 `app.*`、`service.<name>.*` 与 `plugin.<id>.*` 命名空间；跨插件访问需声明对应权限。
+宿主填充信封中的身份和时间，异步排队投递，支持保留状态和请求响应；作用域停止会取消订阅与请求。
+V1 同步广播只用于兼容，不能混用 V1 payload 与 V2 envelope。
 
-Payload 保留字段：
-
-```json
-{
-  "schemaVersion": 1,
-  "source": "plugin.demo",
-  "timestamp": "ISO-8601",
-  "data": {}
-}
-```
-
-插件只提交 `data`，source 和时间由宿主填充，防止身份伪造。
-
-### API 草案
-
-```text
-Subscription subscribe(topic, handler, options)
-void publish(topic, payload)
-RequestId request(topic, payload, timeout)
-void respond(requestId, payload, error)
-State getState(topic)
-void setState(topic, payload)
-```
-
-初期仍在 GUI 线程按事件循环排队投递；不得为了异步而直接从任意线程调用插件 QObject。
+原生签名、信封字段和背压见 [EventBus V2](plugin-sdk-v2.md#eventbus-v2)；
+Python 代理 API 与事件队列见 [Python EventBus](../plugins_py/README.md#eventbus-v2)。
 
 ### 实施阶段
 
@@ -818,7 +667,7 @@ void setState(topic, payload)
 让第三方插件能够自行声明配置版本、迁移规则、复杂字段和敏感数据，不再由宿主针对内置
 插件编写迁移或密钥特殊代码。
 
-### 当前问题
+### 实施前问题
 
 - 设置 schema 适合简单字段，但复杂数组通常必须自绘。
 - 内置旧中文枚举迁移由宿主硬编码。
@@ -840,50 +689,17 @@ void setState(topic, payload)
 - 不允许插件迁移代码直接写配置文件或密钥库。
 - 不自动翻译用户输入、服务端内容和其他个人数据。
 
-### 配置结构草案
+### 当前配置契约
 
-```json
-{
-  "id": "plugin.demo",
-  "configVersion": 3,
-  "config": {}
-}
-```
+配置条目以 `configVersion` 标识版本。迁移先作用于内存副本并校验，不在加载时覆盖配置；
+设置页采用建议并保存后才原子写回。未知字段保留，未来版本与迁移失败仅阻止目标插件。
 
-Schema 扩展：
-
-```json
-{
-  "key": "accounts",
-  "type": "array",
-  "itemKey": "id",
-  "items": {
-    "type": "object",
-    "fields": [
-      {"key": "name", "type": "string"},
-      {"key": "token", "type": "string", "secret": true}
-    ]
-  }
-}
-```
-
-密钥引用必须由宿主按插件 ID、字段 JSON Pointer 和稳定 itemKey 生成；数组重排不能交换密钥。
-
-### 迁移接口
-
-Python：
-
-```python
-CONFIG_VERSION = 3
-
-def migrate_config(old_version, config):
-    return config
-
-def validate_config(config):
-    return {"ok": True, "errors": []}
-```
-
-C++ V2 提供等价接口。迁移在临时副本执行，全部成功后再原子保存。
+嵌套密钥由 schema 的 `secret`、JSON Pointer 和数组稳定 `itemKey` 定位，重排不串位；
+密钥库与配置保存采用可回滚事务。原 `usage_hub` 的迁移记录属于历史验收，
+当前账户与兼容导入由 Token Usage 承接。
+字段、时序和错误边界见 [SDK 设置 Schema](plugin-sdk-v2.md#设置-schema)、
+[Python 配置迁移](../plugins_py/README.md#配置版本与迁移)与
+[Token Usage](../plugins_py/agent_usage/README.md)。
 
 ### 实施阶段
 
@@ -969,7 +785,7 @@ C++ V2 提供等价接口。迁移在临时副本执行，全部成功后再原�
 把插件反复实现的弹窗定位、焦点和关闭逻辑收归宿主，并允许插件声明快捷动作、托盘动作
 和更完整的布局偏好，降低 QML 插件开发难度和界面类崩溃概率。
 
-### 当前问题
+### 实施前问题
 
 - 多个插件复制 `mapToGlobal + barScreenGeometry + 稳定后显现` 逻辑。
 - 点击 bar 关闭、toggle 防重开、transient parent 等细节容易遗漏。
@@ -991,57 +807,18 @@ C++ V2 提供等价接口。迁移在临时副本执行，全部成功后再原�
 - 不禁止高级插件继续创建自己的 Window。
 - 不引入多行状态栏或任意网格布局，先完成单行空间管理。
 
-### Popup API 草案
+### 当前 UI 契约
 
-```qml
-PluginItem {
-    popup: PluginPopup {
-        preferredWidth: 420
-        preferredHeight: content.implicitHeight
-        contentItem: MyPopupContent {}
-    }
-}
-```
+插件通过 `import XuanHub` 使用 `PluginPopup`，设置 `anchorItem`、`pluginContext`、
+`width/height`，以 `toggleFromBar/openAnchored/closePopup` 控制窗口。
+宿主负责当前屏边界、顶部/底部方向、DPI、多屏、互斥、失焦、Esc 和动态高度稳定显现。
+不提供旧草案中的 `PluginItem.popup` 或 `preferredWidth/preferredHeight` 接口。
 
-宿主负责：
-
-- 当前屏幕与任务栏/AppBar 边界。
-- 顶部/底部状态栏锚点。
-- DPI 和多屏坐标。
-- 弹窗互斥、焦点、Esc、点击外部关闭。
-- bar 按下与 toggle 防重开。
-- 内容高度稳定后再显示。
-- 主题、语言和无障碍属性。
-
-### Action Manifest 草案
-
-```json
-"actions": [
-  {
-    "id": "refresh",
-    "label": "立即刷新",
-    "placements": ["quickMenu", "tray", "pluginMenu"],
-    "icon": "refresh",
-    "defaultShortcut": ""
-  }
-]
-```
-
-动作调用统一进入插件 Runtime，复用健康状态、权限和异步结果。
-
-### 布局扩展草案
-
-```json
-"layout": {
-  "region": "right",
-  "minWidth": 48,
-  "preferredWidth": 160,
-  "maxWidth": 320,
-  "flex": 0,
-  "priority": 50,
-  "overflow": "menu"
-}
-```
+动作由 Manifest 声明稳定 ID、标签、位置与状态，宿主仅调用已声明入口。
+appbar 响应式布局按尺寸、priority 和 overflow 分配槽位；taskbar 和用户固定宽保持原语义。
+可选 `hostContentWidth` 支持按实际内容宽度重排。
+现行示例见 [标准弹窗](plugin-sdk-v2.md#标准弹窗)、[声明式动作](plugin-sdk-v2.md#声明式动作)
+和[响应式布局](plugin-sdk-v2.md#响应式布局)。
 
 ### 实施阶段
 
@@ -1117,7 +894,7 @@ PluginItem {
 在保持 Python 插件易开发和独立进程隔离的前提下，增加能力握手、主动数据推送、异步调用
 结果、取消、HostServices 与 EventBus，并建立清晰的背压和依赖管理策略。
 
-### 当前问题
+### 实施前问题
 
 - 数据只能由宿主周期性 `update()` 拉取。
 - `plugin.call()` 只返回是否入队，无法得到成功、错误和结果。
@@ -1141,46 +918,16 @@ PluginItem {
 - 不允许 Python 直接获得 Qt/QML 对象。
 - 不把 IPC 当作通用远程网络协议。
 
-### 握手草案
+### 当前 Protocol V2 契约
 
-```json
-{
-  "type": "hello",
-  "protocol": 2,
-  "pluginId": "plugin.demo",
-  "capabilities": ["pushValues", "callResults", "events", "services"]
-}
-```
+hello 绑定一次性 token、protocol、pluginId 和传输 capabilities；插件只实现模块级函数，
+不自行拼接 socket 帧。V1 hello 保持兼容，插件动态 `set_config/validate_config` 能力在初始化回执中声明。
 
-V1 Worker 继续走当前 request/response；宿主按握手选择适配器。
-
-### 主动推送草案
-
-```json
-{
-  "type": "event",
-  "event": "values.patch",
-  "sequence": 42,
-  "data": {"heartRate": 82}
-}
-```
-
-- patch 只包含变化字段。
-- sequence 防止重启或乱序后旧值覆盖新值。
-- 高频数据由宿主按帧率合并，QML 不跟随每个原始采样刷新。
-
-### 调用结果草案
-
-```qml
-const id = plugin.call("refresh", [])
-
-Connections {
-    target: plugin
-    function onCallFinished(id, ok, result, error) {}
-}
-```
-
-协议支持 `call.progress` 和 `call.cancel`，旧 `queued` 返回语义保留。
+`plugin.call()` 同步返回 `queued/id`，最终结果和进度分别通过 `callFinished/callProgress` 发出；
+`cancelCall` 只取消排队项，运行中返回 `not_interruptible`。
+后台 `emit_values` 发送顶层 patch，Worker 与 Qt 两端合并；`emit_event` 使用有界队列。
+准确 hello、API、队列限制和线程规则见 [Bridge Protocol V2](../plugins_py/README.md#bridge-protocol-v2)
+及其后续章节，不将早期协议草案作为兼容依据。
 
 ### 实施阶段
 
@@ -1291,7 +1038,7 @@ Connections {
 定义可验证的 `.xuanplugin` 包和本地插件管理流程，让用户无需手工复制目录即可安装、升级、
 停用、卸载和回滚插件，并为未来插件仓库保留接口。
 
-### 当前问题
+### 实施前问题
 
 - 插件目录本身就是安装结果，没有包清单和文件哈希。
 - 没有安装事务、版本回滚和来源记录。
@@ -1323,7 +1070,7 @@ LICENSE
 README.md
 ```
 
-包使用 ZIP 容器但扩展名为 `.xuanplugin`。所有文件必须在 manifest 中，禁止绝对路径、`..`、
+包使用 ZIP 容器但扩展名为 `.xuanplugin`。除哈希清单自身与可选签名文件外，所有普通文件必须列入清单；禁止绝对路径、`..`、
 设备名、符号链接和解压炸弹。完整 Schema 1 契约及参考命令见
 `docs/xuanplugin-format.md`。
 
@@ -1427,7 +1174,7 @@ README.md
 把目前依赖文档和真实宿主人工验证的开发流程变成可重复工具，为 C++、Python、QML、设置
 和语言包提供统一创建、校验、测试、打包和诊断入口。
 
-### 当前问题
+### 实施前问题
 
 - 项目测试已覆盖部分配置、语言和 Python Worker，但没有插件 SDK 测试框架。
 - QML 根节点、宽度、属性注入和弹窗契约主要靠人工遵守。
@@ -1584,7 +1331,7 @@ CPU/内存（可选采样）
 评估并实现可选的原生后端隔离模式，使不完全受信任或稳定性未知的 C++/Rust 等原生插件
 不能因崩溃、ABI 冲突或死锁直接终止 XuanHub。
 
-### 当前问题
+### 实施前问题
 
 - C++ DLL 与宿主共享进程、Qt、CRT、事件循环和地址空间。
 - `init/shutdown` 卡死无法通过宿主内超时安全终止。
@@ -1698,7 +1445,7 @@ CPU/内存（可选采样）
 
 ## 5. 跨方向依赖与实施顺序
 
-推荐依赖顺序：
+已完成方向的依赖关系如下，供后续改动评估影响；这不是要求重新实施的待办顺序：
 
 ```text
 PF-01 运行时健康与卸载安全
@@ -1719,7 +1466,9 @@ PF-03 + PF-04 + PF-05 + PF-08
 PF-10 开发工具贯穿全部方向
 ```
 
-## 6. 建议里程碑
+## 6. 里程碑归属与发布记录
+
+下列 0.2.2/0.3.0/0.4.0 为原计划划分，相关 PF 方向已完成；实际交付以发布说明为准。
 
 ### 0.2.2：稳定性版本
 
@@ -1727,7 +1476,7 @@ PF-10 开发工具贯穿全部方向
 - PF-02：布局不重启、单插件配置重启、Python Worker 独立启停。
 - PF-10：为以上能力增加基础测试和诊断显示。
 
-该版本不引入破坏性 SDK 变化，重点是让现有插件稳定运行。
+该阶段以刷新、健康状态与单插件生命周期为重点，不引入破坏性 SDK 变化。
 
 ### 0.3.0：插件 SDK V2
 
@@ -1744,15 +1493,26 @@ PF-10 开发工具贯穿全部方向
 - PF-09：本地插件包、安装、签名和回滚。
 - PF-10：create/validate/test/doctor/package 工具闭环。
 
-### 1.0 前评估
+### 0.4.x：体验与稳定性迭代
 
-- PF-11：完成原生后端隔离原型和产品决策。
-- 确定长期支持的 V2 SDK、包格式和兼容周期。
-- 发布第三方插件兼容政策和安全模型。
+主题外壳、菜单动作、SDK V2 内置插件迁移、Token Usage、弹窗与多屏、FluentWinUI3、
+原生模块驻留等改进见 [发布记录](README.md#发布记录)。
+
+### 0.5.0：宿主更新与插件体验
+
+GitHub 一键更新与回滚、朝暮太阳光照及黄金时刻、米家、插件拖拽、品牌图标与运行截图
+已进入 [v0.5.0](releases/v0.5.0.md)。宿主更新契约见 [软件更新](app-update.md)。
+
+### 1.0 前：尚未承诺的产品化方向
+
+PF-11 原型与评估已完成，产品化暂缓。HostServices/EventBus 权限代理、有界队列、独立 Worker SDK、
+真实插件迁移和包类型支持是重新评估的前置条件，见[原生隔离评估](native-worker-isolation-evaluation.md)。
+长期 ABI 支持周期和第三方兼容政策的进一步承诺需要另行决策，不从“SDK V2 已完成”推导。
 
 ## 7. 全局验收门禁
 
-每个里程碑发布前必须满足：
+以下是每次发布复用的检查模板；空框不是当前版本失败或未实现的证据。执行结果应写入对应发布记录，
+明确构建提交、测试范围、真实设备项目和未覆盖项，不把历史通过结果当作本次重新通过：
 
 - [ ] Release 构建通过。
 - [ ] CTest 全部通过。
@@ -1765,11 +1525,12 @@ PF-10 开发工具贯穿全部方向
 - [ ] V1 插件兼容测试通过，或发布说明明确列出经批准的兼容性变化。
 - [ ] 文档、示例和实际接口保持一致。
 
-## 8. 当前推荐的下一步
+## 8. 后续维护优先项
 
-先批准并实施 PF-01，不同时启动 SDK V2 或插件包工作。PF-01 完成后，用健康状态和卸载安全
-作为 PF-02 增量生命周期的基础。只有单插件启停、错误隔离和配置重载稳定后，再开始对外
-承诺 SDK V2、权限或插件安装格式。
+以下为待安排的维护方向，不构成已批准的新版本范围或完成承诺：
 
-PF-01 的第一个提交应只修复 Python `intervalMs` 并增加回归测试；第二个提交再加入熔断；
-第三个提交加入健康模型；EventBus 作用域作为独立提交完成。这样每一步都能单独验证和回滚。
+1. 在下一正式版本发布时完成从 v0.5.0 基线到新版本的真实远端升级验收，核对回滚与用户数据保留。
+2. 补齐 Windows Shell、Explorer 重启、appbar/taskbar、物理多屏与实际 DPI 切换矩阵，并记录逐项结果。
+3. 按最新插件版本复测朝暮完整宿主资源预算；真实账号、米家设备、位置授权和休眠唤醒分别保留验收记录。
+4. 维护公开契约、内置插件示例与 CLI 的一致性；新增第三方插件能力时再评估 SDK 和包格式扩展。
+5. 原生隔离保持实验状态，只有产品化前置条件与收益评估充分时再启动正式接入。

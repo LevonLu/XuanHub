@@ -1,4 +1,4 @@
-# Python 子插件开发契约（M6）
+# Python 子插件开发契约
 
 > 统一文档导航见 [`docs/README.md`](../docs/README.md)。本文是 Python 插件 Manifest、Worker、
 > Protocol V2、依赖和 QML 行为的权威来源。
@@ -7,7 +7,7 @@
 > 宿主只保留异步代理 ViewModel 注入 QML。Python 崩溃、GIL 卡死和扩展模块异常不会进入
 > XuanHub 进程。写 Python 子插件**不需要**碰 C++。
 > `pybridge` DLL 自身使用原生 SDK V2；host 扩展接口、Python Manifest 和 IPC 协议分别版本化，
-> 本次 DLL 升级不改变 Python 插件的配置格式或生命周期函数。
+> 原生 SDK 版本不能代替 Python Manifest 或 IPC 协议版本协商。
 
 ## 目录结构
 
@@ -69,7 +69,7 @@ python scripts/xuanhub_plugin.py package plugins_py/py_weather --output dist/py_
   探针复核；无 Qt 环境不受影响。
 - `test` 通过真实 `bridge_worker.py` 验证 `init/update/invoke/set_locale/stop`；可用
   `--repeat` 验证重启，用 `--timeout` 限制卡死插件。
-- `run` 是离屏 QML Smoke Test，可用 `--screenshot` 生成只供人工比较的图片；它不代替
+- `run` 需要已构建的 `xuanhub_qml_smoke.exe` 及 Qt 运行资源；没有 Runner 时不能执行，不应为纯 Python 开发强制编译宿主。它是离屏 QML Smoke Test，可用 `--screenshot` 生成只供人工比较的图片；它不代替
   真实状态栏的 DPI、弹窗和多屏验收。
 - `doctor` 使用目标解释器检查版本、位数、distribution、导入根和原生扩展 ABI，不联网、
   不安装依赖、也不导入插件 `main.py`。
@@ -312,7 +312,7 @@ Python 与原生插件使用同一份 Manifest 布局契约：
 
 `permissions` 使用稳定字符串声明需要的宿主能力；当前支持 `notifications`、
 `storage.private`、`secrets.own`、`shell.openUrl` 和 `shell.openFile`。Python RPC
-已开放日志、通知及本插件密钥读写，其他服务会按路线图逐步接入。未声明或未授予所需权限时返回
+已开放日志、通知及本插件密钥读写；这不表示 Python RPC 已覆盖全部原生服务，未支持的服务返回 `unsupported_service`。未声明或未授予所需权限时返回
 `{"success": false, "errorCode": "permission_denied", ...}`。
 
 ```python
@@ -427,7 +427,7 @@ API 为 `publish/subscribe/request/respond/state`。插件自己的 `plugin.<id>
 不得自报插件 ID。每个 worker 最多缓存 128 个待下发事件，超限丢弃最新事件并记日志；停止
 插件会清除作用域订阅与未完成请求。可选 `set_event_bus(events)` 在 `init()` 前收到同一代理。
 
-### 设置项声明（settings / settingsQml，M10）
+### 设置项声明（settings / settingsQml）
 
 `plugin.json` 还可声明该插件在设置窗口里的设置区（均可选，C++ 插件的
 `metadata.json` 契约相同）：
@@ -488,7 +488,7 @@ API 为 `publish/subscribe/request/respond/state`。插件自己的 `plugin.<id>
 def init(config):    # 可选。注入 config.json 里本子插件的 config 段（dict）
 def set_config(config): # 可选。运行中应用新 config；未实现时框架只重启本插件
 def set_locale(locale): # 可选。init 后及运行中切换语言时收到 zh-CN / en-US
-def update():        # 必需。每个 tick 调用，返回 dict → 原样填入 QML 的 plugin.values
+def update():        # 必需。初始/周期快照返回 dict；push-only 首次成功后不再周期调用
 def invoke(name, args):  # 可选。QML 里 plugin.call(name, args) 的入口
 def stop():          # 可选。卸载/热重载前调用，用来停后台线程（见下节）
 ```
@@ -546,11 +546,13 @@ def update():
 
 **应实现 `stop()`**：热重载、宿主关闭或 IPC 断开时 worker 会尽力调用它；若插件代码卡死，
 桥接层会在短暂宽限后终止整个 worker，避免旧线程或原生扩展残留在宿主进程中。
-`urllib`（含 HTTPS）开箱即用；`requests` 等第三方库装进用户自装的 Python 即可直接 import
-（解释器指向用户自装的 Python，其 `site-packages` 对插件可见）。
-运行前提：机器装有 CPython ≥3.12（必须含 `python.exe`、标准库与 `python3XX.dll`）；未安装时
-pybridge 整体停用并弹托盘提示，宿主与其他插件不受影响。打包脚本的 `-PythonStrategy Bundle`
-会一并带上 `python.exe`、标准库与 DLL，做成免安装包。
+`urllib`（含 HTTPS）由标准库提供。官方便携包优先使用 exe 旁内置 Python，不需要用户另装解释器；
+把包安装到其他 Python 的 `site-packages` 不会自动使它对该 Worker 可见。第三方依赖在 Manifest
+声明，并用目标解释器执行 doctor；分发优先使用前述离线 wheel / 插件私有环境。
+
+源码运行或 `None` 打包策略可使用用户安装的 CPython ≥3.12 x64，需同时具备 `python.exe`、
+标准库和 `python3XX.dll`。没有可用解释器时，pybridge 停用子插件并提示，宿主与原生插件继续运行。
+Bundle 脚本只提供解释器与标准库，第三方包必须另行加入；正式发布命令见根 [README](../README.md#从源码构建)。
 
 ## QML 契约
 
@@ -558,9 +560,13 @@ pybridge 整体停用并弹托盘提示，宿主与其他插件不受影响。�
 `property var pluginContext`，框架加载后分别注入代理 ViewModel 与作用域宿主上下文：
 
 ```qml
+import QtQuick
+
 Item {
     property var plugin
     property var pluginContext
+    width: 120
+    height: 32
     Text { text: (plugin && plugin.values.text) ? plugin.values.text : "..." }
     MouseArea { anchors.fill: parent; onClicked: if (plugin) plugin.call("bump", []) }
 }
@@ -582,12 +588,15 @@ Item {
 部件时“关闭后不立刻重开”的守卫：
 
 ```qml
+import QtQuick
 import XuanHub
 
 Item {
     id: root
     property var plugin
     property var pluginContext
+    width: 120
+    height: 32
 
     MouseArea { anchors.fill: parent; onClicked: details.toggleFromBar() }
 
@@ -612,17 +621,19 @@ Item {
 
 ## 调试
 
-- 日志：`%APPDATA%/XuanHub/xuanhub.log`（Python traceback 也在其中）。
-- 改 main.py / *.qml 后**重新构建**（POST_BUILD 会同步到 dist）再重启宿主即生效，免重编 DLL。
+- 日志：普通模式为 `%APPDATA%/XuanHub/xuanhub.log`，便携模式为 `<exeDir>/xuanhub.log`，Python traceback 也在其中。
+- 直接编辑便携包中的插件时，修改 `main.py/plugin.json/QML` 后退出并重启即可，不需要 Qt/MSVC。
+  在源码树开发时，可把修改同步到独立开发宿主后重启；已有构建环境也可用 `pixi run build` 同步资源。
   `bridge_worker.py` 是桥接协议实现，必须随 `plugins_py/` 一同部署，勿单独删除或修改其协议。
 - 参考实现：`hello/`（时间刷新 + 点击计数）。
 
-## 已知限制（后续里程碑）
+## 运行与验证边界
 
-- 依赖用户自装 CPython ≥3.12（未安装则整体停用 + 托盘提示）；
-  `-PythonStrategy Bundle` 打包可内置标准库免除该依赖。
+- Worker 进程隔离用于故障隔离，不限制当前用户的文件、网络和系统权限；插件 QML 仍在宿主执行。
+- 原生 Python 扩展必须匹配实际解释器版本与 x64 ABI；只通过源码静态校验不代表依赖可用。
+- QML Smoke 与 Worker 测试不替代真实宿主的 DPI、多屏、弹窗及外部账号/设备验收。
 
-### 配置生效确认
+## 配置生效确认
 
 保存设置只代表 `config.json` 已写入。pybridge 在 worker 的 `init` 或 `set_config`
 成功响应后才把配置标记为已生效；异常、超时与进程退出会显示目标插件的失败原因。

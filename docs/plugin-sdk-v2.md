@@ -4,7 +4,7 @@
 > `IBarPlugin/1.0` 仅用于兼容既有插件，新插件应使用 V2。
 
 SDK V2 用可预检的 `metadata.json` 和独立 IID 替代“先加载 DLL 再判断是否兼容”。
-内置 `clock/sysinfo/xuanhub_menu/pybridge` 均使用 V2；V1 适配器仅供外部旧插件兼容。
+内置 `clock/sysinfo/pixel_landscape/xuanhub_menu/pybridge` 均使用 V2；V1 适配器仅供外部旧插件兼容。
 
 ## 开发者 CLI
 
@@ -13,6 +13,8 @@ SDK V2 用可预检的 `metadata.json` 和独立 IID 替代“先加载 DLL 再�
 ```powershell
 python scripts/xuanhub_plugin.py create plugins/my_plugin --runtime native --id my_plugin --name "My Plugin"
 python scripts/xuanhub_plugin.py validate plugins/my_plugin
+# 将插件接入顶层 CMakeLists.txt 后构建
+pixi run build
 python scripts/xuanhub_plugin.py run build/default/dist/Release/plugins/my_plugin
 python scripts/xuanhub_plugin.py doctor build/default/dist/Release/plugins/my_plugin
 python scripts/xuanhub_plugin.py package build/default/dist/Release/plugins/my_plugin --output dist/my_plugin-0.1.0.xuanplugin
@@ -35,15 +37,19 @@ Schema、i18n 校验；没有 Qt/MSVC 时仍可做不执行插件代码的静态
 - CRT 使用动态运行时：Release `/MD`，Debug `/MDd`。
 - 插件只链接 `XuanHub::barplugin` 和所需 Qt/系统库，不依赖 `app/` 源码。
 
-先安装本仓库生成的 SDK，再独立构建示例：
+仓库宿主与内置插件使用 `pixi run build`。先安装该构建生成的 SDK，再独立构建示例；
+SDK 安装和独立消费没有专用 Pixi 任务，因此下面经 Pixi 调用精确 CMake 命令。
+将 `$qtPrefix` 替换为实际 Qt 安装目录：
 
 ```powershell
-cmake --install build/default --config Release --prefix build/sdk-install
-cmake -S examples/plugins/v2_demo -B build/sdk-v2-demo `
+$qtPrefix = "<Qt 6.9.3 msvc2022_64 安装目录>"
+pixi run build
+pixi run cmake --install build/default --config Release --prefix build/sdk-install
+pixi run cmake -S examples/plugins/v2_demo -B build/sdk-v2-demo `
   -G "Visual Studio 17 2022" -A x64 `
   -DXuanHubPlugin_DIR="$PWD/build/sdk-install/lib/cmake/XuanHubPlugin" `
-  -DCMAKE_PREFIX_PATH="C:/Qt/6.9.3/msvc2022_64"
-cmake --build build/sdk-v2-demo --config Release
+  -DCMAKE_PREFIX_PATH="$qtPrefix"
+pixi run cmake --build build/sdk-v2-demo --config Release
 ```
 
 产物在 `build/sdk-v2-demo/dist/v2_demo/`，整个目录可复制到
@@ -63,7 +69,7 @@ V2 必填字段为 `id/name/version/apiVersion/entry/compatibility`。`apiVersio
 
 - `barItem`：允许创建 bar QML；声明后必须提供 `entry.qml`。
 - `settings`：允许提供 `entry.settingsQml` 或 schema 表单。
-- `popup`：声明插件需要弹窗 UI；标准 PopupHost 在 PF-07 提供。
+- `popup`：声明插件需要弹窗 UI；使用下文已提供的 `PluginPopup` 与作用域弹窗服务。
 
 `dependencies` 的必需项会参与拓扑排序，缺失、版本不匹配或循环都会阻止插件执行。可选依赖
 不会阻止加载；插件通过 `PluginContext2::hasDependency(id)` 查询，不能获取其他 DLL 对象。
@@ -372,7 +378,7 @@ host 子实例，再停止提供方。`PluginManager::pluginsAboutToStop(ids)` �
 QML 引用的边界，渲染层移除模型项并处理 `DeferredDelete` 后，管理器才执行
 `shutdown/unload`。`PluginRuntime::shutdown()` 幂等，停止后不能重新初始化同一适配器。
 `unload()` 释放插件根实例，但保留 Qt 默认 `PreventUnloadHint`：DLL 映像驻留到进程结束，
-使 Qt 缓存的元类型与元对象实现保持有效。配置重载仍重新创建实例、线程和 worker；
+使 Qt 缓存的元类型与元对象实现保持有效。需要重启目标或强制重载时仍会重新创建实例、线程和 worker；支持原地应用的配置更新不重建实例。
 同路径原生 DLL 文件替换须退出宿主，新版本目录的发现规则不变。
 `unload()` 拒绝释放实例时保留 loader 到进程退出，并禁止本进程再次初始化该插件，设置页提示重启。
 

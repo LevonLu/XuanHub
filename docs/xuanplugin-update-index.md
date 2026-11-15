@@ -3,7 +3,7 @@
 > 文档导航：[`docs/README.md`](README.md)。插件包本身的完整规则见
 > [`xuanplugin-format.md`](xuanplugin-format.md)。
 
-更新索引是用户显式添加的只读 JSON URL。玄枢只支持绝对 `https://` URL和本机
+更新索引是用户显式添加的只读 JSON URL。玄枢只支持绝对 `https://` URL 和本机
 `file:///` URL，不接受 HTTP、URL 凭据或 fragment。检查更新只下载并解析索引，不会下载
 插件包；用户确认安装某一项后才下载包，并重新经过完整 `.xuanplugin` 离线校验器。
 
@@ -40,3 +40,6 @@
 索引不是信任根：即使通过 HTTPS 获取，也不能替代插件包哈希、Manifest、权限、兼容性和
 发布者签名校验。索引只用于发现候选版本；安装事务、失败回滚和版本保留继续由
 `PluginPackageStore` 负责。
+
+该索引只管理第三方插件包，不用于宿主软件升级。XuanHub 本体从固定官方 GitHub Release
+发现版本，不能把这里的自定义 HTTPS/file 索引配置为宿主更新源，见 [软件更新](app-update.md)。

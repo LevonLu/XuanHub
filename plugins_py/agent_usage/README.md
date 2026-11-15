@@ -7,7 +7,7 @@
 本插件使用独立 Python 采集器，不安装或执行 Node.js，不调用 TokenTracker 的 JavaScript 模块。实现参考 TokenTracker 1.5.1 的固定源码，许可证见 `THIRD_PARTY_NOTICES.md`。
 
 1. 将本目录放入宿主的 `plugins_py/agent_usage/`。
-2. pybridge 解释器需要 Python 3.12+，以及匹配该解释器和 x64 架构的 `cryptography >= 41.0`、`zstandard >= 0.22`。依赖由 `plugin.json` 声明，插件不会自动联网安装。
+2. 官方 v0.5.0 便携包已包含所需 Python 与依赖。源码或定制宿主的 pybridge 解释器需要 Python 3.12+，以及匹配该解释器和 x64 架构的 `cryptography >= 41.0`、`zstandard >= 0.22`；以 `plugin.json` 和目标解释器 doctor 为准，插件不会自动联网安装。
 3. 重启 XuanHub，在设置中启用 **Token Usage**。pybridge 总开关由宿主维护。
 
 不再需要配置 Node 路径或 TokenTracker 目录。原配置中的旧字段会被忽略，宿主保存时仍保留未知字段。Ark 两类额度使用已安装的原生 `arkcli` 可执行文件；插件直接运行原生程序，不经过 npm、`.cmd` 或 JavaScript 启动器。没有该客户端时额度显示不可用。

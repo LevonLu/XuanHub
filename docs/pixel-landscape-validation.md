@@ -1,4 +1,7 @@
-# 像素小风景 0.1.0 验证记录
+# 像素风景初版与六场景验证记录
+
+> 本文保存 2026-11-08～11-09 的历史样本，不是当前插件全部能力的重新验收。
+> 当前 0.3.0 功能见[插件说明](../plugins/pixel_landscape/README.md)，太阳与黄金时刻证据见[后续验证](pixel-landscape-solar-validation.md)。
 
 验证日期：2026-11-08。范围为原生 `pixel_landscape` 插件、五种画框、六种风景、可选 `hostContentWidth` 槽位契约、首次启用时采用清单默认区域，以及实际验证中发现的 schema 枚举初始化时序。
 

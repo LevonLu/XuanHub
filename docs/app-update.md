@@ -34,6 +34,13 @@
 清单覆盖官方 EXE、DLL、QML、Python 运行时与内置资源，排除默认配置和便携标记，清单自身不参与自哈希。
 更新器拒绝额外 ZIP 文件、链接、路径穿越、Windows 路径别名、大小写碰撞及大小和哈希不符。
 
-首次包含该能力的正式便携包是更新基线；此前的历史包没有清单，需要手动迁移一次。
+**v0.5.0 是首次支持一键更新的正式基线**；0.4.x 等历史包没有发行清单，需要退出旧版、备份配置与密钥后手动迁移一次。不要用新版默认配置覆盖自己的数据。
 源码构建目录不自动生成清单，也不作为正式升级目标。独立构建验收可使用
-`scripts/package_portable.ps1 -BuildDirectory build/app-update -PythonStrategy Bundle` 生成全新发行 staging。
+`scripts/package_portable.ps1 -BuildDirectory build/app-update -PythonStrategy Bundle` 生成全新发行 staging；
+该命令不补齐第三方包，完整正式包还需按根 [README](../README.md#从源码构建) 加入内置插件依赖。
+
+## 验证范围
+
+v0.5.0 发布已完成独立 Release 构建、更新器成功/失败回滚进程测试和全新解压验证，见
+[发布说明](releases/v0.5.0.md)。这些证据不等于已完成从 v0.5.0 到后续正式 Release 的真实远端升级；
+下一次跨版本发布需另行记录在线检查、下载、替换、重启和数据保留的完整验收。

@@ -1,6 +1,7 @@
 # PF-11 原生 Worker 隔离评估
 
-> 文档导航：[`docs/README.md`](README.md)。本文记录技术评估结论，不代表发布版已支持原生隔离插件。
+> 文档导航：[`docs/README.md`](README.md)。本文记录技术评估结论；v0.5.0 仍未接入原生隔离插件。
+> 原型数据属于 2026-08-22 的实验样本，2026-11-15 文档核对未重新执行性能与故障注入测试。
 
 ## 结论
 
@@ -42,6 +43,11 @@ Worker 启动后必须先发送带 token、协议版本、插件 ID 和能力列
 
 ```json
 {"type":"request","id":1,"method":"init","args":{"initial":4}}
+```
+
+响应示例：
+
+```json
 {"type":"response","id":1,"ok":true,"result":{"initialized":true}}
 ```
 
@@ -74,8 +80,8 @@ Worker 启动后必须先发送带 token、协议版本、插件 ID 和能力列
 运行方式：
 
 ```powershell
-cmake --build --preset default --config Release --target xuanhub_native_worker_isolation_tests
-ctest --test-dir build/default -C Release -R xuanhub_native_worker_isolation_tests -V
+pixi run build
+pixi run ctest --test-dir build/default -C Release -R xuanhub_native_worker_isolation_tests -V
 ```
 
 ## 产品化前置条件

@@ -35,8 +35,8 @@ themes/
   "name": "My Theme",
   "version": "0.1.0",
   "author": "your-name",
-  "dark":  { "bg": "#202020", "fg": "#ffffff", "accent": "#60cdff", ... },
-  "light": { "bg": "#f3f3f3", "fg": "#1a1a1a", "accent": "#005fb8", ... }
+  "dark":  { "bg": "#202020", "fg": "#ffffff", "accent": "#60cdff" },
+  "light": { "bg": "#f3f3f3", "fg": "#1a1a1a", "accent": "#005fb8" }
 }
 ```
 
@@ -61,7 +61,7 @@ themes/
 | `border` | 边框 | 弹窗描边、输入框描边、分隔线 |
 | `onAccent` | accent 背景上的文字色 | 主按钮文字、今日高亮上的字（按 accent 明度选黑/白） |
 
-字段值必须是 QColor 可解析的颜色字符串（`#RGB` / `#RRGGBB` / `#RRGGBBAA` 等 hex 形态、SVG 命名色），不支持 `rgb()` 函数式。非法色值视为该字段**缺失**（日志记 `[Theme] ... invalid color value ... -> treated as missing`）：必填字段非法 → 整包拒载；其余字段非法 → 走内置默认主题 fallback。
+字段值必须是 QColor 可解析的颜色字符串（`#RGB` / `#RRGGBB` / `#AARRGGBB` 等 hex 形态、SVG 命名色），不支持 `rgb()` 函数式。非法色值视为该字段**缺失**（日志记 `[Theme] ... invalid color value ... -> treated as missing`）：必填字段非法 → 整包拒载；其余字段非法 → 走内置默认主题 fallback。
 
 ## 4. Theme Schema v2 外观令牌
 
@@ -139,30 +139,30 @@ Item {
 
 ## 6. QML 如何消费主题
 
-所有 QML（宿主 + 插件）通过 context property `themeManager.colors.<field>` 取色：
+宿主 QML 使用 `themeManager.colors/appearance`；新插件通过根 Item 的
+`property var pluginContext` 使用作用域色板与外观令牌：
 
 ```qml
-Rectangle { color: themeManager.colors.bg }
-Text { color: themeManager.colors.fg }
-Item { property real gap: themeManager.appearance.items.spacing }
+Rectangle { color: pluginContext ? pluginContext.colors.bg : "#202020" }
+Text { color: pluginContext ? pluginContext.colors.fg : "#ffffff" }
 ```
 
-`themeManager.colors` 在主题/模式切换时自动刷新所有绑定，无需手动监听。防御写法（防 themeManager 尚未注入）：
+`pluginContext.colors/appearance` 随主题或模式变化通知绑定；旧 `themeManager` 全局仅用于兼容。
+外壳扩展使用注入的 `hostTheme`，具体注入见上一节。
 
-```qml
-color: themeManager ? themeManager.colors.accent : "#60cdff"
-```
-
-**换肤覆盖范围**：bar、全部插件部件与弹窗、设置窗口（含按钮/开关/输入框等自绘控件）均只吃这 11 个字段——设置窗口自绘控件经 `palette` 继承色板（`highlight=accent`、`button=panel` 等），hover/焦点等派生态用 `Qt.lighter/Qt.rgba` 从色板色推算，无任何硬编码色。也就是说一套 theme.json 即可给整个程序完整换肤；写新 QML 时请遵守同一规矩（派生态从色板推算，不要写死颜色）。
+设置窗口使用 Qt 6.9.3 内置 FluentWinUI3，并把主题色映射到根 `palette`，同步
+`QStyleHints::colorScheme`。并非所有系统风格资源都能由色板重着色，不能承诺任意主题完整
+替换全部控件视觉。独立 Popup/ComboBox 窗口的 delegate 必须读取所属控件的 `control.palette`，
+避免窗口边界处继承回落系统色板。插件 UI 外壳应跟随主题；朝暮等内容画面的专用色板由插件自身管理。
 
 ## 7. 模式切换 vs 主题包切换
 
-- **模式（dark/light）**：托盘菜单 "切换深色/浅色" 快速切换；设置窗口"模式"下拉。每套主题包必须同时提供两套色板。
+- **模式（dark/light）**：托盘快速切换仅改运行态，配置热重载会恢复文件值；设置窗口保存才持久化。每套主题包必须同时提供两套色板。
 - **主题包**：设置窗口"主题包"下拉。切主题包保持当前模式。
 
 ## 8. 调试
 
-- 日志：`%APPDATA%/XuanHub/xuanhub.log`，`[Theme]` 前缀记录加载/切换/fallback。
+- 日志：普通模式为 `%APPDATA%/XuanHub/xuanhub.log`，便携模式为 `<exeDir>/xuanhub.log`，`[Theme]` 前缀记录加载/切换/fallback。
 - 改 `theme.json` 保存后，触发任意一次配置热重载（如改 config.json 或托盘 "重新加载配置"）即重新扫描 `themes/`——新装的主题包立刻出现在设置窗口。
 - 修改 `barChrome` QML 后必须重启 XuanHub；QML 引擎会缓存已经加载过的 file 组件，配置热重载不保证重新读取同 URL 的文件。
 - 主题包加载失败不会影响其他主题包，也不会让程序崩溃；外壳扩展失败会回退到 `StandardBarChrome`。

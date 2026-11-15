@@ -4,7 +4,7 @@
 
 XuanHub 提供两种工作模式：`appbar` 以无边框、置顶窗口占据主屏顶部或底部边缘，并经 Win32 AppBar 向系统申请工作区；`taskbar` 则嵌入 Windows 原生任务栏左侧，背景透明且不额外占用桌面工作区。栏上的一切内容——时钟、网速、启动器……——都是可插拔的插件。插件有两种形态：
 
-- **C++ 插件**：独立 DLL，性能最好，可直接调用 Win32 API；
+- **C++ 插件**：受信任的进程内 DLL，可直接调用 Qt / Win32 API；
 - **Python 子插件**：由内置的 `pybridge` 桥接插件承载，每个插件运行在独立的 `python.exe` worker 中；**写插件不需要 Qt、MSVC 或 C++ 编译环境**。
 
 ## 运行效果
@@ -25,7 +25,7 @@ XuanHub 提供两种工作模式：`appbar` 以无边框、置顶窗口占据主
 ## 特性
 
 - 双工作模式：`appbar` 支持顶部/底部贴边并保留工作区，`taskbar` 嵌入原生任务栏并随内容收缩
-- 插件化：DLL 热插拔，增删插件目录 + 重启即可装卸；三栏布局（左 / 中 / 右），顺序可配
+- 插件化：SDK V2 与旧 V1 兼容，支持单插件启停和配置热更新；三栏布局（左 / 中 / 右），同区域已启用插件可拖拽排序。替换同路径 DLL 或修改 QML 后须重启
 - Python 桥接：每个 `plugins_py/` 子插件运行在独立 Python worker 进程，异常、超时或崩溃不会拖垮宿主；界面仍是 QML，逻辑用 Python 写
 - 主题系统：Theme Schema v2 设计令牌 × dark/light 双模式；支持区域胶囊、单项卡片和可选可信 Bar 外壳扩展
 - 配置热重载：保存 `config.json` 立即生效，无需重启
@@ -37,7 +37,8 @@ XuanHub 提供两种工作模式：`appbar` 以无边框、置顶窗口占据主
 
 - Windows 10 / 11，x64
 - **基础功能零依赖**：宿主与 C++ 插件开箱即用，分发包已附带 MSVC 运行库
-- **官方 v0.4.0 便携包已内置 CPython 3.13.6 运行时**，Python 子插件开箱即用，无需另装 Python。正式发行仅提供这一种便携包，不区分 Bundle / 非 Bundle 版本
+- **官方便携包内置 Python 运行时和内置插件所需依赖**，无需另装 Python；具体运行时版本以对应发布包为准。正式发行仅提供一种 Windows x64 便携包，不区分 Bundle / 非 Bundle 版本
+- 最新正式包见 [GitHub Releases](https://github.com/LevonLu/XuanHub/releases/latest)。v0.5.0 是一键更新基线，历史版本需手动迁移一次，详见 [升级说明](docs/app-update.md)
 
 ---
 
@@ -45,7 +46,7 @@ XuanHub 提供两种工作模式：`appbar` 以无边框、置顶窗口占据主
 
 ## 安装与运行
 
-分发包是绿色便携目录，解压到任意位置后运行其中的 `XuanHub.exe` 即可，无需安装、不写系统目录。程序为单实例：重复启动会直接退出。
+分发包是绿色便携目录，解压到可写目录后运行其中的 `XuanHub.exe` 即可，无需安装、不写系统目录。程序为单实例：重复启动会直接退出。
 
 带 `portable` 标记的便携包把 `config.json`、`secrets.json`、锁和 `xuanhub.log` 都放在 `XuanHub.exe` 同目录；普通安装模式的日志位于 `%APPDATA%/XuanHub/xuanhub.log`。日志每次启动清空重写，遇到插件不显示、界面异常时先看它。
 
@@ -59,17 +60,19 @@ XuanHub 提供两种工作模式：`appbar` 以无边框、置顶窗口占据主
 | 开机自启 | 开机自启开关（写注册表 Run 键） |
 | 任务栏模式 | 切换 appbar / taskbar 工作模式（写回 `bar.mode`，热重载生效） |
 | 切换深色/浅色 | 切换 dark / light 模式（即时生效，不写回配置文件） |
-| 重新加载配置 | 手动重载配置（通常不需要——保存配置文件会自动热重载） |
+| 重新加载配置 | 强制重建插件实例，作为故障恢复入口；日常保存配置走增量热重载 |
+| 检查软件更新 | 检查官方 GitHub 正式 Release，查看下载与安装状态 |
 | 退出 | 退出，自动归还占用的桌面工作区 |
 
 ## 配置文件 `config.json`
 
-配置查找顺序：**exe 同目录的 `config.json` 优先**（便携模式）；不存在则使用 `%APPDATA%/XuanHub/config.json`（首次运行自动播种一份默认配置）。**保存文件即热重载**，插件、主题、栏位置全部即时刷新。
+普通模式优先读取 exe 同目录的 `config.json`，没有时使用 `%APPDATA%/XuanHub/config.json`；存在 `portable` 标记时，配置和数据根固定在 exe 目录。首次缺少配置时从内置默认值播种。保存后约 300 ms 触发增量热重载；解析失败或运行中文件暂时丢失时保留当前设置。配置热重载不替代 DLL、Python 或 QML 代码更新后的进程重启。
 
 完整示例：
 
 ```json
 {
+  "ui": { "language": "system" },
   "bar": {
     "height": 40,
     "edge": "top",
@@ -89,16 +92,19 @@ XuanHub 提供两种工作模式：`appbar` 以无边框、置顶窗口占据主
 }
 ```
 
+`ui.language` 为 `system/zh-CN/en-US`，缺省跟随系统；保存后可在运行中切换语言。
+
 `bar` 段字段：
 
 | 字段 | 取值 | 说明 |
 |---|---|---|
-| `height` | 整数（像素） | 栏高，缺省 40 |
+| `height` | 24–200（逻辑像素） | 栏高，缺省 40；手写越界值会被钳制 |
 | `edge` | `top` / `bottom` | 贴哪条边，缺省 `top` |
 | `monitor` | `primary` | 预留字段（当前版本未解析，恒用主屏；写回配置时原样保留） |
-| `opacity` | 0.0–1.0 | 栏体不透明度，缺省 1.0 |
+| `opacity` | 0.2–1.0 | 栏体不透明度，缺省 1.0；非法值保留当前值 |
 | `themeId` | 主题包 id | 对应 `themes/<id>/`，缺省 `xuanhub-default` |
 | `theme` | `dark` / `light` | 明暗模式，缺省 `dark` |
+| `menuIcon` | `original` / `hub` / `compact` | 菜单与托盘图标，缺省 `original` |
 | `mode` | `appbar` / `taskbar` | 工作模式，缺省 `appbar`；`taskbar` 会嵌入 Windows 原生任务栏 |
 | `taskbarOffsetX` | 整数（像素） | `taskbar` 模式下的水平位置微调，缺省 0 |
 
@@ -107,15 +113,17 @@ XuanHub 提供两种工作模式：`appbar` 以无边框、置顶窗口占据主
 | 字段 | 说明 |
 |---|---|
 | `id` | 插件 id。**在数组中出现 = 启用**，删除该项即停用 |
-| `position` | `left` / `center` / `right`，空默认 `right`，非法值回落 `right` |
+| `position` | `left` / `center` / `right`；缺失时采用 Manifest 的默认区域，未声明者使用 `right` |
 | `order` | 同栏内的排序，小的在前 |
+| `width` | 槽位宽度，0 为自适应，正数为固定逻辑像素，上限 800 |
+| `configVersion` | 插件配置版本，省略视为 1；升级规则由插件声明 |
 | `config` | 插件自己的配置段，原样透传给插件（键由插件各自定义） |
 
 ## 设置窗口
 
-托盘菜单 → 设置... 打开。左侧为插件列表（启用在前，勾选即时归位），右侧为选中插件的设置：启停、位置、排序，以及插件自己声明的设置项（表单或插件自绘设置页）。点保存后写入 `config.json`，经热重载生效。Python 子插件的 `pybridge` 总开关由设置窗口自动托管，无需手工维护。
+托盘菜单 → 设置... 打开。进入“插件”页后，左侧为插件列表，右侧为选中插件的设置：启停、位置、排序、宽度，以及插件声明的设置项。启用与拖拽先修改草稿，点应用或保存后写入 `config.json`，经热重载生效；窗口打开期间外部配置变化会触发草稿过期保护。Python 子插件的 `pybridge` 总开关由设置窗口自动托管，无需手工维护。
 
-含 API Key 等敏感字段的设置会使用当前 Windows 用户的 **DPAPI** 加密：`config.json` 仅保存引用标记，运行时才解密注入插件。用量中心的厂商密钥也适用；已有明文配置在设置窗口中保存一次即可迁移。
+含 API Key 等敏感字段的设置会使用当前 Windows 用户的 **DPAPI** 加密：`config.json` 仅保存引用标记，运行时才解密注入插件。Token Usage 的账户密钥也适用；已有明文配置在设置窗口中保存一次即可迁移。
 
 ## 主题
 
@@ -150,8 +158,8 @@ python scripts/xuanhub_plugin.py validate <插件目录>
 CLI 还提供 `test/run/doctor/package`；准确参数使用
 `python scripts/xuanhub_plugin.py <命令> --help` 查询。
 
-当前原生 DLL 是同进程受信任代码，权限声明不能形成安全沙箱；第三方不受信任插件应优先使用
-Python/Protocol V2 隔离路径。`experiments/native_worker/` 已验证原生后端进程隔离的崩溃、
+当前原生 DLL 是同进程受信任代码，权限声明不能形成安全沙箱；第三方插件通常优先使用
+Python/Protocol V2 路径以隔离后端故障，但仍应只运行可信代码；Worker 具有当前用户的系统权限，QML 也在宿主中执行。`experiments/native_worker/` 已验证原生后端进程隔离的崩溃、
 超时和开销，但尚未接入发布版。边界、指标和产品化门槛见
 `docs/native-worker-isolation-evaluation.md`。
 
@@ -160,16 +168,16 @@ Python/Protocol V2 隔离路径。`experiments/native_worker/` 已验证原生�
 | 形态 | `plugins/<id>/<id>.dll + <Id>.qml + metadata.json` | `plugins_py/<name>/plugin.json + main.py + <X>.qml` |
 | 界面 | QML（与宿主同引擎） | QML（与宿主同引擎，契约完全相同） |
 | 逻辑 | C++ ViewModel（QObject + Q_PROPERTY） | 独立 worker 进程中的 `main.py` 模块级约定函数 |
-| 构建 | 需与宿主同一构建树编译（ABI 锁定） | 无需编译；可直接使用便携包作为开发宿主 |
+| 构建 | 可使用独立 SDK 构建，Qt / MSVC / x64 / CRT 必须匹配宿主 | 无需编译；可直接使用便携包作为开发宿主 |
 | 适用 | 性能敏感、要调 Win32 / 第三方 native 库 | 快速迭代、数据处理、网络 API 类插件 |
 
-两种插件的**界面契约完全一致**：QML 根 `Item` 声明 `property var plugin`，框架加载后把 ViewModel（Python 插件是代理 ViewModel）注入该属性，QML 内一律用 `plugin ? plugin.someProperty : fallback` 防御空值。
+两种插件的**界面契约完全一致**：QML 根 `Item` 声明 `property var plugin` 和 `property var pluginContext`；框架分别注入 ViewModel（Python 插件是代理 ViewModel）与作用域宿主上下文，QML 内用 `plugin ? plugin.someProperty : fallback` 防御空值。
 
 ---
 
 # C++ 插件开发（SDK V2）
 
-内置 `clock`、`sysinfo`、`xuanhub_menu` 和 `pybridge` 均实现 `IBarPlugin2`，使用 IID
+内置 `clock`、`sysinfo`、`pixel_landscape`、`xuanhub_menu` 和 `pybridge` 均实现 `IBarPlugin2`，使用 IID
 `xuanhub.BarPlugin/2.0`。宿主只为外部旧插件保留 V1 适配；开发和迁移统一按
 [`docs/plugin-sdk-v2.md`](docs/plugin-sdk-v2.md) 的公开契约进行。
 
@@ -189,7 +197,7 @@ python scripts/xuanhub_plugin.py doctor build/default/dist/Release/plugins/myplu
 Qt/系统库，不能依赖宿主 `app/` 源码；Qt、MSVC、x64 和 CRT 必须与宿主一致。
 
 - `descriptor()` 与 `metadata.json` 的 V2 字段保持一致，供宿主在加载前预检。
-- `initialize/validateConfig/applyConfig/shutdown` 提供结构化结果；配置变更优先原地应用。
+- `initialize/validateConfig/applyConfig` 提供结构化结果；配置变更优先原地应用，`shutdown()` 负责停止和清理。
 - QML 声明 `plugin` 和 `pluginContext`，通过后者获取主题、语言、屏幕和弹窗/动作服务。
 - 后台工作使用 `QObject + QThread + QTimer`；卸载前停止线程并销毁 DLL 创建的对象。
 - 自绘设置页声明在 `entry.settingsQml`，事件通过 `PluginContext2::eventScope` 使用 V2 信封。
@@ -244,7 +252,7 @@ python scripts/xuanhub_plugin.py test plugins_py/my_plugin
 - 标准库可直接使用。第三方纯 Python 包可以随插件目录一起分发；需要原生扩展的依赖必须与便携包内置的 CPython 版本和 x64 架构匹配。依赖应在 `plugin.json` 中声明，具体规则见 [`plugins_py/README.md`](plugins_py/README.md)。
 - 不要把真实 API Key 写进 `plugin.json`、源码或示例配置。敏感设置应通过插件设置 schema 标记为 `secret`，由 XuanHub 使用 Windows DPAPI 保存。
 
-准备分享插件时，只打包自己的 `plugins_py/<name>/` 目录，排除 `__pycache__`、`*.pyc`、日志、测试凭据和本机配置；使用者解压到其 XuanHub 的 `plugins_py/` 后重启即可发现。
+准备分享插件时，使用 `python scripts/xuanhub_plugin.py package <插件目录> --output <文件.xuanplugin>`，只包含自己的插件内容，并通过凭据、缓存和路径检查；使用者通过设置页安装。直接复制源码目录仅用于本地开发，不能把普通 ZIP 改扩展名冒充 `.xuanplugin`。
 
 ## 目录契约
 
@@ -263,7 +271,11 @@ plugins_py/
     "id": "py_mytool",
     "name": "PyMyTool",
     "version": "0.1.0",
-    "author": "you"
+    "author": "you",
+    "apiVersion": 2,
+    "capabilities": ["barItem"],
+    "permissions": [],
+    "qml": "MyTool.qml"
 }
 ```
 
@@ -276,12 +288,14 @@ plugins_py/
 
 ```python
 def init(config):           # 可选。注入 config.json 里本子插件的 config 段（dict）
-def update():               # 必需。每个 tick 调用，返回 dict → 填入 QML 的 plugin.values
+def set_config(config):     # 可选。原地热更新；旧插件只重启自身
+def set_locale(locale):     # 可选。初始化及语言切换时调用
+def update():               # 必需。返回初始/周期快照；push-only 初始成功后停止周期调用
 def invoke(name, args):     # 可选。QML 里 plugin.call(name, args) 的入口
 def stop():                 # 可选。卸载/热重载前调用，用来停后台线程
 ```
 
-- 刷新节拍：`config.intervalMs`（毫秒，缺省 1000）；
+- 刷新节拍：`config.intervalMs`（毫秒，缺省 1000，钳制到 100–60000），从上一次完成后计时；
 - `update()` 返回的 dict 值支持 str / int / float / bool / list / dict（嵌套），其他类型转字符串；
 - `invoke()` 会异步排队；其同步返回值仅表示请求是否已进入队列，worker 完成后框架会立即补拉一次 `update()`；
 - `main.py` 所在目录会追加到 `sys.path` 末尾，可导入同目录辅助模块；
@@ -316,12 +330,13 @@ import QtQuick
 
 Item {
     property var plugin
+    property var pluginContext
     width: 120
     height: 40
 
     Text {
         anchors.centerIn: parent
-        color: themeManager ? themeManager.colors.fg : "#cdd6f4"
+        color: pluginContext ? pluginContext.colors.fg : "#ffffff"
         text: (plugin && plugin.values.text) ? plugin.values.text : "..."
     }
     MouseArea {
@@ -379,24 +394,38 @@ def update():
 
 # 从源码构建
 
-前提：Qt 6.9.3（msvc2022_64）、MSVC 2022、CMake ≥ 3.21。Qt 安装路径不同就改 `CMakePresets.json` 或新建 `CMakeUserPresets.json` 覆盖 `CMAKE_PREFIX_PATH`。
+前提：Pixi、Qt 6.9.3（msvc2022_64）、MSVC 2022、CMake ≥ 3.21。Qt 安装路径不同，在已忽略的 `CMakeUserPresets.json` 覆盖 `CMAKE_PREFIX_PATH`。仓库配置与编译统一经 Pixi 任务执行。
 
 ```bash
-cmake --preset default                 # 配置（生成到 build/default）
-cmake --build --preset default         # Release
-cmake --build --preset default-debug   # Debug
+pixi run build                        # 配置并构建 Release
+pixi run build-debug                  # 配置并构建 Debug
+pixi run ctest --test-dir build/default -C Release --output-on-failure
 ```
 
-运行产物统一在 `build/default/dist/<CONFIG>/`（含 `XuanHub.exe`、插件目录、Qt 依赖，链接后自动 windeployqt）。仓库根的 `config/config.json` 是开发示例，需手动拷到该目录才会以便携模式生效。pybridge 始终参与构建，不链接 CPython；运行时找不到 Python ≥3.12 时只停用 Python 子插件。
+运行产物统一在 `build/default/dist/<CONFIG>/`（含 `XuanHub.exe`、插件目录、Qt 依赖，链接后自动 windeployqt）。仓库根的 `config/config.json` 是开发示例，可用 `pixi run setup-config` 拷到运行目录；仅拷配置不等于便携模式，配置、密钥、日志和锁全部就地保存还需 `portable` 标记。pybridge 始终参与构建，不链接 CPython；运行时找不到 Python ≥3.12 时只停用 Python 子插件。
 
 正式发行提供单一的 `XuanHub-v<版本>-portable-x64.zip`，其中包含 Python 运行时，不再区分 Bundle / 非 Bundle 版本。仓库中的 `package-bundle` 等名称只是打包脚本的内部策略入口：它们会从构建输出创建全新的 staging，不复用运行目录里的配置、日志、锁或 DPAPI 密钥库；成品固定使用内置默认配置，并在压缩前检查敏感文件、密钥形状和本机用户路径。`pixi run package-nozip` 只保留通过同一安全检查的 staging 目录。
+
+正式包需要同时包含内置插件的第三方依赖。当前发布基线的复现入口如下（只打包已构建输出）：
+
+```powershell
+pixi run build
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package_portable.ps1 `
+  -PythonStrategy Bundle `
+  -BundlePipPackages "bleak,winrt,typing_extensions,cryptography,zstandard,cffi,_cffi_backend,pycparser"
+```
+
+`pixi run package` / `package-nozip` 默认不含 Python；`package-bundle` 只加入解释器和标准库，
+`package-bundle-full` 当前只补心率依赖，均不能单凭任务名当作完整正式包验收。
+依赖集合需随插件 Manifest 核对；打包后还需全新解压、插件 doctor/Worker 与启动验证，
+发布门禁见 [AGENTS.md](AGENTS.md)。
 
 ## 仓库目录速览
 
 ```
 app/            # 宿主 XuanHub.exe（栏窗口、AppBar、配置、设置窗口、托盘、主题）
-lib/barplugin/  # 插件接口共享库（IBarPlugin / BarPluginContext / EventBus）
-plugins/        # C++ 插件：clock / sysinfo / pybridge
+lib/barplugin/  # SDK V2、V1 兼容、HostServices / EventBus 共享库
+plugins/        # C++ 插件：clock / sysinfo / pixel_landscape / xuanhub_menu / pybridge
 plugins_py/     # Python 子插件（README.md 即开发契约）
 themes/         # 主题包（README.md 即开发契约）
 config/         # 开发用示例配置

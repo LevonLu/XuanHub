@@ -84,7 +84,7 @@ native payload 继续使用 `app/src/PluginManifest.cpp` 的 V1/V2 规则，包�
 Base64 必须是带标准 padding 的规范编码。算法、keyId、目标文件或签名字节任一不匹配，
 整包必须拒绝；不得按未签名包继续安装。
 
-签名证明包内容由对应私钥持有者签发，但内嵌公钥本身不等于受信任身份。首版设置页同时
+签名证明包内容由对应私钥持有者签发，但内嵌公钥本身不等于受信任身份。设置页同时
 展示发布者文本、keyId 和包来源，由用户决定是否信任；后续更新源必须额外固定预期 keyId，
 防止索引或包被替换后使用另一把密钥重新签名。完全未声明签名且没有 `signature.json` 的本地
 包仍可安装，但界面必须明确显示“未签名”警告。
@@ -106,24 +106,23 @@ Schema 1 的强制限制：
 ## 参考打包器
 
 ```powershell
-python scripts/package_plugin.py plugins_py/hello `
-  --runtime python `
+python scripts/xuanhub_plugin.py package plugins_py/hello `
   --publisher XuanHub `
   --output dist/py_hello-0.1.0.xuanplugin
 ```
 
-原生插件把源目录换成构建后的单插件运行目录，并传 `--runtime native`。加 `--json` 可得到机器可读结果。
+统一 CLI 从 Manifest 判断运行时；原生插件使用构建后的单插件运行目录。加 `--json` 可得到机器可读结果。
+底层 `scripts/package_plugin.py` 仍可用于精确打包诊断，其参数以该脚本 `--help` 为准。
 
 发布者首次签名先在插件源码目录之外创建私钥：
 
 ```powershell
 python scripts/generate_plugin_signing_key.py `
-  --output D:/keys/xuanhub-publisher.json `
+  --output "$env:USERPROFILE/.xuanhub-keys/publisher.json" `
   --publisher "Example Publisher"
 
-python scripts/package_plugin.py plugins_py/hello `
-  --runtime python `
-  --signing-key D:/keys/xuanhub-publisher.json `
+python scripts/xuanhub_plugin.py package plugins_py/hello `
+  --signing-key "$env:USERPROFILE/.xuanhub-keys/publisher.json" `
   --output dist/py_hello-0.1.0.xuanplugin
 ```
 
@@ -132,3 +131,6 @@ python scripts/package_plugin.py plugins_py/hello `
 发布者信息和密钥使用 RFC 6979 确定性 ECDSA，签名包仍保持字节级可复现。
 
 参考打包器使用固定 ZIP 时间、固定权限、排序路径和 Stored 存储，输入相同则产物字节完全相同。它会 fail closed：链接或 junction、VCS 元数据、Python 缓存、日志/锁、常见凭据文件、私钥和高置信访问令牌都会阻止打包，而不是被静默忽略。
+
+安装后的版本化目录由宿主管理；Python 更新可以只重启目标 Worker，原生模块的同路径文件替换需退出宿主。
+插件包更新不更新 XuanHub.exe；宿主升级使用独立的 [GitHub 软件更新](app-update.md) 流程。

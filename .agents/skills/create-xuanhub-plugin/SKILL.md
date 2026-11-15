@@ -47,7 +47,7 @@ python scripts/xuanhub_plugin.py create plugins/my_plugin --runtime native --id 
 python scripts/xuanhub_plugin.py create plugins_py/my_plugin --runtime python --id py_my_plugin --name "My Plugin"
 ```
 
-不要手工复制旧插件作为新骨架，不要覆盖已存在目录。若目标插件已经存在，跳过 `create`，先审阅现有 Manifest、实现和 Git 差异，再做增量修改。
+仓库开发使用 CLI 骨架，不复制旧插件替代脚手架；只有使用便携宿主且没有仓库 CLI 时，才按 `AGENTS.md` 复制包内 `hello` 模板。不要覆盖已存在目录。若目标插件已经存在，跳过 `create`，先审阅现有 Manifest、实现和 Git 差异，再做增量修改。
 
 对于仓库内 C++ 插件，将其 `add_subdirectory(...)` 接入顶层 `CMakeLists.txt`。第三方独立插件则遵循 SDK 安装包的独立构建方式，不引入宿主 `app/` 源码依赖。
 
@@ -67,7 +67,7 @@ python scripts/xuanhub_plugin.py create plugins_py/my_plugin --runtime python --
 ### C++ 插件
 
 - 实现 `IBarPlugin2`，只链接 `XuanHub::barplugin` 或仓库内 `barplugin` 及必要 Qt/系统库。
-- 保持 `initialize/applyConfig/shutdown` 生命周期对称；先销毁 DLL 创建的对象，再允许卸载。
+- 保持 `initialize/applyConfig/shutdown` 生命周期对称；先销毁 DLL 创建的对象，再释放插件根实例。宿主保留 `PreventUnloadHint`，同路径 DLL 替换需退出进程。
 - 后台工作使用 `QObject + moveToThread + QTimer`，不从工作线程访问 ViewModel 或 QML。
 - 配置输入先在 `validateConfig()` 中校验，热更新在 `applyConfig()` 中完成；需要迁移时使用公开迁移接口。
 - 参考 `examples/plugins/v2_demo/` 获取独立 SDK 用法；按功能参考 `plugins/clock/`、`plugins/sysinfo/` 或 `plugins/xuanhub_menu/`，不要依赖它们的私有实现。
@@ -103,7 +103,7 @@ python scripts/xuanhub_plugin.py run <插件目录>
 
 ### C++
 
-先完成 Release 构建，再对构建输出中的插件目录执行：
+先用 `pixi run build` 完成 Release 构建，再对构建输出中的插件目录执行：
 
 ```powershell
 python scripts/xuanhub_plugin.py validate <Release插件目录>

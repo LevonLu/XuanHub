@@ -2,8 +2,8 @@
 
 `py_mijia` 使用 Python 标准库与 QML 连接米家云，不依赖 Home Assistant。
 面板沿用玄枢的 FluentWinUI3 控件、8px 卡片圆角和主题色板，支持深浅主题及双列／单列布局。
-需要包含 Python 密钥 RPC 的 XuanHub 构建（提交 `e0de08c` 或后续版本）与 CPython 3.12+ x64。
-旧宿主会提示升级；不需要第三方 Python 包。
+使用 XuanHub v0.5.0 或后续兼容正式包，包内已含所需 Python 与密钥 RPC。源码开发基线为提交
+`e0de08c` 或后续版本，解释器要求 CPython 3.12+ x64。旧宿主需升级；本插件不需要第三方 Python 包。
 
 ## 使用
 
