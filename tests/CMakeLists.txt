@@ -651,6 +651,12 @@ add_custom_command(TARGET xuanhub_plugin_host_services_tests POST_BUILD
 )
 add_test(NAME xuanhub_plugin_host_services_tests COMMAND xuanhub_plugin_host_services_tests)
 
+add_test(NAME xuanhub_intime_overlay_tests COMMAND Qt6::qmltestrunner
+    -platform offscreen:configfile=intime-screens.json -input tst_InTimeOverlay.qml)
+set_tests_properties(xuanhub_intime_overlay_tests PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/qml"
+    ENVIRONMENT "QT_QUICK_BACKEND=software")
+
 if(Python_Interpreter_FOUND)
     add_test(NAME xuanhub_plugin_cli_tests
         COMMAND "${Python_EXECUTABLE}" -B -m unittest discover

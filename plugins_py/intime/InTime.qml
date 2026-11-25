@@ -1,5 +1,6 @@
-// RestReminder.qml — py_rest_reminder 子插件界面
-// Bar: 显示状态 + 倒计时。休息时：全屏遮罩从 bar 向下滑落（clip 动画，非 window resize）。
+// InTime.qml — 状态栏倒计时与每块屏幕的全屏休息遮罩
+pragma ComponentBehavior: Bound
+import QtQml.Models
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -77,46 +78,55 @@ Item {
         }
     }
 
-    // ── 遮罩（全屏 Window + 内部 clip 动画）─────────────────────
-    Window {
+    readonly property bool overlayActive: !!(plugin && plugin.values && plugin.values.overlayActive)
+    onOverlayActiveChanged: if (overlayActive) Qt.callLater(snapProgress)
+
+    // 同一进度驱动每块屏幕的裁剪高度，退出动画结束后一起释放窗口。
+    property real reveal: overlayActive ? 1 : 0
+    Behavior on reveal {
+        NumberAnimation {
+            duration: root.overlayActive ? root.enterDuration : root.exitDuration
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    Instantiator {
+        objectName: "restOverlays"
+        active: root.overlayActive || root.reveal > 0
+        model: Qt.application.screens
+        delegate: RestOverlay {
+            required property var modelData
+            screen: modelData
+            // 同一虚拟桌面内还需指定窗口原点，副屏坐标可以为负。
+            x: modelData.virtualX
+            y: modelData.virtualY
+            // Windows 软件渲染需要在透明窗口首次全屏显示前取得有效尺寸。
+            width: modelData.width
+            height: modelData.height
+        }
+        onObjectAdded: function(index, window) {
+            window.showFullScreen()
+            window.raise()
+            if (index === 0) window.requestActivate()
+        }
+    }
+
+    component RestOverlay: Window {
         id: overlay
         transientParent: null
-        visible: false
         color: "transparent"
         flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
 
-        property bool _animating: false
-
         Shortcut {
             sequence: "Escape"
-            enabled: overlay.visible && !overlay._animating
-            onActivated: {
-                if (plugin) plugin.call("end_rest", [])
-            }
-        }
-
-        Timer {
-            interval: 300; repeat: true; running: true
-            onTriggered: {
-                if (!plugin || !plugin.values) return
-                var active = plugin.values.overlayActive || false
-                if (active && !overlay.visible && !overlay._animating) {
-                    root.showOverlay()
-                } else if (!active && overlay.visible && !overlay._animating) {
-                    root.hideOverlay()
-                }
-            }
-        }
-
-        onVisibleChanged: {
-            if (visible) overlay.requestActivate()
-            else clipRect.height = 0
+            enabled: root.overlayActive
+            onActivated: root.plugin.call("end_rest", [])
         }
 
         // ── 裁剪容器：高度从 0 动画到全屏 ────────────────────
         Rectangle {
-            id: clipRect
-            width: overlay.width; height: 0
+            width: overlay.width
+            height: overlay.height * root.reveal
             clip: true
             color: "transparent"
 
@@ -243,65 +253,5 @@ Item {
                 }
             }
         }
-
-        // 滑落动画（变更 clipRect.height，而非 Window 尺寸）；
-        // duration 由 showOverlay/hideOverlay 在 start 前按进入/退出分别赋值
-        NumberAnimation {
-            id: slideAnim
-            target: clipRect
-            property: "height"
-            duration: 400
-            easing.type: Easing.OutCubic
-            from: 0; to: 1080
-            onFinished: {
-                overlay._animating = false
-                if (slideAnim.from > slideAnim.to) {
-                    // 收回完成 → 隐藏窗口
-                    overlay.hide()
-                }
-            }
-        }
-    }
-
-    // ── 辅助 ────────────────────────────────────────────────────
-    function showOverlay() {
-        if (overlay._animating) return
-        // 统一以 barScreenGeometry（bar 所在屏的 availableGeometry，逻辑像素）定位：
-        // appbar 模式它已排除 bar 占用的工作区，taskbar 模式它排除任务栏——
-        // 两种模式都覆盖除 bar/任务栏外的全屏。
-        // 不能以 bar 窗口几何为准：taskbar 模式 bar 是嵌在任务栏里的小窗口，
-        // 按它定位遮罩只会盖住任务栏上的一条（本函数此前的 bug）。
-        var g = pluginContext ? pluginContext.screenGeometry
-                              : ((typeof barScreenGeometry !== "undefined")
-                                 ? barScreenGeometry : null)
-        var scr = Qt.application.screens[0]
-        var gx = g ? g.x : 0
-        var gy = g ? g.y : 0
-        var gw = g ? g.width  : (scr ? scr.width  : 1920)
-        var gh = g ? g.height : (scr ? scr.height : 1080)
-
-        overlay.x = gx
-        overlay.y = gy
-        overlay.width = gw
-        overlay.height = gh
-
-        overlay._animating = true
-        snapProgress()   // 开场即归位到休息起点进度（此时 progress 已为 0），防"满格回落"
-        clipRect.height = 0
-        slideAnim.duration = root.enterDuration
-        slideAnim.from = 0
-        slideAnim.to = gh
-        overlay.show()
-        overlay.raise()
-        slideAnim.start()
-    }
-
-    function hideOverlay() {
-        if (overlay._animating) return
-        overlay._animating = true
-        slideAnim.duration = root.exitDuration
-        slideAnim.from = clipRect.height
-        slideAnim.to = 0
-        slideAnim.start()
     }
 }
