@@ -7,9 +7,15 @@
 #pragma once
 #include <QObject>
 #include <QPointer>
+#include <QRect>
 #include <QTimer>
 
 class QWindow;
+
+namespace taskbar_layout {
+// 全部参数均为任务栏客户区的物理像素。空矩形表示没有可安全展示的窗口区域。
+QRect viewport(const QRect& tray, const QRect& startButton, int offset, int contentWidth);
+}
 
 class TaskbarEmbed : public QObject {
     Q_OBJECT

@@ -7,6 +7,37 @@
 #include <QRect>
 
 #include <windows.h>
+#include <climits>
+
+namespace {
+QRect startButtonRect(HWND tray) {
+    // Win11 用 XAML 绘制开始按钮，兼容 Start 子 HWND 虽然隐藏，仍跟随按钮移动。
+    const HWND start = FindWindowExW(tray, nullptr, L"Start", nullptr);
+    RECT rect{};
+    if (!start || !GetWindowRect(start, &rect)) return {};
+    POINT pos{rect.left, rect.top};
+    if (!ScreenToClient(tray, &pos)) return {};
+    return QRect(pos.x, pos.y, rect.right - rect.left, rect.bottom - rect.top);
+}
+}
+
+QRect taskbar_layout::viewport(const QRect& tray, const QRect& startButton,
+                               int offset, int contentWidth) {
+    const QRect button = tray.intersected(startButton);
+    if (button.isEmpty()) return {};
+
+    // 兼容 HWND 和实际 XAML 点击区域可能相差一个物理像素。区间右端均为排他端点。
+    const int trayEnd = tray.x() + tray.width();
+    const int beforeStart = qMax(tray.x(), button.x() - 1);
+    const int afterStart = button.x() + button.width() + 1;
+    qint64 x = qint64(tray.x()) + offset;
+    const int end = x >= afterStart ? trayEnd : beforeStart;
+    // 手动偏移正落在开始按钮上时，退到任务栏左缘以保留可滚动的空间。
+    if (x >= beforeStart && x < afterStart) x = tray.x();
+    if (end <= tray.x() || x >= end || x + contentWidth <= tray.x() || contentWidth <= 0)
+        return {};
+    return QRect(int(x), tray.y(), int(qMin<qint64>(contentWidth, end - x)), tray.height());
+}
 
 TaskbarEmbed::TaskbarEmbed(QObject* parent) : QObject(parent) {
     m_timer.setInterval(500);
@@ -111,12 +142,18 @@ void TaskbarEmbed::relayout() {
 
     // QML 内容按逻辑像素，Win32 矩形按物理像素，用窗口 DPR 换算
     const qreal dpr = m_win->devicePixelRatio();
-    const int w = qMax(1, qRound(m_contentWidth * dpr));
-    // 子窗口直接使用父窗口客户区坐标，不把任务栏边框算进可用高度。
-    const QPoint pos(rc.left + qRound(m_offsetX * dpr), rc.top);
+    const QRect client(rc.left, rc.top, rc.right - rc.left, trayH);
+    // config 的偏移可为负；先在宽整数上换算，超出可显示范围时也能安全处理。
+    const int w = int(qBound(qint64{0}, qRound64(m_contentWidth * dpr), qint64{INT_MAX}));
+    const int offset = int(qBound(qint64{INT_MIN}, qRound64(m_offsetX * dpr), qint64{INT_MAX}));
+    QRect target = taskbar_layout::viewport(client, startButtonRect(tray), offset, w);
+    if (target.isEmpty()) {
+        // Qt/Win32 可能把零宽窗口钳成 1px，attach 后上层也可能 show()。
+        // 放到父客户区外，直到 Explorer 提供可用空间，按钮内就不会留下命中点。
+        target = QRect(rc.right, rc.top, 1, trayH);
+    }
 
     const HWND hwnd = reinterpret_cast<HWND>(m_win->winId());
-    const QRect target(pos, QSize(w, trayH));
     RECT actual{};
     if (!GetWindowRect(hwnd, &actual)) return;
     POINT actualPos{actual.left, actual.top};
@@ -127,7 +164,7 @@ void TaskbarEmbed::relayout() {
     // 已被改小。核对 HWND 当前几何，不能用“上次请求成功”代替当前状态。
     if (target == current) return;
     // 几何一致时仍不重复 SetWindowPos，保留稳定状态下避免无谓窗口消息的优化。
-    if (!SetWindowPos(hwnd, HWND_TOP, pos.x(), pos.y(), w, trayH,
+    if (!SetWindowPos(hwnd, HWND_TOP, target.x(), target.y(), target.width(), target.height(),
                       SWP_NOACTIVATE | SWP_SHOWWINDOW)) {
         qWarning() << "[TaskbarEmbed] SetWindowPos failed:" << GetLastError();
     }

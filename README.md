@@ -106,7 +106,11 @@ XuanHub 提供两种工作模式：`appbar` 以无边框、置顶窗口占据主
 | `theme` | `dark` / `light` | 明暗模式，缺省 `dark` |
 | `menuIcon` | `original` / `hub` / `compact` | 菜单与托盘图标，缺省 `original` |
 | `mode` | `appbar` / `taskbar` | 工作模式，缺省 `appbar`；`taskbar` 会嵌入 Windows 原生任务栏 |
-| `taskbarOffsetX` | 整数（像素） | `taskbar` 模式下的水平位置微调，缺省 0 |
+| `taskbarOffsetX` | 整数（逻辑像素） | 从任务栏左缘量起的水平偏移，缺省 0 |
+
+在任务栏模式下，插件栏默认显示在 Windows 开始按钮左侧。插件过多时，把指针移到
+插件栏上，用鼠标滚轮或触控板横向浏览。开始按钮左侧没有可用空间时，插件栏暂时隐藏；
+也可以把 `taskbarOffsetX` 设到开始按钮右侧，由你选择与其他任务栏图标错开的起点。
 
 `plugins` 数组每项：
 
