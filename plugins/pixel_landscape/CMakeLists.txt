@@ -39,6 +39,10 @@ add_custom_target(pixel_landscape_assets ALL
         "${CMAKE_CURRENT_SOURCE_DIR}/CampsiteArt.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/RailwayArt.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/IslandArt.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/WindowCityArt.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/BelowSurfaceArt.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/WestwardArt.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/WestwardPilgrims.js"
         "${XUANHUB_BIN_DIR}/plugins/pixel_landscape/"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/metadata.json" "${XUANHUB_BIN_DIR}/plugins/pixel_landscape/metadata.json"

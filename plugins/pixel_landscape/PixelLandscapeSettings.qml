@@ -132,7 +132,9 @@ Item {
                     fieldKey: "scene"; title: root.tr("场景"); fallback: "cabin"
                     options: [{value:"cabin",label:"山间小屋"},{value:"lighthouse",label:"海边灯塔"},
                         {value:"street",label:"夜雨街角"},{value:"campsite",label:"湖畔营地"},
-                        {value:"railway",label:"田野铁道"},{value:"island",label:"空中浮岛"}]
+                        {value:"railway",label:"田野铁道"},{value:"island",label:"空中浮岛"},
+                        {value:"window_city",label:"窗外城市"},{value:"below_surface",label:"水面以下"},
+                        {value:"westward_journey",label:"取经路上"}]
                 }
                 Choice {
                     fieldKey: "timeMode"; title: root.tr("时段"); fallback: "auto"

@@ -1,6 +1,6 @@
 # 玄枢 / XuanHub
 
-基于 **Qt6 / QML** 的 Windows 插件化状态栏框架。当前版本 0.5.0。
+基于 **Qt6 / QML** 的 Windows 插件化状态栏框架。当前版本 0.6.0。
 
 XuanHub 提供两种工作模式：`appbar` 以无边框、置顶窗口占据主屏顶部或底部边缘，并经 Win32 AppBar 向系统申请工作区；`taskbar` 则嵌入 Windows 原生任务栏左侧，背景透明且不额外占用桌面工作区。栏上的一切内容——时钟、网速、启动器……——都是可插拔的插件。插件有两种形态：
 
@@ -181,7 +181,7 @@ Python/Protocol V2 路径以隔离后端故障，但仍应只运行可信代码�
 
 # C++ 插件开发（SDK V2）
 
-内置 `clock`、`sysinfo`、`pixel_landscape`、`xuanhub_menu` 和 `pybridge` 均实现 `IBarPlugin2`，使用 IID
+内置 `clock`、`sysinfo`、`pixel_landscape`、`music`、`xuanhub_menu` 和 `pybridge` 均实现 `IBarPlugin2`，使用 IID
 `xuanhub.BarPlugin/2.0`。宿主只为外部旧插件保留 V1 适配；开发和迁移统一按
 [`docs/plugin-sdk-v2.md`](docs/plugin-sdk-v2.md) 的公开契约进行。
 
@@ -429,7 +429,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package_portable.ps1
 ```
 app/            # 宿主 XuanHub.exe（栏窗口、AppBar、配置、设置窗口、托盘、主题）
 lib/barplugin/  # SDK V2、V1 兼容、HostServices / EventBus 共享库
-plugins/        # C++ 插件：clock / sysinfo / pixel_landscape / xuanhub_menu / pybridge
+plugins/        # C++ 插件：clock / sysinfo / pixel_landscape / music / xuanhub_menu / pybridge
 plugins_py/     # Python 子插件（README.md 即开发契约）
 themes/         # 主题包（README.md 即开发契约）
 config/         # 开发用示例配置

@@ -31,6 +31,9 @@ Item {
         : scene === "campsite" ? qsTranslate("plugin.pixel_landscape.main", "湖畔营地")
         : scene === "railway" ? qsTranslate("plugin.pixel_landscape.main", "田野铁道")
         : scene === "island" ? qsTranslate("plugin.pixel_landscape.main", "空中浮岛")
+        : scene === "window_city" ? qsTranslate("plugin.pixel_landscape.main", "窗外城市")
+        : scene === "below_surface" ? qsTranslate("plugin.pixel_landscape.main", "水面以下")
+        : scene === "westward_journey" ? qsTranslate("plugin.pixel_landscape.main", "取经路上")
         : qsTranslate("plugin.pixel_landscape.main", "山间小屋")
     readonly property bool animationsEnabled: plugin && plugin.animationsEnabled !== undefined
                                               ? plugin.animationsEnabled : false

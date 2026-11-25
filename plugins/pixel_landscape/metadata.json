@@ -68,6 +68,18 @@
             {
               "value": "island",
               "label": "空中浮岛"
+            },
+            {
+              "value": "window_city",
+              "label": "窗外城市"
+            },
+            {
+              "value": "below_surface",
+              "label": "水面以下"
+            },
+            {
+              "value": "westward_journey",
+              "label": "取经路上"
             }
           ]
         },

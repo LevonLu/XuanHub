@@ -279,6 +279,9 @@ function drawSky(c,g,p,weather) {
         }
         c.globalAlpha=1
     }
+    drawCelestial(c,g,p,weather,g.w*0.21,g.h*0.16)
+}
+function drawCelestial(c,g,p,weather,sx,sy) {
     if(weather==="clear") {
         if(p.night>0) {
             c.globalAlpha=p.night
@@ -289,7 +292,7 @@ function drawSky(c,g,p,weather) {
         }
         if(!p.solar && p.night<1) {
             c.globalAlpha=1-p.night
-            var sx=g.w*0.21,sy=g.h*0.16,sr=Math.max(2,g.h*0.045)
+            var sr=Math.max(2,g.h*0.045)
             if(p.golden>0) {
                 for(var halo=3;halo>0;halo--) {
                     c.globalAlpha=p.golden*0.10
@@ -314,6 +317,9 @@ function drawAmbience(c,g,p,weather,time,meteor) {
         for(var fog=0;fog<3;fog++)rect(c,p.cloud,(time*0.8+fog*g.w/2)%(g.w*1.5)-g.w/2,g.h*(0.48+fog*0.055),g.w*0.65,Math.max(1,g.h*0.025))
     }
     c.globalAlpha=1
+    drawNightAmbience(c,g,p,weather,time,meteor)
+}
+function drawNightAmbience(c,g,p,weather,time,meteor) {
     if(p.night>0&&weather==="clear") {
         for(var st=0;st<g.stars.length;st+=5){var star=g.stars[st];c.globalAlpha=p.night*(0.25+0.55*(Math.sin(time*0.7+st)*0.5+0.5));rect(c,p.sun,star.x,star.y,2,1)}
         if(meteor>=0&&meteor<=1) {

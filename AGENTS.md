@@ -4,10 +4,10 @@
 
 ## 1. 项目概览
 
-**玄枢（XuanHub）** 是一个基于 **Qt6 / QML 的 Windows 插件化状态栏框架**（对标 polybar / waybar / Rainmeter），当前版本 0.5.0。
+**玄枢（XuanHub）** 是一个基于 **Qt6 / QML 的 Windows 插件化状态栏框架**（对标 polybar / waybar / Rainmeter），当前版本 0.6.0。
 
 - `XuanHub.exe`：无边框、置顶、`Qt::Tool` 的 `QQuickView`，两种形态（`bar.mode`）：`appbar`（默认，Win32 AppBar 占住主屏顶部/底部工作区）；`taskbar`（`SetParent` 嵌入原生任务栏左侧，透明、不占工作区）。
-- 原生插件是独立 DLL（`QPluginLoader` 加载），Python 插件由 pybridge 托管；两者都使用 QML 界面。内置原生插件包括 `clock`、`sysinfo`、`pixel_landscape`、`xuanhub_menu` 和 host 插件 `pybridge`。
+- 原生插件是独立 DLL（`QPluginLoader` 加载），Python 插件由 pybridge 托管；两者都使用 QML 界面。内置原生插件包括 `clock`、`sysinfo`、`pixel_landscape`、`music`、`xuanhub_menu` 和 host 插件 `pybridge`。
 - 仅支持 Windows，直接用 Win32 API，不做跨平台抽象。
 - `pybridge` 桥接插件为 `plugins_py/` 下每个 Python 子插件启动独立的 `python.exe` worker，并以受随机令牌认证的 loopback IPC 连接 QML 代理；Python 崩溃、GIL 卡死或扩展模块异常不会进入宿主。官方便携包内置 Python 及内置插件依赖；源码运行或脚本 `None` 策略才需要用户自装 CPython ≥3.12。脚本策略与正式发行要求见 §5、§8。
 
@@ -60,7 +60,7 @@ XuanHub/
 │   │                                    # / SettingsWindow.qml / Ui*.qml（设计令牌 + FluentWinUI3 包装控件）
 │   └── resources/default_config.json    # qrc 内置默认配置（首运行播种用）
 ├── plugins/
-│   ├── clock/  sysinfo/  pixel_landscape/  xuanhub_menu/  # 内置可见原生插件
+│   ├── clock/  sysinfo/  pixel_landscape/  music/  xuanhub_menu/  # 内置可见原生插件
 │   └── pybridge/                        # Python host + PyWorkerViewModel（无 CPython 链接）
 ├── plugins_py/                          # Python 子插件 + bridge_worker.py（README 即开发契约）
 ├── themes/                              # 主题包（ThemeRegistry 扫描；README 即开发契约；xuanhub-default 兜底勿删）
@@ -88,7 +88,7 @@ Win32 平台层 (app/src)   BarWindow（QQuickView）· AppBarWin32 · WorkAreaG
 扫描 `<exeDir>/plugins/*/metadata.json` 与 DLL → 在执行代码前校验 Manifest、路径、宿主范围、
 SDK、架构、依赖和权限 → 加载 DLL 并按 IID 选择 `IBarPlugin2` 或 V1 适配器 → 按依赖拓扑与配置
 初始化 → 注入作用域化事件、HostServices、语言、主题和插件配置 → 收入 `PluginListModel`。V2 的
-sidecar 与运行时 Descriptor 必须一致；内置 `clock/sysinfo/pixel_landscape/xuanhub_menu/pybridge` 均实现 V2；外部 V1 继续兼容，公开契约以 `docs/plugin-sdk-v2.md` 为准。
+sidecar 与运行时 Descriptor 必须一致；内置 `clock/sysinfo/pixel_landscape/music/xuanhub_menu/pybridge` 均实现 V2；外部 V1 继续兼容，公开契约以 `docs/plugin-sdk-v2.md` 为准。
 
 **host 插件分支**：`initialize` 后若命中 `IBarPluginHost`（如 pybridge），自身不进可见列表，走两阶段契约：`subPluginIds()` 枚举 → 核心按 config 过滤 → `createSubPlugin(id, cfg)` 实例化。子插件以 `iface=nullptr` 收入模型（生命周期归 host）；`shutdownAll()` 中 host **最后** shutdown（子插件 VM 依赖 host 持有的运行时），随后统一 `unload()` 释放插件根实例。Qt 默认 `PreventUnloadHint` 保留，DLL 映像驻留至进程退出，同路径二进制替换必须退出宿主。
 

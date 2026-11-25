@@ -41,7 +41,8 @@ QString PixelLandscapeViewModel::configurationError(const QVariantMap& config) {
     if (!error.isEmpty()) return error;
     error = enumError(QStringLiteral("scene"),
         {QStringLiteral("cabin"), QStringLiteral("lighthouse"), QStringLiteral("street"),
-         QStringLiteral("campsite"), QStringLiteral("railway"), QStringLiteral("island")});
+         QStringLiteral("campsite"), QStringLiteral("railway"), QStringLiteral("island"),
+         QStringLiteral("window_city"), QStringLiteral("below_surface"), QStringLiteral("westward_journey")});
     if (!error.isEmpty()) return error;
     error = enumError(QStringLiteral("weather"),
         {QStringLiteral("clear"), QStringLiteral("rain"), QStringLiteral("snow")});
@@ -137,7 +138,8 @@ void PixelLandscapeViewModel::refreshAt(const QDateTime& now, bool force) {
     if (next == m_phase && !force && delta >= 0 && delta <= 90000) return;
     m_previousPhase = m_phase;
     m_phase = next;
-    m_transitionAllowed = !solar.value(QStringLiteral("active")).toBool() && !force
+    // 有真实太阳时颜色跟随太阳高度；取经路仍用过渡时间让两段地形交接。
+    m_transitionAllowed = (!solar.value(QStringLiteral("active")).toBool() || m_scene == QStringLiteral("westward_journey")) && !force
         && delta >= 0 && delta <= 90000 && m_previousPhase != next;
     Q_EMIT phaseChanged();
 }

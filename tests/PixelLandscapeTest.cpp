@@ -29,6 +29,11 @@
 #include "barplugin/IBarPlugin2.h"
 #include "PopupService.h"
 
+static const QStringList sceneIds{
+    "cabin", "lighthouse", "street", "campsite", "railway", "island", "window_city", "below_surface",
+    "westward_journey"
+};
+
 class PixelContext final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantMap colors READ colors CONSTANT)
@@ -74,6 +79,12 @@ public:
 
 static QString pluginSource(const QString& name) {
     return QStringLiteral(XUANHUB_SOURCE_DIR "/plugins/pixel_landscape/") + name;
+}
+
+static QImage captureScene(QQuickWindow* window, const QRect& scene) {
+    QImage image = window->grabWindow().scaled(window->size());
+    image.setDevicePixelRatio(1);
+    return image.copy(scene);
 }
 
 class PixelTranslator final : public QTranslator {
@@ -199,15 +210,14 @@ private Q_SLOTS:
         const QVariantMap morning{{"strength",1.0},{"evening",0.0}};
         const QVariantMap evening{{"strength",1.0},{"evening",1.0}};
         QTRY_VERIFY(root->property("staticPaintCount").toInt()>0);
-        QImage gallery(960,6*208,QImage::Format_RGB32);gallery.fill(QColor("#182330"));QPainter painter(&gallery);
-        const QStringList scenes{"cabin","lighthouse","street","campsite","railway","island"};
-        for(int row=0;row<scenes.size();++row)for(int col=0;col<3;++col) {
-            root->setProperty("sceneType",scenes[row]);root->setProperty("solarState",col==2?dusk:dawn);
+        QImage gallery(960,int(sceneIds.size())*208,QImage::Format_RGB32);gallery.fill(QColor("#182330"));QPainter painter(&gallery);
+        for(int row=0;row<sceneIds.size();++row)for(int col=0;col<3;++col) {
+            root->setProperty("sceneType",sceneIds[row]);root->setProperty("solarState",col==2?dusk:dawn);
             root->setProperty("goldenHourState",col==0?QVariantMap{}:col==1?morning:evening);
             QTest::qWait(40);const auto image=view.grabWindow();QVERIFY(!image.isNull());
             QVERIFY(image.pixelColor(20,20)!=image.pixelColor(20,160));
             painter.drawImage(col*320,row*208+28,image);painter.setPen(Qt::white);
-            painter.drawText(col*320+8,row*208+19,scenes[row]+QStringList{" normal"," sunrise glow"," sunset colors"}[col]);
+            painter.drawText(col*320+8,row*208+19,sceneIds[row]+QStringList{" normal"," sunrise glow"," sunset colors"}[col]);
         }
         painter.end();
         root->setProperty("solarState",dawn);root->setProperty("goldenHourState",morning);QTest::qWait(40);
@@ -232,7 +242,7 @@ private Q_SLOTS:
             translator.contexts=QJsonDocument::fromJson(file.readAll()).object()["contexts"].toObject();
             QCoreApplication::installTranslator(&translator);
             for(int width:{360,620}) {
-                PixelSettingsDraft draft;draft.values={{"manualLocationEnabled",true},{"latitude",39.9075},{"longitude",116.39723}};
+                PixelSettingsDraft draft;draft.values={{"scene","window_city"},{"manualLocationEnabled",true},{"latitude",39.9075},{"longitude",116.39723}};
                 QQuickView view;QSignalSpy warnings(view.engine(),&QQmlEngine::warnings);
                 view.setSource(QUrl::fromLocalFile(pluginSource("PixelLandscapeSettings.qml")));
                 QCOMPARE(view.status(),QQuickView::Ready);
@@ -242,6 +252,9 @@ private Q_SLOTS:
                 auto* city=root->findChild<QObject*>("landscapeCity");QVERIFY(city);
                 QCOMPARE(city->property("currentIndex").toInt(),1);
                 QCOMPARE(city->property("currentText").toString(),locale=="zh-CN"?QStringLiteral("北京"):QStringLiteral("Beijing"));
+                auto* scene=root->findChild<QObject*>("landscapeSetting_scene");QVERIFY(scene);
+                QCOMPARE(scene->property("currentText").toString(),
+                         locale=="zh-CN"?QStringLiteral("窗外城市"):QStringLiteral("City outside the window"));
                 const QString output=qEnvironmentVariable("XUANHUB_PIXEL_EVIDENCE");
                 if(!output.isEmpty())QVERIFY(view.grabWindow().save(output+"/city-settings-"+locale+"-"+QString::number(width)+".png"));
                 QCOMPARE(draft.count,0);QVERIFY(warnings.isEmpty());
@@ -467,15 +480,14 @@ private Q_SLOTS:
         QCOMPARE(root->property("staticPaintCount").toInt(),paints);
         root->setProperty("solarState",landscape::solarState(QDateTime(day,QTime(13,0),zone),39.9,116.4));
         QTest::qWait(40);QCOMPARE(root->property("staticPaintCount").toInt(),paints);
-        const QStringList scenes{"cabin","lighthouse","street","campsite","railway","island"};
         const QList<QTime> moments{QTime(4,10),QTime(4,46),QTime(7,0),QTime(12,16),QTime(19,46),QTime(22,0)};
-        QImage gallery(6*320,6*204,QImage::Format_RGB32);gallery.fill(QColor("#182330"));QPainter painter(&gallery);
-        for(int row=0;row<scenes.size();++row)for(int col=0;col<moments.size();++col) {
-            root->setProperty("sceneType",scenes[row]);
+        QImage gallery(int(moments.size())*320,int(sceneIds.size())*204,QImage::Format_RGB32);gallery.fill(QColor("#182330"));QPainter painter(&gallery);
+        for(int row=0;row<sceneIds.size();++row)for(int col=0;col<moments.size();++col) {
+            root->setProperty("sceneType",sceneIds[row]);
             root->setProperty("solarState",landscape::solarState(QDateTime(day,moments[col],zone),39.9,116.4));
             QTest::qWait(25);const auto frame=view.grabWindow();QVERIFY(!frame.isNull());
             painter.drawImage(QRect(col*320,row*204+24,320,180),frame);
-            painter.setPen(Qt::white);painter.drawText(col*320+8,row*204+17,scenes[row]+" "+moments[col].toString("hh:mm"));
+            painter.setPen(Qt::white);painter.drawText(col*320+8,row*204+17,sceneIds[row]+" "+moments[col].toString("hh:mm"));
         }
         painter.end();
         const QString output=qEnvironmentVariable("XUANHUB_PIXEL_EVIDENCE");
@@ -527,6 +539,22 @@ private Q_SLOTS:
         QVERIFY(vm.applyConfig({{"timeMode", "dusk"}}));
         vm.refreshAt(QDateTime(date,QTime(12,0)));
         QCOMPARE(vm.phase(), QStringLiteral("dusk"));
+
+        // 在赤道春分的清晨逐分钟越过一次真实太阳时段边界，只有取经路需要换景。
+        const QDateTime beforeDawn(QDate(2026,3,20), QTime(5,0), QTimeZone::utc());
+        for (const QString& scene : {"westward_journey","cabin"}) {
+            QVERIFY(vm.applyConfig({{"scene", scene}, {"locationSource","manual"},
+                    {"manualLocationEnabled",true}, {"latitude",0.0}, {"longitude",0.0}}));
+            vm.refreshAt(beforeDawn, true);
+            QVERIFY(vm.solarState().value("active").toBool());
+            const QString previous = vm.phase();
+            for (int minute = 1; minute <= 90 && vm.phase() == previous; ++minute)
+                vm.refreshAt(beforeDawn.addSecs(minute * 60));
+            QVERIFY(vm.phase() != previous);
+            QCOMPARE(vm.transitionAllowed(), scene == QStringLiteral("westward_journey"));
+            vm.refreshAt(beforeDawn, true);
+            QVERIFY(!vm.transitionAllowed());
+        }
     }
 
     void invalidConfigPreservesState() {
@@ -728,7 +756,9 @@ private Q_SLOTS:
         QVERIFY(vm.paused());QCOMPARE(vm.weather(),QStringLiteral("snow"));
         const QList<QPair<QString,QString>> sceneNames = {
             {"cabin","Mountain cabin"},{"lighthouse","Seaside lighthouse"},{"street","Rainy street corner"},
-            {"campsite","Lakeside campsite"},{"railway","Country railway"},{"island","Floating island"}};
+            {"campsite","Lakeside campsite"},{"railway","Country railway"},{"island","Floating island"},
+            {"window_city","City outside the window"},{"below_surface","Beneath the Surface"},
+            {"westward_journey","Journey to the West"}};
         for(const auto& pair:sceneNames) {
             vm.applyConfig({{"scene",pair.first},{"animationsEnabled",false}});
             QCOMPARE(root->property("sceneLabel").toString(),pair.second);
@@ -855,9 +885,11 @@ Rectangle {
         QJsonObject field;
         for(const auto group:groups)for(const auto value:group.toObject()["fields"].toArray())
             if(value.toObject()["key"].toString()==QStringLiteral("scene"))field=value.toObject();
-        QCOMPARE(field["default"].toString(),vm.scene());QCOMPARE(field["options"].toArray().size(),6);
+        QCOMPARE(field["default"].toString(),vm.scene());
+        QStringList choices;
         for(const auto value:field["options"].toArray()) {
             const QString scene=value.toObject()["value"].toString();
+            choices.append(scene);
             QVERIFY(vm.applyConfig({{"scene",scene},{"timeMode","night"},{"weather","snow"},{"frameStyle","metal"}}));
             QTRY_COMPARE(bar->property("sceneType").toString(),scene);
             QTRY_COMPARE(expanded->property("sceneType").toString(),scene);
@@ -869,12 +901,264 @@ Rectangle {
             const int frozen=bar->property("dynamicPaintCount").toInt();
             QTest::qWait(120);QCOMPARE(bar->property("dynamicPaintCount").toInt(),frozen);
         }
+        QCOMPARE(choices,sceneIds);
         popup->hide();QTRY_VERIFY(!loader->property("item").value<QObject*>());
         QVERIFY(QMetaObject::invokeMethod(root,"openLandscape"));
         QTRY_VERIFY(loader->property("item").value<QObject*>());
-        QCOMPARE(loader->property("item").value<QObject*>()->findChild<QObject*>("expandedScene")->property("sceneType").toString(),QStringLiteral("island"));
+        QCOMPARE(loader->property("item").value<QObject*>()->findChild<QObject*>("expandedScene")->property("sceneType").toString(),vm.scene());
         QVERIFY(vm.paused());
         QVERIFY2(warnings.isEmpty(),"切换场景不得重建弹窗、重置暂停或产生 QML 警告");
+    }
+
+    void belowSurfaceEncounter() {
+        PixelLandscapeViewModel vm;
+        QVERIFY(vm.applyConfig({{"scene","below_surface"},{"timeMode","day"},{"frameStyle","none"}}));
+        vm.setPaused(true);
+        PopupService popups;
+        PixelContext context;
+        context.popups = &popups;
+        // 恰好给场景留出 320 像素，两种视角都按原始像素网格比对。
+        context.screenWidth = 344;
+        QQuickView view;
+        QSignalSpy warnings(view.engine(), &QQmlEngine::warnings);
+        view.setResizeMode(QQuickView::SizeRootObjectToView);
+        view.setSource(QUrl::fromLocalFile(pluginSource("PixelLandscape.qml")));
+        QCOMPARE(view.status(), QQuickView::Ready);
+        auto* root = view.rootObject();
+        root->setProperty("pluginContext", QVariant::fromValue<QObject*>(&context));
+        root->setProperty("plugin", QVariant::fromValue<QObject*>(&vm));
+        view.resize(320, 40);
+        view.show();
+        auto* controller = root->findChild<QObject*>("landscapeController");
+        auto* bar = root->findChild<QQuickItem*>("barScene");
+        auto* popup = root->findChild<QQuickWindow*>("landscapePopup");
+        QVERIFY(controller && bar && popup);
+        QTRY_VERIFY(bar->property("staticPaintCount").toInt() > 0);
+        // 浮标已经下沉时才打开弹窗，新创建的水下视角应直接显示碰撞当帧。
+        controller->setProperty("animationTime", 4.0);
+        popup->setProperty("closeOnDeactivate", false);
+        QVERIFY(QMetaObject::invokeMethod(root, "openLandscape"));
+        QTRY_COMPARE(popup->opacity(), 1.0);
+        auto* expanded = root->findChild<QQuickItem*>("expandedScene");
+        QVERIFY(expanded);
+        QCOMPARE(expanded->size(), QSizeF(320, 180));
+        QCOMPARE(expanded->property("animationTime").toDouble(), 4.0);
+        QTRY_VERIFY(expanded->property("staticPaintCount").toInt() > 0);
+        const int barStaticPaints = bar->property("staticPaintCount").toInt();
+        const int popupStaticPaints = expanded->property("staticPaintCount").toInt();
+        QMap<int, QImage> surfaceFrames, underwaterFrames;
+        const QRect surfaceArea(0, 0, 320, 40), underwaterArea(0, 0, 320, 180);
+        for (int second : {4, 7, 0}) {
+            if (second != 4) {
+                const int barPaints = bar->property("dynamicPaintCount").toInt();
+                const int popupPaints = expanded->property("dynamicPaintCount").toInt();
+                controller->setProperty("animationTime", double(second));
+                QTRY_VERIFY(bar->property("dynamicPaintCount").toInt() > barPaints);
+                QTRY_VERIFY(expanded->property("dynamicPaintCount").toInt() > popupPaints);
+            }
+            surfaceFrames[second] = captureScene(&view, surfaceArea);
+            underwaterFrames[second] = captureScene(popup, underwaterArea);
+            QVERIFY(!surfaceFrames[second].isNull() && !underwaterFrames[second].isNull());
+        }
+        QCOMPARE(bar->property("staticPaintCount").toInt(), barStaticPaints);
+        QCOMPARE(expanded->property("staticPaintCount").toInt(), popupStaticPaints);
+        QTest::qWait(220);
+        QCOMPARE(controller->property("animationTime").toDouble(), 0.0);
+        QCOMPARE(captureScene(&view, surfaceArea), surfaceFrames[0]);
+        QCOMPARE(captureScene(popup, underwaterArea), underwaterFrames[0]);
+        QVERIFY(warnings.isEmpty());
+
+        const QString output = qEnvironmentVariable("XUANHUB_PIXEL_EVIDENCE");
+        if (!output.isEmpty()) {
+            QImage strip(960, 248, QImage::Format_RGB32);
+            strip.fill(QColor("#182330"));
+            QPainter painter(&strip);
+            painter.setPen(Qt::white);
+            int x = 0;
+            for (int second : {0, 4, 7}) {
+                painter.drawText(x + 6, 17, QString::number(second) + QStringLiteral(" s"));
+                painter.drawImage(x, 24, surfaceFrames[second]);
+                painter.drawImage(x, 68, underwaterFrames[second]);
+                x += 320;
+            }
+            painter.end();
+            QVERIFY(QDir().mkpath(output));
+            QVERIFY(strip.scaled(1920, 496).save(output + "/below-surface.png"));
+        }
+
+        // 从成图识别日间红色浮标与鱼身橙色鳞纹，避免其他水面动画掩盖主体停滞。
+        auto accentBounds = [](const QImage& image, QRect region, QColor accent) {
+            QRect result;
+            for (int y = region.top(); y <= region.bottom(); ++y) {
+                for (int x = region.left(); x <= region.right(); ++x) {
+                    const QColor pixel = image.pixelColor(x, y);
+                    if (qAbs(pixel.red() - accent.red()) <= 3 && qAbs(pixel.green() - accent.green()) <= 3
+                        && qAbs(pixel.blue() - accent.blue()) <= 3)
+                        result |= QRect(x, y, 1, 1);
+                }
+            }
+            return result;
+        };
+        for (const auto* frames : {&surfaceFrames, &underwaterFrames}) {
+            const QRect floatRegion(125, 0, 13, frames->value(0).height());
+            const QColor red("#ed6550");
+            const QRect rest = accentBounds(frames->value(0), floatRegion, red);
+            const QRect contact = accentBounds(frames->value(4), floatRegion, red);
+            const QRect released = accentBounds(frames->value(7), floatRegion, red);
+            QVERIFY(!rest.isEmpty() && !contact.isEmpty() && !released.isEmpty());
+            QVERIFY(contact.top() >= rest.top() + 2);
+            QVERIFY(contact.top() >= released.top() + 2);
+        }
+        const QColor scales("#ecad70");
+        const QRect nearFloat(91, 40, 41, 50);
+        const QRect toRight(188, 45, 126, 65);
+        QVERIFY(!accentBounds(underwaterFrames[4], nearFloat, scales).isEmpty());
+        QVERIFY(accentBounds(underwaterFrames[7], nearFloat, scales).isEmpty());
+        QVERIFY(!accentBounds(underwaterFrames[7], toRight, scales).isEmpty());
+    }
+
+    void westwardLandmarksAtConstantSun() {
+        QQuickView view;
+        QSignalSpy warnings(view.engine(), &QQmlEngine::warnings);
+        view.setResizeMode(QQuickView::SizeRootObjectToView);
+        view.setSource(QUrl::fromLocalFile(pluginSource("LandscapeScene.qml")));
+        QCOMPARE(view.status(), QQuickView::Ready);
+        auto* scene = view.rootObject();
+        scene->setProperty("sceneType", "westward_journey");
+        scene->setProperty("expanded", true);
+        const QDateTime noon(QDate(2026, 6, 21), QTime(12, 0), QTimeZone::fromSecondsAheadOfUtc(8 * 3600));
+        scene->setProperty("solarState", landscape::solarState(noon, 39.9, 116.4));
+        view.resize(320, 180);
+        view.show();
+        QTRY_VERIFY(scene->property("staticPaintCount").toInt() > 0);
+        const QString palette = scene->property("paletteKey").toString();
+        QList<QImage> landscapes;
+        QMap<QString,QImage> phases;
+        const QRect fullScene(0, 0, 320, 180);
+        // 固定正午色板和太阳，只看行人上方的地貌；单纯给同一风景换色不能通过。
+        for (const QString& phase : {"dawn", "day", "dusk", "night"}) {
+            const int previousPaints = scene->property("staticPaintCount").toInt();
+            scene->setProperty("phase", phase);
+            QCOMPARE(scene->property("paletteKey").toString(), palette);
+            QTRY_VERIFY(scene->property("staticPaintCount").toInt() > previousPaints);
+            phases[phase] = captureScene(&view, fullScene);
+            const QImage skyline = phases[phase].copy(0, 12, 320, 64);
+            QVERIFY(!skyline.isNull());
+            QVERIFY2(!landscapes.contains(skyline), qPrintable(phase));
+            landscapes.append(skyline);
+        }
+        // 固定动画时间，左右截面都包含地标、道路与人物，避免只验证背景的交接。
+        scene->setProperty("previousPhase", "dusk");
+        const QRect left(0, 0, 158, 180), right(162, 0, 158, 180);
+        for (double blend : {0.0, 0.5, 1.0}) {
+            const int staticPaints = scene->property("staticPaintCount").toInt();
+            const int dynamicPaints = scene->property("dynamicPaintCount").toInt();
+            scene->setProperty("blend", blend);
+            QTRY_VERIFY(scene->property("staticPaintCount").toInt() > staticPaints);
+            QTRY_VERIFY(scene->property("dynamicPaintCount").toInt() > dynamicPaints);
+            const QImage crossing = captureScene(&view, fullScene);
+            QCOMPARE(crossing.copy(left), phases[blend == 0 ? "dusk" : "night"].copy(left));
+            QCOMPARE(crossing.copy(right), phases[blend == 1 ? "night" : "dusk"].copy(right));
+        }
+        QVERIFY(warnings.isEmpty());
+    }
+
+    void westwardJourneyGalleryAndMotion() {
+        PixelLandscapeViewModel vm;
+        QVariantMap config{{"scene","westward_journey"},{"timeMode","night"},
+                           {"frameStyle","none"},{"goldenHourMode","off"}};
+        QVERIFY(vm.applyConfig(config));
+        vm.setPaused(true);
+        PopupService popups;
+        PixelContext context;
+        context.popups = &popups;
+        context.screenWidth = 344;
+        QQuickView view;
+        QSignalSpy warnings(view.engine(), &QQmlEngine::warnings);
+        view.setResizeMode(QQuickView::SizeRootObjectToView);
+        view.setSource(QUrl::fromLocalFile(pluginSource("PixelLandscape.qml")));
+        QCOMPARE(view.status(), QQuickView::Ready);
+        auto* root = view.rootObject();
+        root->setProperty("pluginContext", QVariant::fromValue<QObject*>(&context));
+        root->setProperty("plugin", QVariant::fromValue<QObject*>(&vm));
+        view.resize(320, 40);
+        view.show();
+        auto* clock = root->findChild<QObject*>("landscapeController");
+        auto* bar = root->findChild<QQuickItem*>("barScene");
+        auto* popup = root->findChild<QQuickWindow*>("landscapePopup");
+        QVERIFY(clock && bar && popup);
+        popup->setProperty("closeOnDeactivate", false);
+        QVERIFY(QMetaObject::invokeMethod(root, "openLandscape"));
+        QTRY_COMPARE(popup->opacity(), 1.0);
+        auto* expanded = root->findChild<QQuickItem*>("expandedScene");
+        QVERIFY(expanded);
+        QCOMPARE(expanded->size(), QSizeF(320,180));
+        const QRect barArea(0,0,320,40), popupArea(0,0,320,180);
+        const QStringList phases{"dawn","day","dusk","night"};
+        QList<QImage> bars, popupsByPhase;
+        for (const QString& phase : phases) {
+            const int oldBar = bar->property("staticPaintCount").toInt();
+            const int oldPopup = expanded->property("staticPaintCount").toInt();
+            config["timeMode"] = phase;
+            // 黄昏选取八戒在桥边探水、悟空回头的一帧。
+            clock->setProperty("animationTime", phase == "dusk" ? 10.0 : 0.0);
+            QVERIFY(vm.applyConfig(config));
+            QTRY_VERIFY(bar->property("staticPaintCount").toInt() > oldBar);
+            QTRY_VERIFY(expanded->property("staticPaintCount").toInt() > oldPopup);
+            bars.append(captureScene(&view, barArea));
+            popupsByPhase.append(captureScene(popup, popupArea));
+            QVERIFY(!bars.last().isNull() && !popupsByPhase.last().isNull());
+            if (phase == "day") {
+                const int barStatic = bar->property("staticPaintCount").toInt();
+                const int popupStatic = expanded->property("staticPaintCount").toInt();
+                const int barDynamic = bar->property("dynamicPaintCount").toInt();
+                const int popupDynamic = expanded->property("dynamicPaintCount").toInt();
+                constexpr double nextStep = 2.7;
+                clock->setProperty("animationTime", nextStep);
+                QTRY_VERIFY(bar->property("dynamicPaintCount").toInt() > barDynamic);
+                QTRY_VERIFY(expanded->property("dynamicPaintCount").toInt() > popupDynamic);
+                QCOMPARE(bar->property("animationTime").toDouble(), nextStep);
+                QCOMPARE(expanded->property("animationTime").toDouble(), nextStep);
+                const QImage movedBar = captureScene(&view, barArea);
+                const QImage movedPopup = captureScene(popup, popupArea);
+                // 沿道路检查前后两名行人的像素，两种视角都必须展示队列行进。
+                for (const int x : {58, 238}) {
+                    const QRect barWalker(x, 21, 24, 12), popupWalker(x, 96, 24, 28);
+                    QVERIFY(movedBar.copy(barWalker) != bars.last().copy(barWalker));
+                    QVERIFY(movedPopup.copy(popupWalker) != popupsByPhase.last().copy(popupWalker));
+                }
+                QTest::qWait(220);
+                QCOMPARE(clock->property("animationTime").toDouble(), nextStep);
+                QCOMPARE(captureScene(&view, barArea), movedBar);
+                QCOMPARE(captureScene(popup, popupArea), movedPopup);
+                QCOMPARE(bar->property("staticPaintCount").toInt(), barStatic);
+                QCOMPARE(expanded->property("staticPaintCount").toInt(), popupStatic);
+                clock->setProperty("animationTime", 0.0);
+            }
+        }
+        const QString output = qEnvironmentVariable("XUANHUB_PIXEL_EVIDENCE");
+        if (!output.isEmpty()) {
+            const QStringList captions{QStringLiteral("清晨 · 村落"), QStringLiteral("白天 · 竹径"),
+                                       QStringLiteral("黄昏 · 石桥"), QStringLiteral("夜晚 · 山寺")};
+            QImage gallery(1328, 1024, QImage::Format_RGB32);
+            gallery.fill(QColor("#171b24"));
+            QPainter painter(&gallery);
+            painter.setPen(QColor("#f1e6ce"));
+            QFont label = painter.font();
+            label.setPixelSize(21);
+            painter.setFont(label);
+            painter.drawText(16, 34, QStringLiteral("取经路上"));
+            for (int i = 0; i < phases.size(); ++i) {
+                const int x = 16 + (i % 2) * 656, y = 48 + (i / 2) * 484;
+                painter.drawText(x, y + 22, captions[i]);
+                painter.drawImage(QRect(x,y + 34,640,80), bars[i]);
+                painter.drawImage(QRect(x,y + 118,640,360), popupsByPhase[i]);
+            }
+            painter.end();
+            QVERIFY(QDir().mkpath(output));
+            QVERIFY(gallery.save(output + "/westward-gallery.png"));
+        }
+        QVERIFY(warnings.isEmpty());
     }
 
     void renderSceneOverview() {
@@ -884,16 +1168,16 @@ Rectangle {
 import QtQuick
 import "%1" as Landscape
 Rectangle {
- width: 1008; height: 1068; color: "#182330"
- Grid { columns: 2
-  Repeater { model: ["cabin","lighthouse","street","campsite","railway","island"]
+ width: 1512; height: 1068; color: "#182330"
+ Grid { columns: 3
+  Repeater { model: ["cabin","lighthouse","street","campsite","railway","island","window_city","below_surface","westward_journey"]
    delegate: Item {
     required property int index
     required property string modelData
     width: 504; height: 356
-    readonly property string timeOfDay: ["dusk","night","night","dusk","day","dawn"][index]
+    readonly property string timeOfDay: ["dusk","night","night","dusk","day","dawn","dusk","day","dawn"][index]
     readonly property string climate: index === 2 ? "rain" : "clear"
-    Text { x: 12; y: 9; color: "#e6decd"; font.pixelSize: 16; text: ["山间小屋","海边灯塔","夜雨街角","湖畔营地","田野铁道","空中浮岛"][parent.index] }
+    Text { x: 12; y: 9; color: "#e6decd"; font.pixelSize: 16; text: ["山间小屋","海边灯塔","夜雨街角","湖畔营地","田野铁道","空中浮岛","窗外城市","水面以下","取经路上"][parent.index] }
     Landscape.LandscapeScene { x: 12; y: 36; width: 480; height: 270; expanded: true; sceneType: parent.modelData; phase: parent.timeOfDay; previousPhase: phase; weather: parent.climate; animationTime: 3 }
     Landscape.LandscapeFrame { x: 12; y: 314; width: 480; height: 32; frameStyle: "wood" }
     Landscape.LandscapeScene { x: 16; y: 318; width: 472; height: 24; sceneType: parent.modelData; phase: parent.timeOfDay; previousPhase: phase; weather: parent.climate; animationTime: 3 }
@@ -941,12 +1225,13 @@ Rectangle {
         view.setSource(QUrl::fromLocalFile(file.fileName()));
         QCOMPARE(view.status(),QQuickView::Ready);
         view.show();QTest::qWait(500);
-        QImage previous;
-        for(const auto& name:{"cabin","lighthouse","street","campsite","railway","island"}) {
+        QList<QImage> rendered;
+        for(const QString& name:sceneIds) {
             view.rootObject()->setProperty("sceneName",name);QTest::qWait(160);
             const QImage image=view.grabWindow();QVERIFY(!image.isNull());
             QVERIFY(image.pixelColor(100,100)!=image.pixelColor(100,748));
-            QVERIFY(image!=previous);previous=image;
+            QVERIFY2(!rendered.contains(image),qPrintable(name));
+            rendered.append(image);
             if(!output.isEmpty()){QDir().mkpath(output);QVERIFY(image.save(output+"/landscape-gallery-"+name+".png"));}
         }
         QVERIFY(warnings.isEmpty());
@@ -976,7 +1261,7 @@ Rectangle {
         view.setSource(QUrl::fromLocalFile(file.fileName()));
         QCOMPARE(view.status(),QQuickView::Ready);view.show();QTest::qWait(300);
         const QString output=qEnvironmentVariable("XUANHUB_PIXEL_EVIDENCE");
-        for(const auto& name:{"cabin","lighthouse","street","campsite","railway","island"}) {
+        for(const QString& name:sceneIds) {
             view.rootObject()->setProperty("sceneName",name);QTest::qWait(160);
             const QImage image=view.grabWindow();QVERIFY(!image.isNull());
             if(!output.isEmpty())QVERIFY(image.save(output+"/landscape-widths-"+name+".png"));
