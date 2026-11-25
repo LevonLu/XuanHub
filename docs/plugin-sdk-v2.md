@@ -250,6 +250,11 @@ Q_INVOKABLE QVariant invokeAction(const QString& actionId);
 
 ### 响应式布局
 
+ViewModel 可声明带 NOTIFY 的只读布尔属性 `barItemVisible`。缺省为 `true`；返回 `false`
+时宿主将槽位移出三栏、宽度预算和溢出列表，appbar、taskbar 和固定宽度配置均遵守。
+槽位的 QML 与弹窗随之释放，插件及其 ViewModel 继续运行。可见性必须由后端决定，
+以便在槽位尚未实例化时恢复显示。设置页仍可访问该插件。
+
 需要按实际槽位宽度重排内容的插件可在根 Item 声明 `property real hostContentWidth: -1`，
 以正数 `implicitWidth` 声明自然宽度，并令 `width: hostContentWidth >= 0 ? hostContentWidth : implicitWidth`。
 宿主仅对声明者注入扣除左右主题内边距后的内容宽度；0 表示没有可绘制空间，-1 表示尚未注入。

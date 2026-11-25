@@ -106,14 +106,15 @@ private:
         int effectiveWidth = 0;
         bool layoutVisible = true;
         bool overflowed = false;
+        QMetaObject::Connection visibilityConnection;
         xuanhub::PluginHealth health;
     };
 
-    static Item fromLoaded(const PluginManager::LoadedPlugin& item);
+    Item fromLoaded(const PluginManager::LoadedPlugin& item);
     static bool layoutLess(const Item& a, const Item& b);
     int insertionRow(const Item& item) const;
     int rowForId(const QString& id) const;
-    void recalculateResponsiveLayout();
+    Q_SLOT void recalculateResponsiveLayout();
     QVector<Item> m_items;
     QHash<QString, int> m_contentWidths;
     QHash<QString, QString> m_loadErrors;

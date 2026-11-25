@@ -2,11 +2,20 @@
 #include "PluginListModel.h"
 #include "PluginFilterModel.h"
 
+#include <QMetaProperty>
 #include <QSet>
 
 #include <algorithm>
 
 namespace {
+QMetaProperty barVisibility(const QObject* viewModel) {
+    if (!viewModel) return {};
+    const QMetaObject* meta = viewModel->metaObject();
+    const auto property = meta->property(meta->indexOfProperty("barItemVisible"));
+    return property.typeId() == QMetaType::Bool && property.isReadable() && property.hasNotifySignal()
+        ? property : QMetaProperty{};
+}
+
 int positionRank(const QString& position) {
     if (position == QStringLiteral("left")) return 0;
     if (position == QStringLiteral("center")) return 1;
@@ -102,6 +111,7 @@ QHash<int, QByteArray> PluginListModel::roleNames() const {
 
 void PluginListModel::setPlugins(const QVector<PluginManager::LoadedPlugin>& items) {
     beginResetModel();
+    for (const auto& item : m_items) disconnect(item.visibilityConnection);
     m_items.clear();
     // 设置窗口的「自然宽度」只能代表当前已加载插件；保留旧 id 会让移除后
     // 再启用的插件继承过期尺寸。
@@ -129,6 +139,7 @@ bool PluginListModel::removePlugin(const QString& id) {
     const int row = rowForId(id);
     if (row < 0) return false;
     beginRemoveRows({}, row, row);
+    disconnect(m_items.at(row).visibilityConnection);
     m_items.removeAt(row);
     m_contentWidths.remove(id);
     endRemoveRows();
@@ -140,6 +151,7 @@ bool PluginListModel::replacePlugin(const PluginManager::LoadedPlugin& loaded) {
     const int oldRow = rowForId(loaded.id);
     if (oldRow < 0) return insertPlugin(loaded);
     beginRemoveRows({}, oldRow, oldRow);
+    disconnect(m_items.at(oldRow).visibilityConnection);
     m_items.removeAt(oldRow);
     endRemoveRows();
     const Item item = fromLoaded(loaded);
@@ -209,6 +221,13 @@ PluginListModel::Item PluginListModel::fromLoaded(
     item.capabilities = loaded.capabilities;
     item.layout = loaded.layout;
     item.health = loaded.health;
+    const auto property = barVisibility(item.vm);
+    if (property.isValid()) {
+        item.layoutVisible = property.read(item.vm).toBool();
+        const auto slot = metaObject()->method(metaObject()->indexOfSlot("recalculateResponsiveLayout()"));
+        item.visibilityConnection = connect(item.vm, property.notifySignal(), this, slot,
+                                            Qt::QueuedConnection);
+    }
     return item;
 }
 
@@ -255,19 +274,27 @@ void PluginListModel::setAvailableWidth(int width) {
 
 void PluginListModel::recalculateResponsiveLayout() {
     QVector<ResponsiveLayoutEngine::Item> input;
+    QVector<bool> requestedVisibility;
     input.reserve(m_items.size());
+    requestedVisibility.reserve(m_items.size());
     for (const Item& item : m_items) {
-        input.append({item.id, m_contentWidths.value(item.id), item.width, item.layout});
+        const auto property = barVisibility(item.vm);
+        const bool visible = !property.isValid() || property.read(item.vm).toBool();
+        requestedVisibility.append(visible);
+        if (visible)
+            input.append({item.id, m_contentWidths.value(item.id), item.width, item.layout});
     }
     const QVector<ResponsiveLayoutEngine::Result> allocated =
         ResponsiveLayoutEngine::allocate(m_availableWidth, input);
     QVariantList overflow;
+    qsizetype allocatedIndex = 0;
     for (int row = 0; row < m_items.size(); ++row) {
         Item& item = m_items[row];
-        const auto& result = allocated.at(row);
+        const bool requested = requestedVisibility.at(row);
+        const auto result = requested ? allocated.at(allocatedIndex++) : ResponsiveLayoutEngine::Result{};
         const int effectiveWidth = m_availableWidth > 0 ? result.width : 0;
-        const bool visible = m_availableWidth > 0 ? result.visible : true;
-        const bool overflowed = m_availableWidth > 0 ? result.overflowed : false;
+        const bool visible = requested && (m_availableWidth == 0 || result.visible);
+        const bool overflowed = requested && m_availableWidth > 0 && result.overflowed;
         if (item.effectiveWidth != effectiveWidth
             || item.layoutVisible != visible || item.overflowed != overflowed) {
             item.effectiveWidth = effectiveWidth;

@@ -14,10 +14,46 @@ public:
     bool restarted = false;
 };
 
+class OptionalSlotViewModel final : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(bool barItemVisible MEMBER shown NOTIFY visibilityChanged)
+public:
+    void setShown(bool value) {
+        shown = value;
+        Q_EMIT visibilityChanged();
+    }
+    bool shown = false;
+Q_SIGNALS:
+    void visibilityChanged();
+};
+
 class PluginListModelTest final : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
+    void excludesHiddenFixedWidthSlot() {
+        OptionalSlotViewModel view;
+        PluginManager::LoadedPlugin item;
+        item.id = QStringLiteral("music");
+        item.position = QStringLiteral("center");
+        item.width = 240;
+        item.viewModel = &view;
+        PluginListModel model;
+        model.setAvailableWidth(300);
+        model.setPlugins({item});
+        QCOMPARE(model.rowCount(), 1);
+        QCOMPARE(model.centerPlugins()->rowCount(), 0);
+        QCOMPARE(model.overflowPluginModel()->rowCount(), 0);
+        QCOMPARE(model.index(0).data(PluginListModel::EffectiveWidthRole).toInt(), 0);
+        view.setShown(true);
+        QTRY_COMPARE(model.centerPlugins()->rowCount(), 1);
+        QCOMPARE(model.index(0).data(PluginListModel::EffectiveWidthRole).toInt(), 240);
+        model.setAvailableWidth(0);
+        view.setShown(false);
+        QTRY_COMPARE(model.centerPlugins()->rowCount(), 0);
+        QCOMPARE(model.index(0).data(PluginListModel::ViewModelRole).value<QObject*>(), &view);
+    }
+
     void exposesPluginHealthRoles() {
         PluginManager::LoadedPlugin plugin;
         plugin.id = QStringLiteral("health_test");
