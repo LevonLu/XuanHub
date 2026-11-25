@@ -1,0 +1,25 @@
+{
+  "locale": "en-US",
+  "contexts": {
+    "plugin.music.metadata": {
+      "音乐": "Music"
+    },
+    "plugin.music.settings": {
+      "显示": "Display",
+      "歌词行数": "Lyric lines",
+      "单行": "One line",
+      "双行": "Two lines",
+      "双行字号": "Two-line font sizes",
+      "上大下小": "Larger current line",
+      "同样大小": "Same size"
+    },
+    "plugin.music.main": {
+      "上一曲": "Previous",
+      "下一曲": "Next",
+      "播放": "Play",
+      "暂停": "Pause",
+      "打开音乐控制": "Open music controls",
+      "播放器未执行操作": "The player did not accept the command"
+    }
+  }
+}

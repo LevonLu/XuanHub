@@ -1,0 +1,74 @@
+{
+  "id": "music",
+  "name": "音乐",
+  "version": "0.1.0",
+  "author": "XuanHub",
+  "apiVersion": 2,
+  "configVersion": 1,
+  "minHostVersion": "0.5.0",
+  "maxHostVersion": "0.x",
+  "entry": {
+    "backend": "music.dll",
+    "qml": "Music.qml"
+  },
+  "capabilities": [
+    "barItem",
+    "settings",
+    "popup"
+  ],
+  "permissions": [],
+  "compatibility": {
+    "architecture": "x64",
+    "qtVersion": "6.9.3",
+    "compiler": "msvc2022",
+    "crt": "dynamic"
+  },
+  "layout": {
+    "region": "center",
+    "minWidth": 80,
+    "preferredWidth": 240,
+    "maxWidth": 240,
+    "flex": 0,
+    "priority": 30,
+    "overflow": "hide"
+  },
+  "settings": [
+    {
+      "group": "显示",
+      "fields": [
+        {
+          "key": "lineMode",
+          "type": "enum",
+          "label": "歌词行数",
+          "default": "single",
+          "options": [
+            {
+              "value": "single",
+              "label": "单行"
+            },
+            {
+              "value": "double",
+              "label": "双行"
+            }
+          ]
+        },
+        {
+          "key": "doubleLineFont",
+          "type": "enum",
+          "label": "双行字号",
+          "default": "emphasis",
+          "options": [
+            {
+              "value": "emphasis",
+              "label": "上大下小"
+            },
+            {
+              "value": "uniform",
+              "label": "同样大小"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

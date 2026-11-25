@@ -51,6 +51,27 @@ add_test(NAME xuanhub_pixel_landscape_tests COMMAND xuanhub_pixel_landscape_test
 set_tests_properties(xuanhub_pixel_landscape_tests PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic;QT_QPA_FONTDIR=$ENV{WINDIR}/Fonts" TIMEOUT 30)
 
+add_executable(xuanhub_music_tests MusicTest.cpp
+    ${CMAKE_SOURCE_DIR}/plugins/music/MusicViewModel.h
+    ${CMAKE_SOURCE_DIR}/plugins/music/MusicViewModel.cpp
+    ${CMAKE_SOURCE_DIR}/plugins/music/MusicWorker.h
+    ${CMAKE_SOURCE_DIR}/plugins/music/MusicWorker.cpp)
+set_target_properties(xuanhub_music_tests PROPERTIES AUTOMOC ON
+    RUNTIME_OUTPUT_DIRECTORY "${XUANHUB_BIN_DIR}")
+target_compile_definitions(xuanhub_music_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_compile_definitions(xuanhub_music_tests PRIVATE XUANHUB_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+target_link_libraries(xuanhub_music_tests PRIVATE music_lyrics Qt6::Test Qt6::Quick windowsapp)
+add_dependencies(xuanhub_music_tests XuanHub)
+add_custom_command(TARGET xuanhub_music_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:xuanhub_music_tests>/platforms"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:Qt6::QOffscreenIntegrationPlugin>"
+        "$<TARGET_FILE_DIR:xuanhub_music_tests>/platforms/"
+    VERBATIM)
+add_test(NAME xuanhub_music_tests COMMAND xuanhub_music_tests)
+set_tests_properties(xuanhub_music_tests PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QT_QPA_FONTDIR=$ENV{WINDIR}/Fonts"
+    TIMEOUT 45)
+
 add_executable(xuanhub_config_tests
     ConfigServiceTest.cpp
     ${CMAKE_SOURCE_DIR}/app/src/ConfigService.h
@@ -675,6 +696,7 @@ if(Python_Interpreter_FOUND)
     set(XUANHUB_BUILTIN_PLUGIN_DIRS
         plugins/clock
         plugins/pixel_landscape
+        plugins/music
         plugins/pybridge
         plugins/sysinfo
         plugins/xuanhub_menu

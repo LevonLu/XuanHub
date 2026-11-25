@@ -31,6 +31,7 @@ add_subdirectory(plugins/xuanhub_menu)
 add_subdirectory(plugins/clock)
 add_subdirectory(plugins/pixel_landscape)
 add_subdirectory(plugins/sysinfo)
+add_subdirectory(plugins/music)
 
 # pybridge 不再内嵌 CPython：只需 Qt 网络组件启动独立 python.exe worker，
 # 因而构建机无需 Python 开发包。运行时找不到 Python 3.12+

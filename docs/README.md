@@ -52,6 +52,7 @@ PF-01～PF-10 已完成，原生 Worker 隔离只完成原型与评估，产品�
 | 时钟、系统监控、玄枢菜单 | [`clock`](../plugins/clock/)、[`sysinfo`](../plugins/sysinfo/)、[`xuanhub_menu`](../plugins/xuanhub_menu/) |
 | 菜单与托盘图标 | [`ICON.md`](../plugins/xuanhub_menu/ICON.md) |
 | 朝暮风景 | [使用与配置](../plugins/pixel_landscape/README.md)、[城市数据许可](../plugins/pixel_landscape/CITY-DATA-LICENSE.md) |
+| 音乐 | [QQ 音乐歌词与播放控制](../plugins/music/README.md) |
 | Python 桥接与示例 | [`pybridge`](../plugins/pybridge/)、[`hello`](../plugins_py/hello/) |
 | Token Usage | [账户、采集与数据边界](../plugins_py/agent_usage/README.md) |
 | 倒计时 | [悬浮提示、发薪日与离线日历覆盖](../plugins_py/countdown/README.md) |
